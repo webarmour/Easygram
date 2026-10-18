@@ -67,10 +67,11 @@ public final class EasygramUpdater {
     }
 
     /** Called on the main thread after the activity's main container has been created. */
-    public static void attach(Activity activity, ViewGroup host) {
-        if (activity == null || host == null || activity.isFinishing()) return;
+    public static UpdateLayout attach(Activity activity, ViewGroup host) {
+        if (activity == null || host == null || activity.isFinishing()) return null;
         UpdateLayout layout = layoutRef.get();
         if (layout == null || hostRef.get() != host) {
+            // Use MainTabsActivity native UpdateLayoutWrapper; do not overlay bottom tabs.
             layout = new UpdateLayout(activity, host);
             layout.setEasygramClickListener(() -> onPanelClicked(activity));
             // Attaching the hidden view keeps the layout alive until an update arrives.
@@ -96,6 +97,7 @@ public final class EasygramUpdater {
             }
         }
         render();
+        return layout;
     }
 
     private static Update parseUpdate(JSONObject json) throws Exception {
