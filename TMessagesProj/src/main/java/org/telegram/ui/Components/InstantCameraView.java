@@ -637,7 +637,8 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         rect.set(x - dp(8), y - dp(8), x + cameraContainer.getMeasuredWidth() + dp(8), y + cameraContainer.getMeasuredHeight() + dp(8));
         if (recording) {
             recordedTime = System.currentTimeMillis() - recordStartTime + recordPlusTime;
-            progress = Math.min(1f, recordedTime / 60000.0f);
+            progress = Math.min(1f, recordedTime /
+                    (aarRecorder != null ? (float) aarMaxDurationMs : 60000.0f));
             invalidate();
         }
 
@@ -1190,6 +1191,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     private int aarTtl;
     private long aarEffectId;
     private long aarStars;
+    private long aarMaxDurationMs = 60_000L;
     private final Runnable aarMaxDurationStop = () -> {
         if (aarRecorder != null && recording && !aarFinishing) {
             sendAarCamera(2, true, 0, 0, 0, 0L, 0L);
@@ -1252,7 +1254,9 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                         if (aarFinishing || cancelled) return;
                         recordStartTime = System.currentTimeMillis();
                         recording = true;
-                        AndroidUtilities.runOnUIThread(aarMaxDurationStop, 59_500L);
+                        aarMaxDurationMs = 1_000L * RoundVideoRecorderSettings.maxRecordingDurationSeconds(getContext());
+                        // Finalization takes time; leave a 500ms safety margin, as before.
+                        AndroidUtilities.runOnUIThread(aarMaxDurationStop, Math.max(0L, aarMaxDurationMs - 500L));
                         invalidate();
                         AndroidUtilities.lockOrientation(delegate.getParentActivity());
                         NotificationCenter.getInstance(currentAccount).postNotificationName(
