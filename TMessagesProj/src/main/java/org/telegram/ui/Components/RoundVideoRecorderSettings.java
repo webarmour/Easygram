@@ -46,16 +46,40 @@ public final class RoundVideoRecorderSettings {
     private static final String AUDIO_BITRATE = "audio_bitrate";
     // CUSTOM_RECORDER_CONFIGURABLE_START_DELAY_V1
     private static final String RECORDING_START_DELAY = "recording_start_delay_ms";
-    private static final int DEFAULT_RECORDING_START_DELAY_MS = 50;
+    private static final int DEFAULT_RECORDING_START_DELAY_MS = 200;
     private static final int MAX_RECORDING_START_DELAY_MS = 2000;
 
+    // Defaults for new Easygram installs (existing SharedPreferences always take precedence).
+    // Resetting CustomRecorder options also returns to these defaults.
+    private static final boolean DEFAULT_RECORDER = true;
+    private static final boolean DEFAULT_MANUAL_MODE = true;
+    private static final String DEFAULT_QUALITY = "MAX"; // 640 x 640
+    private static final int DEFAULT_FPS = 60;
+    private static final boolean DEFAULT_LOW_LIGHT_BOOST = false;
+    private static final boolean DEFAULT_HOLD_FPS = true;
+    private static final AePrioritySetting DEFAULT_AE_PRIORITY = AePrioritySetting.OFF;
+    private static final int DEFAULT_EXPOSURE_STEPS = -4;
+    private static final AwbSetting DEFAULT_AWB = AwbSetting.AUTO;
+    private static final FocusSetting DEFAULT_FOCUS = FocusSetting.CONTINUOUS_VIDEO;
+    private static final AntibandingSetting DEFAULT_ANTIBANDING = AntibandingSetting.AUTO;
+    private static final float DEFAULT_ZOOM = 0.8f;
+    private static final NoiseReductionSetting DEFAULT_NOISE = NoiseReductionSetting.OFF;
+    private static final StabilizationSetting DEFAULT_STABILIZATION = StabilizationSetting.OEM_DEFAULT;
+    private static final OpticalStabilizationSetting DEFAULT_OPTICAL_STABILIZATION = OpticalStabilizationSetting.ON;
+    private static final EdgeSetting DEFAULT_EDGE = EdgeSetting.HIGH_QUALITY;
+    private static final ColorCorrectionSetting DEFAULT_COLOR_CORRECTION = ColorCorrectionSetting.HIGH_QUALITY;
+    private static final TonemapSetting DEFAULT_TONEMAP = TonemapSetting.HIGH_QUALITY;
+    private static final int DEFAULT_AUDIO_BITRATE = 128_000;
+
     private static final String[] QUALITIES = {
-            "COMPACT", "TELEGRAM", "IPHONE_LIKE", "HIGH", "TELEGRAM_NOTE_MAX", "HD", "FULL_HD"
+            "COMPACT", "DEFAULT_TELEGRAM", "MEDIUM", "HIGH", "MAX"
     };
     private static final String[] QUALITY_LABELS = {
-            "320 × 320 · экономия места", "384 × 384 · как в Telegram",
-            "400 × 400 · стандартное", "480 × 480 · улучшенное",
-            "640 × 640 · повышенное", "720 × 720 · HD", "1080 × 1080 · максимальное"
+            "320 × 320 · экономия места",
+            "384 × 384 · как в Telegram",
+            "400 × 400 · стандартное",
+            "480 × 480 · улучшенное",
+            "640 × 640 · максимальное"
     };
 
     private RoundVideoRecorderSettings() { }
@@ -65,7 +89,7 @@ public final class RoundVideoRecorderSettings {
     }
 
     public static boolean useCustomRecorder(Context c) {
-        return Build.VERSION.SDK_INT >= 28 && prefs(c).getBoolean(RECORDER, false);
+        return Build.VERSION.SDK_INT >= 28 && prefs(c).getBoolean(RECORDER, DEFAULT_RECORDER);
     }
 
     /** Delay from camera-ready AND first preview frame to actual AAR recording start.
@@ -83,8 +107,8 @@ public final class RoundVideoRecorderSettings {
 
     public static String summary(Context c) {
         SharedPreferences p = prefs(c);
-        return !p.getBoolean(MODE, false) ? "Автоматически" :
-                qualityLabel(p.getString(QUALITY, "HIGH")) + ", " + p.getInt(FPS, 30) + " FPS";
+        return !p.getBoolean(MODE, DEFAULT_MANUAL_MODE) ? "Автоматически" :
+                qualityLabel(p.getString(QUALITY, DEFAULT_QUALITY)) + ", " + p.getInt(FPS, DEFAULT_FPS) + " FPS";
     }
 
     private static String qualityLabel(String value) {
@@ -97,11 +121,11 @@ public final class RoundVideoRecorderSettings {
 
     public static RecordingMode recordingMode(Context context) {
         SharedPreferences p = prefs(context);
-        if (!p.getBoolean(MODE, false)) return RecordingMode.Auto.INSTANCE;
+        if (!p.getBoolean(MODE, DEFAULT_MANUAL_MODE)) return RecordingMode.Auto.INSTANCE;
 
         RecordingConfig d = new RecordingConfig();
-        String storedQuality = p.getString(QUALITY, "HIGH");
-        VideoQuality quality = safeEnum(VideoQuality.class, storedQuality, VideoQuality.HIGH);
+        String storedQuality = p.getString(QUALITY, DEFAULT_QUALITY);
+        VideoQuality quality = safeEnum(VideoQuality.class, storedQuality, VideoQuality.TELEGRAM_NOTE_MAX);
         // Telegram MessageObject.isRoundVideoDocument rejects w/h > 1280.
         // Old 1440x1440 selection must not silently send a square regular video.
         if (quality.getOutputSize().getWidth() > 1280 || quality.getOutputSize().getHeight() > 1280) {
@@ -110,40 +134,40 @@ public final class RoundVideoRecorderSettings {
         return new RecordingMode.Custom(new RecordingConfig(
                 quality,
                 p.getInt(BITRATE, 2_000_000),
-                p.getInt(FPS, 30),
+                p.getInt(FPS, DEFAULT_FPS),
                 d.getIFrameIntervalSeconds(),
                 d.getMaxBFrames(),
-                p.getBoolean(HOLD_FPS, d.getHoldFpsInLowLight()),
-                p.getBoolean(LOW_LIGHT_BOOST, d.getLowLightBoost()),
-                fromPref(p, AE_PRIORITY, AePrioritySetting.class, d.getAePriority()),
-                fromPref(p, ANTIBANDING, AntibandingSetting.class, d.getAntibanding()),
-                fromPref(p, NOISE, NoiseReductionSetting.class, d.getNoiseReduction()),
+                p.getBoolean(HOLD_FPS, DEFAULT_HOLD_FPS),
+                p.getBoolean(LOW_LIGHT_BOOST, DEFAULT_LOW_LIGHT_BOOST),
+                fromPref(p, AE_PRIORITY, AePrioritySetting.class, DEFAULT_AE_PRIORITY),
+                fromPref(p, ANTIBANDING, AntibandingSetting.class, DEFAULT_ANTIBANDING),
+                fromPref(p, NOISE, NoiseReductionSetting.class, DEFAULT_NOISE),
                 d.getHotPixelCorrection(),
                 d.getLensShading(),
-                fromPref(p, COLOR_CORRECTION, ColorCorrectionSetting.class, d.getColorCorrection()),
+                fromPref(p, COLOR_CORRECTION, ColorCorrectionSetting.class, DEFAULT_COLOR_CORRECTION),
                 d.getColorTemperatureKelvin(),
                 d.getColorTint(),
-                fromPref(p, STABILIZATION, StabilizationSetting.class, d.getStabilization()),
-                fromPref(p, OPTICAL_STABILIZATION, OpticalStabilizationSetting.class, d.getOpticalStabilization()),
-                fromPref(p, EDGE, EdgeSetting.class, d.getEdgeEnhancement()),
+                fromPref(p, STABILIZATION, StabilizationSetting.class, DEFAULT_STABILIZATION),
+                fromPref(p, OPTICAL_STABILIZATION, OpticalStabilizationSetting.class, DEFAULT_OPTICAL_STABILIZATION),
+                fromPref(p, EDGE, EdgeSetting.class, DEFAULT_EDGE),
                 d.getDistortionCorrection(),
                 d.getAberrationCorrection(),
-                fromPref(p, TONEMAP, TonemapSetting.class, d.getTonemap()),
-                fromPref(p, AWB, AwbSetting.class, d.getAwb()),
+                fromPref(p, TONEMAP, TonemapSetting.class, DEFAULT_TONEMAP),
+                fromPref(p, AWB, AwbSetting.class, DEFAULT_AWB),
                 d.getAeLock(),
                 d.getAwbLock(),
-                p.getInt(EXPOSURE_STEPS, d.getExposureCompensationSteps()),
+                p.getInt(EXPOSURE_STEPS, DEFAULT_EXPOSURE_STEPS),
                 d.getExposureMode(),
                 d.getManualExposureTimeUs(),
                 d.getManualIso(),
-                fromPref(p, FOCUS, FocusSetting.class, d.getFocus()),
+                fromPref(p, FOCUS, FocusSetting.class, DEFAULT_FOCUS),
                 d.getManualFocusDistance(),
-                Float.intBitsToFloat(p.getInt(ZOOM, Float.floatToIntBits(d.getZoomRatio()))),
+                Float.intBitsToFloat(p.getInt(ZOOM, Float.floatToIntBits(DEFAULT_ZOOM))),
                 d.getAperture(),
                 false, // Never bake a circular mask into the MP4: Telegram clips the preview itself.
                 d.getHidePreviewUntilRecording(),
                 d.getAudioSampleRate(),
-                p.getInt(AUDIO_BITRATE, d.getAudioBitrate())
+                p.getInt(AUDIO_BITRATE, DEFAULT_AUDIO_BITRATE)
         ));
     }
 
@@ -159,7 +183,7 @@ public final class RoundVideoRecorderSettings {
 
     public static void showDialog(Context context) {
         SharedPreferences p = prefs(context);
-        boolean manual = p.getBoolean(MODE, false);
+        boolean manual = p.getBoolean(MODE, DEFAULT_MANUAL_MODE);
         new AlertDialog.Builder(context)
                 .setTitle("Настройки записи кружков")
                 .setItems(new String[]{
@@ -187,7 +211,7 @@ public final class RoundVideoRecorderSettings {
                                     .setTitle("Сброс настроек")
                                     .setMessage("Сбросить только параметры CustomRecorder? Выбор рекордера сохранится.")
                                     .setPositiveButton("Сбросить", (d, which) -> {
-                                        boolean recorder = p.getBoolean(RECORDER, false);
+                                        boolean recorder = p.getBoolean(RECORDER, DEFAULT_RECORDER);
                                         p.edit().clear().putBoolean(RECORDER, recorder).apply();
                                         showDialog(context);
                                     })
@@ -205,8 +229,8 @@ public final class RoundVideoRecorderSettings {
         SharedPreferences p = prefs(context);
         new AlertDialog.Builder(context).setTitle("Качество видео")
                 .setItems(new String[]{
-                        "Разрешение · " + qualityLabel(p.getString(QUALITY, "HIGH")),
-                        "Частота кадров · " + p.getInt(FPS, 30) + " FPS",
+                        "Разрешение · " + qualityLabel(p.getString(QUALITY, DEFAULT_QUALITY)),
+                        "Частота кадров · " + p.getInt(FPS, DEFAULT_FPS) + " FPS",
                         "Битрейт · " + (p.getInt(BITRATE, 2_000_000) / 1_000_000f) + " Мбит/с"
                 }, (d, i) -> {
                     switch (i) {
@@ -219,22 +243,21 @@ public final class RoundVideoRecorderSettings {
 
     private static void showFrontCamera(Context context) {
         SharedPreferences p = prefs(context);
-        RecordingConfig d = new RecordingConfig();
         new AlertDialog.Builder(context).setTitle("Свет и фокус камеры")
                 .setItems(new String[]{
-                        "Усиление при слабом освещении · " + onOff(p, LOW_LIGHT_BOOST, d.getLowLightBoost()),
-                        "Сохранять FPS при слабом свете · " + onOff(p, HOLD_FPS, d.getHoldFpsInLowLight()),
-                        "Приоритет экспозиции · " + readableEnum(p.getString(AE_PRIORITY, d.getAePriority().name())),
-                        "Поправка экспозиции · " + p.getInt(EXPOSURE_STEPS, d.getExposureCompensationSteps()) + " шагов",
-                        "Баланс белого · " + readableEnum(p.getString(AWB, d.getAwb().name())),
-                        "Фокусировка · " + readableEnum(p.getString(FOCUS, d.getFocus().name())),
-                        "Подавление мерцания · " + readableEnum(p.getString(ANTIBANDING, d.getAntibanding().name())),
-                        "Начальное увеличение · " + Float.intBitsToFloat(p.getInt(ZOOM, Float.floatToIntBits(d.getZoomRatio()))) + "×",
+                        "Усиление при слабом освещении · " + onOff(p, LOW_LIGHT_BOOST, DEFAULT_LOW_LIGHT_BOOST),
+                        "Сохранять FPS при слабом свете · " + onOff(p, HOLD_FPS, DEFAULT_HOLD_FPS),
+                        "Приоритет экспозиции · " + readableEnum(p.getString(AE_PRIORITY, DEFAULT_AE_PRIORITY.name())),
+                        "Поправка экспозиции · " + p.getInt(EXPOSURE_STEPS, DEFAULT_EXPOSURE_STEPS) + " шагов",
+                        "Баланс белого · " + readableEnum(p.getString(AWB, DEFAULT_AWB.name())),
+                        "Фокусировка · " + readableEnum(p.getString(FOCUS, DEFAULT_FOCUS.name())),
+                        "Подавление мерцания · " + readableEnum(p.getString(ANTIBANDING, DEFAULT_ANTIBANDING.name())),
+                        "Начальное увеличение · " + Float.intBitsToFloat(p.getInt(ZOOM, Float.floatToIntBits(DEFAULT_ZOOM))) + "×",
                         "О совместимости фронтальной камеры"
                 }, (dialog, i) -> {
                     switch (i) {
-                        case 0: toggle(context, LOW_LIGHT_BOOST, d.getLowLightBoost(), 2); break;
-                        case 1: toggle(context, HOLD_FPS, d.getHoldFpsInLowLight(), 2); break;
+                        case 0: toggle(context, LOW_LIGHT_BOOST, DEFAULT_LOW_LIGHT_BOOST, 2); break;
+                        case 1: toggle(context, HOLD_FPS, DEFAULT_HOLD_FPS, 2); break;
                         case 2: enumChoose(context, AE_PRIORITY, "Приоритет экспозиции", AePrioritySetting.values(), 2); break;
                         case 3:
                             choose(
@@ -285,15 +308,14 @@ public final class RoundVideoRecorderSettings {
 
     private static void showProcessing(Context context) {
         SharedPreferences p = prefs(context);
-        RecordingConfig defaults = new RecordingConfig();
         new AlertDialog.Builder(context).setTitle("Обработка изображения")
                 .setItems(new String[]{
-                        "Шумоподавление · " + readableEnum(p.getString(NOISE, defaults.getNoiseReduction().name())),
-                        "Электронная стабилизация · " + readableEnum(p.getString(STABILIZATION, defaults.getStabilization().name())),
-                        "Оптическая стабилизация · " + readableEnum(p.getString(OPTICAL_STABILIZATION, defaults.getOpticalStabilization().name())),
-                        "Резкость и контуры · " + readableEnum(p.getString(EDGE, defaults.getEdgeEnhancement().name())),
-                        "Коррекция цвета · " + readableEnum(p.getString(COLOR_CORRECTION, defaults.getColorCorrection().name())),
-                        "Тональная обработка · " + readableEnum(p.getString(TONEMAP, defaults.getTonemap().name()))
+                        "Шумоподавление · " + readableEnum(p.getString(NOISE, DEFAULT_NOISE.name())),
+                        "Электронная стабилизация · " + readableEnum(p.getString(STABILIZATION, DEFAULT_STABILIZATION.name())),
+                        "Оптическая стабилизация · " + readableEnum(p.getString(OPTICAL_STABILIZATION, DEFAULT_OPTICAL_STABILIZATION.name())),
+                        "Резкость и контуры · " + readableEnum(p.getString(EDGE, DEFAULT_EDGE.name())),
+                        "Коррекция цвета · " + readableEnum(p.getString(COLOR_CORRECTION, DEFAULT_COLOR_CORRECTION.name())),
+                        "Тональная обработка · " + readableEnum(p.getString(TONEMAP, DEFAULT_TONEMAP.name()))
                 }, (d, i) -> {
                     switch (i) {
                         case 0: enumChoose(context, NOISE, "Шумоподавление", NoiseReductionSetting.values(), 3); break;
@@ -346,8 +368,7 @@ public final class RoundVideoRecorderSettings {
 
     private static void showAudio(Context context) {
         SharedPreferences p = prefs(context);
-        RecordingConfig defaults = new RecordingConfig();
-        choose(context, AUDIO_BITRATE, "Битрейт звука (сейчас " + p.getInt(AUDIO_BITRATE, defaults.getAudioBitrate()) / 1000 + " кбит/с)",
+        choose(context, AUDIO_BITRATE, "Битрейт звука (сейчас " + p.getInt(AUDIO_BITRATE, DEFAULT_AUDIO_BITRATE) / 1000 + " кбит/с)",
                 new String[]{"64 кбит/с", "96 кбит/с", "128 кбит/с", "192 кбит/с"},
                 new String[]{"64000", "96000", "128000", "192000"}, 4);
     }

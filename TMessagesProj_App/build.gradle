@@ -23,6 +23,16 @@ dependencies {
     implementation files('../TMessagesProj/libs/libgsaverification-client.aar')
 }
 
+
+def easygramSigning = new Properties()
+def easygramLocal = rootProject.file("local.properties")
+
+if (easygramLocal.exists()) {
+    easygramLocal.withInputStream {
+        easygramSigning.load(it)
+    }
+}
+
 android {
     compileSdkVersion 36
     buildToolsVersion '36.0.0'
@@ -57,10 +67,10 @@ android {
         }
 
         release {
-            storeFile file("../TMessagesProj/config/release.keystore")
-            storePassword RELEASE_STORE_PASSWORD
-            keyAlias RELEASE_KEY_ALIAS
-            keyPassword RELEASE_KEY_PASSWORD
+            storeFile file(easygramSigning.getProperty("EASYGRAM_RELEASE_KEYSTORE"))
+            storePassword easygramSigning.getProperty("EASYGRAM_RELEASE_STORE_PASSWORD")
+            keyAlias easygramSigning.getProperty("EASYGRAM_RELEASE_KEY_ALIAS")
+            keyPassword easygramSigning.getProperty("EASYGRAM_RELEASE_KEY_PASSWORD")
         }
     }
 

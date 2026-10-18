@@ -140,6 +140,12 @@ android {
         minSdkVersion 23
         targetSdkVersion 36
 
+        def telegramApiId = getProps("TELEGRAM_API_ID") ?: "0"
+        def telegramApiHash = getProps("TELEGRAM_API_HASH") ?: ""
+
+        buildConfigField "int", "TELEGRAM_API_ID", telegramApiId
+        buildConfigField "String", "TELEGRAM_API_HASH", "\"${telegramApiHash}\""
+
         vectorDrawables.generatedDensities = ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi']
 
         multiDexEnabled true
@@ -247,7 +253,6 @@ def getProps(String propName) {
         return "";
     }
 }
-apply plugin: 'com.google.gms.google-services'
 
 task checkVisibility {
     doFirst {

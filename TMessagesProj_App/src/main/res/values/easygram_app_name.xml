@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="easygram_app_name" translatable="false">Easygram</string>
+    <string name="easygram_beta_app_name" translatable="false">Easygram Beta</string>
+</resources>
