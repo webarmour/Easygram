@@ -161,6 +161,16 @@ android {
 
     buildTypes {
         debug {
+            // Local-only testing: use Telegram's public example credentials if
+            // no personal API credentials are configured, or if explicitly forced.
+            // This applies ONLY to this library's debug build type.
+            def localApiId = (getProps("TELEGRAM_API_ID") ?: "").trim()
+            def localApiHash = (getProps("TELEGRAM_API_HASH") ?: "").trim()
+            def testApiRequested = (getProps("EASYGRAM_USE_TELEGRAM_TEST_API") ?: "false").toBoolean()
+            if (testApiRequested || localApiId.isEmpty() || localApiId == "0" || localApiHash.isEmpty()) {
+                buildConfigField "int", "TELEGRAM_API_ID", "4"
+                buildConfigField "String", "TELEGRAM_API_HASH", '"014b35b6184100b085b0d0572f9b5103"'
+            }
             jniDebuggable true
             shrinkResources false
             multiDexEnabled true
