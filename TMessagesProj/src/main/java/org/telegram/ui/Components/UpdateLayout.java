@@ -31,6 +31,8 @@ public class UpdateLayout extends IUpdateLayout {
     private RadialProgress2 updateLayoutIcon;
     private AnimatedTextView updateTextView;
     private AnimatedTextView.AnimatedTextDrawable updateSizeTextView;
+    private boolean easygramMode;
+    private Runnable easygramClick;
 
     private final Activity activity;
     private final ViewGroup sideMenuContainer;
@@ -39,6 +41,38 @@ public class UpdateLayout extends IUpdateLayout {
         super(activity, sideMenuContainer);
         this.activity = activity;
         this.sideMenuContainer = sideMenuContainer;
+    }
+
+    /** Enables the Easygram updater without changing Telegram's standalone update flow. */
+    public void setEasygramClickListener(Runnable listener) {
+        easygramMode = true;
+        easygramClick = listener;
+    }
+
+    /** Render the same native bottom update bar from Easygram's independent update state. */
+    public void updateEasygramState(boolean available, boolean downloading, int percent, boolean ready) {
+        if (!easygramMode || sideMenuContainer == null) return;
+        if (available) {
+            createUpdateUI(0);
+            updateLayoutIcon.setIcon(downloading ? MediaActionDrawable.ICON_CANCEL
+                    : ready ? MediaActionDrawable.ICON_UPDATE : MediaActionDrawable.ICON_DOWNLOAD, true, true);
+            updateLayoutIcon.setProgress(downloading ? percent / 100.0f : 0, true);
+            updateTextView.setText(downloading ? "Скачивание " + percent + "%"
+                    : ready ? "Установить Easygram" : "Обновить Easygram", true);
+            updateSizeTextView.setText(null, true);
+            if (updateLayout.getTag() == null) {
+                updateLayout.setVisibility(View.VISIBLE);
+                updateLayout.setTag(1);
+                updateLayout.animate().translationY(0).setInterpolator(CubicBezierInterpolator.EASE_OUT)
+                        .setDuration(180).start();
+            }
+        } else if (updateLayout != null && updateLayout.getTag() != null) {
+            updateLayout.setTag(null);
+            updateLayout.animate().translationY(dp(44)).setInterpolator(CubicBezierInterpolator.EASE_OUT)
+                    .setDuration(180).withEndAction(() -> {
+                        if (updateLayout.getTag() == null) updateLayout.setVisibility(View.INVISIBLE);
+                    }).start();
+        }
     }
 
     public void updateFileProgress(Object[] args) {
@@ -63,9 +97,15 @@ public class UpdateLayout extends IUpdateLayout {
         updateLayout = new FrameLayout(activity);
         updateLayout.setVisibility(View.INVISIBLE);
         updateLayout.setTranslationY(dp(44));
-        updateLayout.setBackground(Theme.getSelectorDrawable(0x40ffffff, false));
+        updateLayout.setBackground(easygramMode
+                ? Theme.AdaptiveRipple.filledRectByKey(Theme.key_featuredStickers_addButton, 0)
+                : Theme.getSelectorDrawable(0x40ffffff, false));
         sideMenuContainer.addView(updateLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 44, Gravity.LEFT | Gravity.BOTTOM));
         updateLayout.setOnClickListener(v -> {
+            if (easygramMode) {
+                if (easygramClick != null) easygramClick.run();
+                return;
+            }
             if (!SharedConfig.isAppUpdateAvailable()) {
                 return;
             }

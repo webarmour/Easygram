@@ -266,4 +266,8 @@
     <string name="RemindTodayAt">\'Отправить сегодня в\' HH:mm</string>
     <string name="RemindDayAt">\'Отправить\' d MMM \'в\' HH:mm</string>
     <string name="RemindDayYearAt">\'Напомнить\' d MMM yyyy \'в\' HH:mm</string>
+    <!-- EASYGRAM_UPDATER_STRINGS_START -->
+    <string name="EasygramCheckUpdates">Проверить обновления</string>
+    <string name="EasygramCheckUpdatesInfo">Скачать новую версию Easygram</string>
+    <!-- EASYGRAM_UPDATER_STRINGS_END -->
 </resources>
