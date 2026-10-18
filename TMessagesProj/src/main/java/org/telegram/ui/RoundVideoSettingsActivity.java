@@ -48,6 +48,8 @@ public class RoundVideoSettingsActivity extends BaseFragment {
     private static final String QUALITY = "quality";
     private static final String FPS = "fps";
     private static final String BITRATE = "bitrate";
+    private static final String MAX_DURATION = "max_duration_seconds";
+    private static final String LIMIT_INFO = "duration_limit_info";
     private static final String LOW_LIGHT_BOOST = "low_light_boost";
     private static final String HOLD_FPS = "hold_fps";
     private static final String AE_PRIORITY = "ae_priority";
@@ -107,6 +109,9 @@ public class RoundVideoSettingsActivity extends BaseFragment {
         addValue(QUALITY, "Разрешение выхода");
         addValue(FPS, "Частота кадров");
         addValue(BITRATE, "Битрейт видео");
+        addHeader("Длительность видеосообщения");
+        addValue(MAX_DURATION, "Максимальная длина");
+        rows.add(new Row(NOTE, LIMIT_INFO, ""));
         addHeader("Свет и фокус камеры");
         addCheck(LOW_LIGHT_BOOST, "Усиление при слабом освещении");
         addCheck(HOLD_FPS, "Сохранять FPS при слабом свете");
@@ -168,7 +173,7 @@ public class RoundVideoSettingsActivity extends BaseFragment {
 
     private boolean editable(Row row) {
         if (Build.VERSION.SDK_INT < 28) return false;
-        if (row.type == ACTION || MODE.equals(row.key)) return true;
+        if (row.type == ACTION || MODE.equals(row.key) || MAX_DURATION.equals(row.key)) return true;
         return prefs().getBoolean(MODE, true);
     }
 
@@ -198,8 +203,19 @@ public class RoundVideoSettingsActivity extends BaseFragment {
                 choose(key, "Частота кадров", new String[]{"24 FPS", "30 FPS", "60 FPS"},
                         new String[]{"24", "30", "60"}); break;
             case BITRATE:
-                choose(key, "Битрейт видео", new String[]{"0,5 Мбит/с", "1 Мбит/с", "1,5 Мбит/с", "2 Мбит/с", "3 Мбит/с", "4 Мбит/с", "6 Мбит/с", "8 Мбит/с", "10 Мбит/с"},
-                        new String[]{"500000", "1000000", "1500000", "2000000", "3000000", "4000000", "6000000", "8000000", "10000000"}); break;
+                choose(key, "Битрейт видео", new String[]{"0,5 Мбит/с", "1 Мбит/с", "1,5 Мбит/с", "2 Мбит/с"},
+                        new String[]{"500000", "1000000", "1500000", "2000000"}); break;
+            case MAX_DURATION: {
+                int maximum = RoundVideoRecorderSettings.maxAllowedDurationSeconds(getParentActivity());
+                if (maximum == 30) {
+                    choose(key, "Максимальная длина", new String[]{"5 секунд", "10 секунд", "15 секунд", "20 секунд", "25 секунд", "30 секунд"},
+                            new String[]{"5", "10", "15", "20", "25", "30"});
+                } else {
+                    choose(key, "Максимальная длина", new String[]{"5 секунд", "10 секунд", "15 секунд", "20 секунд", "25 секунд", "30 секунд", "45 секунд", "60 секунд"},
+                            new String[]{"5", "10", "15", "20", "25", "30", "45", "60"});
+                }
+                break;
+            }
             case AE_PRIORITY:
                 chooseEnums(key, "Приоритет экспозиции", AePrioritySetting.values()); break;
             case EXPOSURE_STEPS:
@@ -259,6 +275,7 @@ public class RoundVideoSettingsActivity extends BaseFragment {
                     edit.putBoolean(key, Boolean.parseBoolean(selected)); break;
                 case FPS:
                 case BITRATE:
+                case MAX_DURATION:
                 case EXPOSURE_STEPS:
                 case AUDIO_BITRATE:
                     edit.putInt(key, Integer.parseInt(selected)); break;
@@ -268,6 +285,13 @@ public class RoundVideoSettingsActivity extends BaseFragment {
                     edit.putString(key, selected); break;
             }
             edit.apply();
+            if (QUALITY.equals(key) || BITRATE.equals(key)) {
+                int maximum = RoundVideoRecorderSettings.maxAllowedDurationSeconds(getParentActivity());
+                SharedPreferences current = prefs();
+                if (current.getInt(MAX_DURATION, 60) > maximum) {
+                    current.edit().putInt(MAX_DURATION, maximum).apply();
+                }
+            }
             refresh();
         });
         showDialog(builder.create());
@@ -371,7 +395,7 @@ public class RoundVideoSettingsActivity extends BaseFragment {
             }
             case FPS: return p.getInt(FPS, 60) + " FPS";
             case BITRATE: {
-                int bps = p.getInt(BITRATE, 2_000_000);
+                int bps = Math.min(2_000_000, p.getInt(BITRATE, 2_000_000));
                 return (bps % 1_000_000 == 0
                         ? String.valueOf(bps / 1_000_000)
                         : String.format(Locale.US, "%.1f", bps / 1_000_000f).replace('.', ',')) + " Мбит/с";
@@ -391,6 +415,7 @@ public class RoundVideoSettingsActivity extends BaseFragment {
             case TONEMAP: return readableEnum(p.getString(TONEMAP, "HIGH_QUALITY"));
             case AUDIO_BITRATE: return (p.getInt(AUDIO_BITRATE, 128_000) / 1000) + " кбит/с";
             case RECORDING_START_DELAY: return RoundVideoRecorderSettings.recordingStartDelayMs(getParentActivity()) + " мс";
+            case MAX_DURATION: return RoundVideoRecorderSettings.maxRecordingDurationSeconds(getParentActivity()) + " сек.";
             default: return "";
         }
     }
@@ -427,7 +452,18 @@ public class RoundVideoSettingsActivity extends BaseFragment {
             if (row.type == HEADER) {
                 ((HeaderCell) holder.itemView).setText(row.title);
             } else if (row.type == NOTE) {
-                ((TextInfoPrivacyCell) holder.itemView).setText(row.title);
+                if (LIMIT_INFO.equals(row.key)) {
+                    boolean capped = RoundVideoRecorderSettings.isThirtySecondProfile(getParentActivity());
+                    String text = capped
+                            ? "При разрешении 640 × 640 и битрейте 2 Мбит/с максимальная длительность ограничена 30 секундами, чтобы снизить риск превышения 10 МБ. "
+                            : "Максимальная длительность видеосообщения — 60 секунд. ";
+                    text += "Внимание: ограничение длительности не гарантирует размер файла менее 10 МБ. "
+                            + "По результатам тестов, при превышении 10 МБ Telegram может показать кружок обычным квадратным видео. "
+                            + "Проверьте запись и при необходимости уменьшите разрешение, битрейт видео, битрейт звука или максимальную длину.";
+                    ((TextInfoPrivacyCell) holder.itemView).setText(text);
+                } else {
+                    ((TextInfoPrivacyCell) holder.itemView).setText(row.title);
+                }
             } else if (row.type == CHECK) {
                 TextCheckCell cell = (TextCheckCell) holder.itemView;
                 cell.setEnabled(editable(row));

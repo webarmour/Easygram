@@ -46,6 +46,8 @@ public final class RoundVideoRecorderSettings {
     private static final String AUDIO_BITRATE = "audio_bitrate";
     // CUSTOM_RECORDER_CONFIGURABLE_START_DELAY_V1
     private static final String RECORDING_START_DELAY = "recording_start_delay_ms";
+    private static final String MAX_DURATION = "max_duration_seconds";
+    private static final int DEFAULT_MAX_DURATION_SECONDS = 60;
     private static final int DEFAULT_RECORDING_START_DELAY_MS = 200;
     private static final int MAX_RECORDING_START_DELAY_MS = 2000;
 
@@ -112,6 +114,7 @@ public final class RoundVideoRecorderSettings {
                     if (!p.contains(TONEMAP)) e.putString(TONEMAP, "HIGH_QUALITY");
                     if (!p.contains(AUDIO_BITRATE)) e.putInt(AUDIO_BITRATE, 128_000);
                     if (!p.contains(RECORDING_START_DELAY)) e.putInt(RECORDING_START_DELAY, 200);
+                    if (!p.contains(MAX_DURATION)) e.putInt(MAX_DURATION, DEFAULT_MAX_DURATION_SECONDS);
                     e.putBoolean("easygram_native_defaults_initialized_v1", true).apply();
                 }
             }
@@ -133,6 +136,29 @@ public final class RoundVideoRecorderSettings {
     public static long recordingStartDelayMs(Context context) {
         int saved = prefs(context).getInt(RECORDING_START_DELAY, DEFAULT_RECORDING_START_DELAY_MS);
         return Math.max(0, Math.min(MAX_RECORDING_START_DELAY_MS, saved));
+    }
+
+    /** A conservative 30s cap for the heaviest selectable Easygram profile.
+     *  This is a product safeguard, not an official Telegram size guarantee.
+     */
+    public static boolean isThirtySecondProfile(Context context) {
+        SharedPreferences p = prefs(context);
+        String quality = p.getString(QUALITY, DEFAULT_QUALITY);
+        boolean highResolution = "MAX".equals(quality)
+                || "TELEGRAM_NOTE_MAX".equals(quality)
+                || "QHD".equals(quality);
+        int bitrate = Math.min(2_000_000, p.getInt(BITRATE, 2_000_000));
+        return highResolution && bitrate >= 2_000_000;
+    }
+
+    public static int maxAllowedDurationSeconds(Context context) {
+        return isThirtySecondProfile(context) ? 30 : 60;
+    }
+
+    /** Always clamp persisted values: old preferences cannot bypass new limits. */
+    public static int maxRecordingDurationSeconds(Context context) {
+        int configured = prefs(context).getInt(MAX_DURATION, DEFAULT_MAX_DURATION_SECONDS);
+        return Math.max(1, Math.min(configured, maxAllowedDurationSeconds(context)));
     }
 
     public static void setCustomRecorder(Context c, boolean enabled) {
@@ -167,7 +193,7 @@ public final class RoundVideoRecorderSettings {
         }
         return new RecordingMode.Custom(new RecordingConfig(
                 quality,
-                p.getInt(BITRATE, 2_000_000),
+                Math.max(500_000, Math.min(2_000_000, p.getInt(BITRATE, 2_000_000))),
                 p.getInt(FPS, DEFAULT_FPS),
                 d.getIFrameIntervalSeconds(),
                 d.getMaxBFrames(),
@@ -270,7 +296,7 @@ public final class RoundVideoRecorderSettings {
                     switch (i) {
                         case 0: choose(context, QUALITY, "Разрешение (не более 1280 для кружка)", QUALITY_LABELS, QUALITIES, 1); break;
                         case 1: choose(context, FPS, "Частота кадров", new String[]{"24 FPS", "30 FPS", "60 FPS"}, new String[]{"24", "30", "60"}, 1); break;
-                        case 2: choose(context, BITRATE, "Битрейт видео", new String[]{"0,5 Мбит/с", "1 Мбит/с", "1,5 Мбит/с", "2 Мбит/с", "3 Мбит/с", "4 Мбит/с", "6 Мбит/с", "8 Мбит/с", "10 Мбит/с"}, new String[]{"500000", "1000000", "1500000", "2000000", "3000000", "4000000", "6000000", "8000000", "10000000"}, 1); break;
+                        case 2: choose(context, BITRATE, "Битрейт видео", new String[]{"0,5 Мбит/с", "1 Мбит/с", "1,5 Мбит/с", "2 Мбит/с"}, new String[]{"500000", "1000000", "1500000", "2000000"}, 1); break;
                     }
                 }).setNegativeButton("Назад", (d, w) -> showDialog(context)).show();
     }
