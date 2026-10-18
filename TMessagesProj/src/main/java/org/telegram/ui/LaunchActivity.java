@@ -7037,8 +7037,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             showUpdateActivity(UserConfig.selectedAccount, SharedConfig.pendingAppUpdate, true);
         }
         checkAppUpdate(false, null);
-        // EASYGRAM_UPDATER_START: GitHub updater reuses the native UpdateLayout UI.
-        org.telegram.ui.Components.EasygramUpdater.attach(this, drawerLayoutContainer);
+        // EASYGRAM_UPDATER_START: native UI comes from MainTabsActivity.
         org.telegram.ui.Components.EasygramUpdater.check(this, false);
         // EASYGRAM_UPDATER_END
 

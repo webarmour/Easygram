@@ -76,7 +76,7 @@ public class UpdateLayout extends IUpdateLayout {
     }
 
     public void updateFileProgress(Object[] args) {
-        if (updateTextView == null || args == null) return;
+        if (easygramMode || updateTextView == null || args == null) return;
         if (SharedConfig.isAppUpdateAvailable()) {
             String location = (String) args[0];
             String fileName = FileLoader.getAttachFileName(SharedConfig.pendingAppUpdate.document);
@@ -147,6 +147,9 @@ public class UpdateLayout extends IUpdateLayout {
         updateTextView.setText(LocaleController.getString(R.string.AppUpdateBeta), false);
 
         updateLayoutIcon = new RadialProgress2(updateTextView);
+        // MediaActionDrawable defaults to ICON_PLAY (0). Without explicit initialization,
+        // the first animated transition calls Theme.playPauseAnimator before it is ready.
+        updateLayoutIcon.setIcon(MediaActionDrawable.ICON_NONE, false, false);
         updateLayoutIcon.setColors(0xffffffff, 0xffffffff, Theme.getColor(Theme.key_featuredStickers_addButton), Theme.getColor(Theme.key_featuredStickers_addButton));
         updateLayoutIcon.setProgressRect(0, 0, dp(22), dp(22));
         updateLayoutIcon.setCircleRadius(dp(11));
@@ -161,6 +164,7 @@ public class UpdateLayout extends IUpdateLayout {
     }
 
     public void updateAppUpdateViews(int currentAccount, boolean animated) {
+        if (easygramMode) return; // GitHub update state is rendered separately.
         if (sideMenuContainer == null) {
             return;
         }
