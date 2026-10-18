@@ -40,7 +40,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class EasygramUpdater {
     // Public GitHub feed in this repository; no GitHub access token is required.
     private static final String FEED_BASE =
-            "https://raw.githubusercontent.com/webarmour/Telegram/easygram-dev/updates/";
+            "https://raw.githubusercontent.com/webarmour/Easygram/easygram-dev/updates/";
     private static final long CHECK_INTERVAL_MS = 60L * 60L * 1000L;
     private static final long MAX_APK_BYTES = 300L * 1024L * 1024L;
     private static final int MAX_JSON_BYTES = 128 * 1024;
