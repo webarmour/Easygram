@@ -84,12 +84,46 @@ public final class RoundVideoRecorderSettings {
 
     private RoundVideoRecorderSettings() { }
 
+    /** Fill missing preferences once, preserving existing user choices. */
     private static SharedPreferences prefs(Context c) {
-        return c.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        SharedPreferences p = c.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        if (!p.getBoolean("easygram_native_defaults_initialized_v1", false)) {
+            synchronized (RoundVideoRecorderSettings.class) {
+                if (!p.getBoolean("easygram_native_defaults_initialized_v1", false)) {
+                    SharedPreferences.Editor e = p.edit();
+                    if (!p.contains(RECORDER)) e.putBoolean(RECORDER, true);
+                    if (!p.contains(MODE)) e.putBoolean(MODE, true);
+                    if (!p.contains(QUALITY)) e.putString(QUALITY, "TELEGRAM_NOTE_MAX");
+                    if (!p.contains(FPS)) e.putInt(FPS, 60);
+                    if (!p.contains(BITRATE)) e.putInt(BITRATE, 2_000_000);
+                    if (!p.contains(HOLD_FPS)) e.putBoolean(HOLD_FPS, true);
+                    if (!p.contains(LOW_LIGHT_BOOST)) e.putBoolean(LOW_LIGHT_BOOST, false);
+                    if (!p.contains(AE_PRIORITY)) e.putString(AE_PRIORITY, "OFF");
+                    if (!p.contains(EXPOSURE_STEPS)) e.putInt(EXPOSURE_STEPS, -4);
+                    if (!p.contains(AWB)) e.putString(AWB, "AUTO");
+                    if (!p.contains(FOCUS)) e.putString(FOCUS, "CONTINUOUS_VIDEO");
+                    if (!p.contains(ANTIBANDING)) e.putString(ANTIBANDING, "HZ_60");
+                    if (!p.contains(ZOOM)) e.putInt(ZOOM, Float.floatToIntBits(0.8f));
+                    if (!p.contains(NOISE)) e.putString(NOISE, "OFF");
+                    if (!p.contains(STABILIZATION)) e.putString(STABILIZATION, "OEM_DEFAULT");
+                    if (!p.contains(OPTICAL_STABILIZATION)) e.putString(OPTICAL_STABILIZATION, "ON");
+                    if (!p.contains(EDGE)) e.putString(EDGE, "HIGH_QUALITY");
+                    if (!p.contains(COLOR_CORRECTION)) e.putString(COLOR_CORRECTION, "HIGH_QUALITY");
+                    if (!p.contains(TONEMAP)) e.putString(TONEMAP, "HIGH_QUALITY");
+                    if (!p.contains(AUDIO_BITRATE)) e.putInt(AUDIO_BITRATE, 128_000);
+                    if (!p.contains(RECORDING_START_DELAY)) e.putInt(RECORDING_START_DELAY, 200);
+                    e.putBoolean("easygram_native_defaults_initialized_v1", true).apply();
+                }
+            }
+        }
+        return p;
     }
 
+    /** CustomRecorder is the only selectable video-note recorder on Android 9+.
+     *  Android 8 and older use the existing legacy path (AAR minSdk is 28).
+     */
     public static boolean useCustomRecorder(Context c) {
-        return Build.VERSION.SDK_INT >= 28 && prefs(c).getBoolean(RECORDER, DEFAULT_RECORDER);
+        return Build.VERSION.SDK_INT >= 28;
     }
 
     /** Delay from camera-ready AND first preview frame to actual AAR recording start.
