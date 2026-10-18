@@ -714,6 +714,9 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         items.add(SettingCell.Factory.of(8, IconBackgroundColors.CYAN.top, IconBackgroundColors.CYAN.bottom, R.drawable.settings_devices, getString(R.string.SettingsDevices), getString(R.string.SettingsDevicesInfo)));
         items.add(SettingCell.Factory.of(9, IconBackgroundColors.ORANGE_DEEP.top, IconBackgroundColors.ORANGE_DEEP.bottom, R.drawable.settings_power, getString(R.string.SettingsPowerSaving), getString(R.string.SettingsPowerSavingInfo)));
         items.add(SettingCell.Factory.of(10, IconBackgroundColors.PURPLE.top, IconBackgroundColors.PURPLE.bottom, R.drawable.settings_language, getString(R.string.SettingsLanguage), LocaleController.getCurrentLanguageName()));
+        // EASYGRAM_UPDATER_START
+        items.add(SettingCell.Factory.of(26, IconBackgroundColors.BLUE.top, IconBackgroundColors.BLUE.bottom, R.drawable.settings_features, getString(R.string.EasygramCheckUpdates), getString(R.string.EasygramCheckUpdatesInfo)));
+        // EASYGRAM_UPDATER_END
 
         items.add(UItem.asShadow(null));
         if (!walletAbove && getMessagesController().config.walletAvailable.get()) {
@@ -893,6 +896,12 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 }
                 break;
             }
+            // EASYGRAM_UPDATER_ACTION_START
+            case 26: {
+                org.telegram.ui.Components.EasygramUpdater.check(getParentActivity(), true);
+                break;
+            }
+            // EASYGRAM_UPDATER_ACTION_END
             case 24: {
                 presentFragment(new RoundVideoSettingsActivity());
                 break;
