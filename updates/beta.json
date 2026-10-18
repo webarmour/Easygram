@@ -1,8 +1,10 @@
+
 {
-  "version_code": 0,
-  "version_name": "0.0.0",
+  "version_code": 71769,
+  "version_name": "13.0.2",
   "package_name": "io.github.webarmour.easygram.beta",
-  "apk_url": "",
-  "sha256": "",
-  "changelog": "Первый релиз будет опубликован позже"
+  "apk_url": "https://github.com/webarmour/Telegram/releases/download/easygram-beta-71769/easygram-beta-71769.apk",
+  "sha256": "ec541fbc4ae7836a259fc5ba09c385bb44b313cf281be90e8d0b9860f8ed0bf5",
+  "changelog": "Тестирование встроенного обновления Easygram"
 }
+
