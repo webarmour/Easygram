@@ -342,6 +342,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 }
                 isInPinchToZoomTouchMode = false;
                 maybePinchToZoomTouchMode = false;
+                aarPinchStartZoomRatio = 1f;
                 aarRecorder.switchCamera();
                 return;
             }
@@ -1498,6 +1499,13 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
     private void switchCamera() {
         if (aarRecorder != null) {
+            if (finishZoomTransition != null) {
+                finishZoomTransition.cancel();
+                finishZoomTransition = null;
+            }
+            isInPinchToZoomTouchMode = false;
+            maybePinchToZoomTouchMode = false;
+            aarPinchStartZoomRatio = 1f;
             aarRecorder.switchCamera();
             return;
         }
@@ -4265,8 +4273,18 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 }
             });
             transition.addListener(new AnimatorListenerAdapter() {
+                private boolean cancelled;
+
+                @Override
+                public void onAnimationCancel(Animator animation) {
+                    cancelled = true;
+                }
+
                 @Override
                 public void onAnimationEnd(Animator animation) {
+                    if (!cancelled && aarRecorder == activeRecorder) {
+                        activeRecorder.zoom(aarPinchStartZoomRatio);
+                    }
                     if (finishZoomTransition == animation) finishZoomTransition = null;
                 }
             });

@@ -8,16 +8,21 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.util.Log;
 import android.view.Display;
 import android.view.Surface;
 import android.view.TextureView;
 
 import java.io.File;
+import java.io.FileOutputStream;
+import java.nio.charset.StandardCharsets;
 
 import io.github.webarmour.videomessagerecorder.DiagnosticsMode;
+import io.github.webarmour.videomessagerecorder.RecordingResult;
 import io.github.webarmour.videomessagerecorder.VideoMessageRecorder;
 import io.github.webarmour.videomessagerecorder.camera.CameraRole;
 import io.github.webarmour.videomessagerecorder.camera.CameraUiState;
+import org.telegram.messenger.BuildConfig;
 import kotlin.Unit;
 
 /**
@@ -31,6 +36,8 @@ import kotlin.Unit;
  * All public control methods must be called on the Android main thread.
  */
 public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTextureListener {
+
+    private static final String TAG = "CameraPipelineLab";
 
     public interface Listener {
         void onCameraReady();
@@ -69,13 +76,17 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
     private float maxZoomRatio = 1f;
     private float lastDispatchedZoomRatio = Float.NaN;
     private boolean zoomDispatchPending;
+    private boolean cameraSwitching;
+    private boolean cameraReadyForZoom;
     private CameraRole zoomCameraRole;
+    private CameraRole lastPersistedCameraRole;
     private boolean restoreRearCamera;
     private boolean restoreSwitchRequested;
     private boolean restoreSwitchObserved;
     private final Runnable dispatchZoom = () -> {
         zoomDispatchPending = false;
-        if (recorder == null || completion != Completion.NONE
+        if (recorder == null || completion != Completion.NONE || cameraSwitching
+                || !cameraReadyForZoom
                 || zoomRatio == lastDispatchedZoomRatio) return;
         lastDispatchedZoomRatio = zoomRatio;
         recorder.updateZoomRatio(zoomRatio);
@@ -84,6 +95,13 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
     private void cancelPendingZoom() {
         main.removeCallbacks(dispatchZoom);
         zoomDispatchPending = false;
+    }
+
+    private void rememberCameraRole(CameraRole role) {
+        if (role == null || role == lastPersistedCameraRole) return;
+        lastPersistedCameraRole = role;
+        RoundVideoRecorderSettings.setLastCameraWasRear(applicationContext,
+                role == CameraRole.REAR_WIDE);
     }
 
     // Always executes on Android main thread, as do camera-state and TextureView callbacks.
@@ -99,10 +117,7 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
         recordStarted = true;
         startedAt = SystemClock.elapsedRealtime();
         recorder.startRecording();
-        if (zoomCameraRole != null) {
-            RoundVideoRecorderSettings.setLastCameraWasRear(applicationContext,
-                    zoomCameraRole == CameraRole.REAR_WIDE);
-        }
+        rememberCameraRole(zoomCameraRole);
         listener.onRecordingStarted();
     };
 
@@ -154,6 +169,9 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
         maxZoomRatio = 1f;
         lastDispatchedZoomRatio = Float.NaN;
         zoomCameraRole = null;
+        cameraSwitching = false;
+        cameraReadyForZoom = false;
+        lastPersistedCameraRole = null;
         restoreRearCamera = RoundVideoRecorderSettings.rememberLastCamera(applicationContext)
                 && RoundVideoRecorderSettings.lastCameraWasRear(applicationContext);
         restoreSwitchRequested = false;
@@ -162,14 +180,13 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
         recorder = new VideoMessageRecorder(
                 applicationContext,
                 RoundVideoRecorderSettings.recordingMode(applicationContext),
-                DiagnosticsMode.Disabled,
+                BuildConfig.DEBUG ? DiagnosticsMode.TelemetryCsv : DiagnosticsMode.Disabled,
                 state -> {
                     main.post(() -> onRecorderState(state));
                     return Unit.INSTANCE;
                 },
                 result -> {
-                    File file = result.getFile();
-                    main.post(() -> onRecordingFinished(file));
+                    main.post(() -> onRecordingFinished(result));
                     return Unit.INSTANCE;
                 }
         );
@@ -216,6 +233,8 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
         requireMainThread();
         if (recorder == null || completion != Completion.NONE) return;
         cancelPendingZoom(); // Do not send a zoom meant for the previous camera.
+        zoomRatio = 1f;
+        lastDispatchedZoomRatio = Float.NaN;
         recorder.switchCamera();
     }
 
@@ -224,7 +243,9 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
      */
     public void zoom(float ratio) {
         requireMainThread();
-        if (recorder == null || completion != Completion.NONE || !Float.isFinite(ratio)) return;
+        if (recorder == null || completion != Completion.NONE || cameraSwitching
+                || !cameraReadyForZoom
+                || !Float.isFinite(ratio)) return;
         zoomRatio = Math.max(minZoomRatio, Math.min(maxZoomRatio, ratio));
         if (zoomDispatchPending) return;
         zoomDispatchPending = true;
@@ -251,6 +272,19 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
     private void onRecorderState(CameraUiState state) {
         // The AAR callback may run on a camera or worker thread; this method runs on main.
         if (recorder == null || completion != Completion.NONE) return;
+        boolean readyForZoom = state.getCameraReady() && !state.isSwitchingCamera();
+        if (!readyForZoom && cameraReadyForZoom) {
+            cancelPendingZoom();
+            zoomRatio = 1f;
+            lastDispatchedZoomRatio = Float.NaN;
+        }
+        cameraReadyForZoom = readyForZoom;
+        if (state.isSwitchingCamera() && !cameraSwitching) {
+            cancelPendingZoom();
+            zoomRatio = 1f;
+            lastDispatchedZoomRatio = Float.NaN;
+        }
+        cameraSwitching = state.isSwitchingCamera();
         if (restoreRearCamera) {
             if (state.isSwitchingCamera()) restoreSwitchObserved = true;
             if (state.getCameraReady() && !state.isBusy() && !state.isSwitchingCamera()) {
@@ -278,10 +312,8 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
             zoomRatio = state.getConfig().getZoomRatio();
             lastDispatchedZoomRatio = Float.NaN;
         }
-        if (state.getCameraReady() && !state.isSwitchingCamera() && recordStarted
-                && state.getActiveCameraRole() != null) {
-            RoundVideoRecorderSettings.setLastCameraWasRear(applicationContext,
-                    state.getActiveCameraRole() == CameraRole.REAR_WIDE);
+        if (recordStarted && state.getCameraReady() && !state.isSwitchingCamera()) {
+            rememberCameraRole(state.getActiveCameraRole());
         }
         cameraReadyForStart = state.getCameraReady() && !state.isBusy()
                 && !state.isSwitchingCamera() && !state.isRecording();
@@ -299,7 +331,20 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
         scheduleRecordingStartIfReady();
     }
 
-    private void onRecordingFinished(File file) {
+    private void onRecordingFinished(RecordingResult result) {
+        File file = result.getFile();
+        String telemetry = result.getTelemetryCsv();
+        if (telemetry != null) {
+            new Thread(() -> {
+                File diagnostics = new File(applicationContext.getCacheDir(), "camera_pipeline_last.csv");
+                try (FileOutputStream output = new FileOutputStream(diagnostics)) {
+                    output.write(telemetry.getBytes(StandardCharsets.UTF_8));
+                    Log.i(TAG, "Capture diagnostics: " + diagnostics.getAbsolutePath());
+                } catch (Exception error) {
+                    Log.e(TAG, "Unable to save capture diagnostics", error);
+                }
+            }, "CameraDiagnosticsWriter").start();
+        }
         if (recorder == null) {
             // This adapter no longer owns the session. Avoid stale callbacks.
             if (completion == Completion.DISCARD) file.delete();
@@ -335,6 +380,8 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
         previewHasFrame = false;
         pendingStart = false;
         recordStarted = false;
+        cameraSwitching = false;
+        cameraReadyForZoom = false;
         if (recorder != null) {
             recorder.detachPreview();
             recorder.onStop();
