@@ -24,6 +24,7 @@ import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Cells.TextInfoPrivacyCell;
 import org.telegram.ui.Cells.TextSettingsCell;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.RoundVideoCameraSupport;
 import org.telegram.ui.Components.RoundVideoRecorderSettings;
 import org.telegram.ui.Components.RecyclerListView;
 
@@ -37,6 +38,11 @@ import io.github.webarmour.videomessagerecorder.camera.NoiseReductionSetting;
 import io.github.webarmour.videomessagerecorder.camera.OpticalStabilizationSetting;
 import io.github.webarmour.videomessagerecorder.camera.StabilizationSetting;
 import io.github.webarmour.videomessagerecorder.camera.TonemapSetting;
+import io.github.webarmour.videomessagerecorder.camera.HotPixelSetting;
+import io.github.webarmour.videomessagerecorder.camera.ShadingSetting;
+import io.github.webarmour.videomessagerecorder.camera.DistortionCorrectionSetting;
+import io.github.webarmour.videomessagerecorder.camera.AberrationCorrectionSetting;
+import io.github.webarmour.videomessagerecorder.camera.ExposureMode;
 
 import java.util.ArrayList;
 import java.util.Locale;
@@ -64,6 +70,17 @@ public class RoundVideoSettingsActivity extends BaseFragment {
     private static final String EDGE = "edge";
     private static final String COLOR_CORRECTION = "color_correction";
     private static final String TONEMAP = "tonemap";
+    private static final String HOT_PIXEL = "hot_pixel";
+    private static final String SHADING = "shading";
+    private static final String DISTORTION = "distortion";
+    private static final String ABERRATION = "aberration";
+    private static final String EXPOSURE_MODE = "exposure_mode";
+    private static final String MANUAL_ISO = "manual_iso";
+    private static final String MANUAL_EXPOSURE_US = "manual_exposure_us";
+    private static final String MANUAL_FOCUS_DISTANCE = "manual_focus_distance";
+    private static final String AE_LOCK = "ae_lock";
+    private static final String AWB_LOCK = "awb_lock";
+    private static final String COLOR_TEMPERATURE = "color_temperature_kelvin";
     private static final String AUDIO_BITRATE = "audio_bitrate";
     private static final String RECORDING_START_DELAY = "recording_start_delay_ms";
     private static final String RESET = "reset";
@@ -85,6 +102,7 @@ public class RoundVideoSettingsActivity extends BaseFragment {
     private final ArrayList<Row> rows = new ArrayList<>();
     private RecyclerListView listView;
     private ListAdapter adapter;
+    private RoundVideoCameraSupport cameraSupport;
 
     private static final class Row {
         final int type;
@@ -116,9 +134,15 @@ public class RoundVideoSettingsActivity extends BaseFragment {
         addCheck(LOW_LIGHT_BOOST, "Усиление при слабом освещении");
         addCheck(HOLD_FPS, "Сохранять FPS при слабом свете");
         addValue(AE_PRIORITY, "Приоритет экспозиции");
+        addValue(EXPOSURE_MODE, "Режим экспозиции");
+        addCheck(AE_LOCK, "Блокировка автоэкспозиции");
+        addCheck(AWB_LOCK, "Блокировка автобаланса белого");
         addValue(EXPOSURE_STEPS, "Поправка экспозиции");
         addValue(AWB, "Баланс белого");
         addValue(FOCUS, "Фокусировка");
+        addValue(MANUAL_ISO, "ISO (вручную или по приоритету)");
+        addValue(MANUAL_EXPOSURE_US, "Выдержка (вручную или по приоритету)");
+        addValue(MANUAL_FOCUS_DISTANCE, "Дистанция фокусировки (диоптрии)");
         addValue(ANTIBANDING, "Подавление мерцания");
         addValue(ZOOM, "Начальное увеличение");
         addHeader("Обработка изображения и стабилизация");
@@ -128,6 +152,11 @@ public class RoundVideoSettingsActivity extends BaseFragment {
         addValue(EDGE, "Резкость и контуры");
         addValue(COLOR_CORRECTION, "Коррекция цвета");
         addValue(TONEMAP, "Тональная обработка");
+        addValue(HOT_PIXEL, "Коррекция горячих пикселей");
+        addValue(SHADING, "Коррекция виньетирования");
+        addValue(DISTORTION, "Исправление геометрии объектива");
+        addValue(ABERRATION, "Коррекция цветных ореолов");
+        addValue(COLOR_TEMPERATURE, "Температура цвета (K)");
         addHeader("Качество звука");
         addValue(AUDIO_BITRATE, "Битрейт звука");
         addHeader("Запуск записи");
@@ -136,7 +165,8 @@ public class RoundVideoSettingsActivity extends BaseFragment {
         rows.add(new Row(NOTE, INFO,
                 "Запись видеосообщений использует CustomRecorder (Android 9+). "
                         + "Настройки применяются к обеим камерам. Некоторые режимы "
-                        + "могут не поддерживаться конкретным устройством."));
+                        + "доступны только если поддерживаются фронтальной и основной камерами. "
+                        + "Неизвестные возможности считаются недоступными."));
     }
 
     private SharedPreferences prefs() {
@@ -146,6 +176,7 @@ public class RoundVideoSettingsActivity extends BaseFragment {
 
     @Override
     public View createView(Context context) {
+        cameraSupport = new RoundVideoCameraSupport(context);
         createRows();
         actionBar.setBackButtonImage(R.drawable.ic_ab_back);
         actionBar.setAllowOverlayTitle(true);
@@ -174,7 +205,21 @@ public class RoundVideoSettingsActivity extends BaseFragment {
     private boolean editable(Row row) {
         if (Build.VERSION.SDK_INT < 28) return false;
         if (row.type == ACTION || MODE.equals(row.key) || MAX_DURATION.equals(row.key)) return true;
-        return prefs().getBoolean(MODE, true);
+        if (!prefs().getBoolean(MODE, true)) return false;
+        boolean manualExposure = "MANUAL".equals(prefs().getString(EXPOSURE_MODE, "AUTO"));
+        if (manualExposure && (EXPOSURE_STEPS.equals(row.key) || AE_PRIORITY.equals(row.key)
+                || AE_LOCK.equals(row.key) || LOW_LIGHT_BOOST.equals(row.key))) return false;
+        if (LOW_LIGHT_BOOST.equals(row.key) && prefs().getInt(FPS, 60) > 30) return false;
+        if (AE_PRIORITY.equals(row.key) && prefs().getBoolean(LOW_LIGHT_BOOST, false)) return false;
+        String priority = prefs().getString(AE_PRIORITY, "OFF");
+        if (MANUAL_ISO.equals(row.key) && !manualExposure && !"ISO".equals(priority)) return false;
+        if (MANUAL_EXPOSURE_US.equals(row.key) && !manualExposure && !"SHUTTER".equals(priority)) return false;
+        if (AWB.equals(row.key) && "CCT".equals(prefs().getString(COLOR_CORRECTION, "HIGH_QUALITY"))) return false;
+        if (MANUAL_FOCUS_DISTANCE.equals(row.key)
+                && !"MANUAL".equals(prefs().getString(FOCUS, "CONTINUOUS_VIDEO"))) return false;
+        if (COLOR_TEMPERATURE.equals(row.key)
+                && !"CCT".equals(prefs().getString(COLOR_CORRECTION, "HIGH_QUALITY"))) return false;
+        return cameraSupport != null && cameraSupport.rowAvailable(row.key);
     }
 
     private void refresh() {
@@ -218,6 +263,14 @@ public class RoundVideoSettingsActivity extends BaseFragment {
             }
             case AE_PRIORITY:
                 chooseEnums(key, "Приоритет экспозиции", AePrioritySetting.values()); break;
+            case EXPOSURE_MODE:
+                chooseEnums(key, "Режим экспозиции", ExposureMode.values()); break;
+            case MANUAL_ISO:
+                choose(key, "Чувствительность ISO", new String[]{"ISO 100", "ISO 200", "ISO 400", "ISO 800", "ISO 1600", "ISO 3200"},
+                        new String[]{"100", "200", "400", "800", "1600", "3200"}); break;
+            case MANUAL_EXPOSURE_US:
+                choose(key, "Выдержка", new String[]{"1/1000 с", "1/500 с", "1/250 с", "1/125 с", "1/100 с", "1/60 с", "1/30 с"},
+                        new String[]{"1000", "2000", "4000", "8000", "10000", "16667", "33333"}); break;
             case EXPOSURE_STEPS:
                 choose(key, "Поправка экспозиции", new String[]{"−7", "−6", "−5", "−4", "−3", "−2", "−1", "0", "+1", "+2", "+3"},
                         new String[]{"-7", "-6", "-5", "-4", "-3", "-2", "-1", "0", "1", "2", "3"}); break;
@@ -225,6 +278,9 @@ public class RoundVideoSettingsActivity extends BaseFragment {
                 chooseEnums(key, "Баланс белого", AwbSetting.values()); break;
             case FOCUS:
                 chooseEnums(key, "Фокусировка", FocusSetting.values()); break;
+            case MANUAL_FOCUS_DISTANCE:
+                choose(key, "Фокус (0 = бесконечность)", new String[]{"∞ (0)", "0,5 дптр", "1 дптр", "2 дптр", "5 дптр", "10 дптр"},
+                        new String[]{"0", "0.5", "1", "2", "5", "10"}); break;
             case ANTIBANDING:
                 chooseEnums(key, "Подавление мерцания", AntibandingSetting.values()); break;
             case ZOOM:
@@ -242,6 +298,17 @@ public class RoundVideoSettingsActivity extends BaseFragment {
                 chooseEnums(key, "Коррекция цвета", ColorCorrectionSetting.values()); break;
             case TONEMAP:
                 chooseEnums(key, "Тональная обработка", TonemapSetting.values()); break;
+            case HOT_PIXEL:
+                chooseEnums(key, "Коррекция горячих пикселей", HotPixelSetting.values()); break;
+            case SHADING:
+                chooseEnums(key, "Коррекция виньетирования", ShadingSetting.values()); break;
+            case DISTORTION:
+                chooseEnums(key, "Геометрические искажения", DistortionCorrectionSetting.values()); break;
+            case ABERRATION:
+                chooseEnums(key, "Хроматические аберрации", AberrationCorrectionSetting.values()); break;
+            case COLOR_TEMPERATURE:
+                choose(key, "Температура цвета", new String[]{"2700 K", "3200 K", "4000 K", "5000 K", "5600 K", "6500 K", "7500 K"},
+                        new String[]{"2700", "3200", "4000", "5000", "5600", "6500", "7500"}); break;
             case AUDIO_BITRATE:
                 choose(key, "Битрейт звука", new String[]{"64 кбит/с", "96 кбит/с", "128 кбит/с", "192 кбит/с"},
                         new String[]{"64000", "96000", "128000", "192000"}); break;
@@ -265,9 +332,17 @@ public class RoundVideoSettingsActivity extends BaseFragment {
 
     private void choose(String key, String title, String[] labels, String[] values) {
         if (labels.length != values.length) throw new IllegalArgumentException("Unequal choices");
+        // Show unavailable values, but do not allow them to be persisted.
+        boolean[] supported = new boolean[values.length];
+        String[] display = labels.clone();
+        for (int i = 0; i < values.length; i++) {
+            supported[i] = cameraSupport == null || cameraSupport.optionAvailable(key, values[i]);
+            if (!supported[i]) display[i] += " · недоступно";
+        }
         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
         builder.setTitle(title);
-        builder.setItems(labels, (dialog, index) -> {
+        builder.setItems(display, (dialog, index) -> {
+            if (!supported[index]) return;
             String selected = values[index];
             SharedPreferences.Editor edit = prefs().edit();
             switch (key) {
@@ -277,9 +352,13 @@ public class RoundVideoSettingsActivity extends BaseFragment {
                 case BITRATE:
                 case MAX_DURATION:
                 case EXPOSURE_STEPS:
+                case MANUAL_ISO:
+                case MANUAL_EXPOSURE_US:
+                case COLOR_TEMPERATURE:
                 case AUDIO_BITRATE:
                     edit.putInt(key, Integer.parseInt(selected)); break;
                 case ZOOM:
+                case MANUAL_FOCUS_DISTANCE:
                     edit.putInt(key, Float.floatToIntBits(Float.parseFloat(selected))); break;
                 default:
                     edit.putString(key, selected); break;
@@ -401,6 +480,12 @@ public class RoundVideoSettingsActivity extends BaseFragment {
                         : String.format(Locale.US, "%.1f", bps / 1_000_000f).replace('.', ',')) + " Мбит/с";
             }
             case AE_PRIORITY: return readableEnum(p.getString(AE_PRIORITY, "OFF"));
+            case EXPOSURE_MODE: return readableEnum(p.getString(EXPOSURE_MODE, "AUTO"));
+            case AE_LOCK: return p.getBoolean(AE_LOCK, false) ? "Включено" : "Выключено";
+            case AWB_LOCK: return p.getBoolean(AWB_LOCK, false) ? "Включено" : "Выключено";
+            case MANUAL_ISO: return "ISO " + p.getInt(MANUAL_ISO, 400);
+            case MANUAL_EXPOSURE_US: return p.getInt(MANUAL_EXPOSURE_US, 10000) + " мкс";
+            case MANUAL_FOCUS_DISTANCE: return Float.intBitsToFloat(p.getInt(MANUAL_FOCUS_DISTANCE, Float.floatToIntBits(0f))) + " дптр";
             case EXPOSURE_STEPS: return p.getInt(EXPOSURE_STEPS, -4) + " шага";
             case AWB: return readableEnum(p.getString(AWB, "AUTO"));
             case FOCUS: return readableEnum(p.getString(FOCUS, "CONTINUOUS_VIDEO"));
@@ -413,6 +498,11 @@ public class RoundVideoSettingsActivity extends BaseFragment {
             case EDGE: return readableEnum(p.getString(EDGE, "HIGH_QUALITY"));
             case COLOR_CORRECTION: return readableEnum(p.getString(COLOR_CORRECTION, "HIGH_QUALITY"));
             case TONEMAP: return readableEnum(p.getString(TONEMAP, "HIGH_QUALITY"));
+            case HOT_PIXEL: return readableEnum(p.getString(HOT_PIXEL, "FAST"));
+            case SHADING: return readableEnum(p.getString(SHADING, "FAST"));
+            case DISTORTION: return readableEnum(p.getString(DISTORTION, "FAST"));
+            case ABERRATION: return readableEnum(p.getString(ABERRATION, "FAST"));
+            case COLOR_TEMPERATURE: return p.getInt(COLOR_TEMPERATURE, 5000) + " K";
             case AUDIO_BITRATE: return (p.getInt(AUDIO_BITRATE, 128_000) / 1000) + " кбит/с";
             case RECORDING_START_DELAY: return RoundVideoRecorderSettings.recordingStartDelayMs(getParentActivity()) + " мс";
             case MAX_DURATION: return RoundVideoRecorderSettings.maxRecordingDurationSeconds(getParentActivity()) + " сек.";

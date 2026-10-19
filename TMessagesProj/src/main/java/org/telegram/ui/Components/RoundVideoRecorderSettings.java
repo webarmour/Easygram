@@ -9,6 +9,11 @@ import android.widget.EditText;
 
 import io.github.webarmour.videomessagerecorder.RecordingMode;
 import io.github.webarmour.videomessagerecorder.camera.AePrioritySetting;
+import io.github.webarmour.videomessagerecorder.camera.HotPixelSetting;
+import io.github.webarmour.videomessagerecorder.camera.ShadingSetting;
+import io.github.webarmour.videomessagerecorder.camera.DistortionCorrectionSetting;
+import io.github.webarmour.videomessagerecorder.camera.AberrationCorrectionSetting;
+import io.github.webarmour.videomessagerecorder.camera.ExposureMode;
 import io.github.webarmour.videomessagerecorder.camera.AntibandingSetting;
 import io.github.webarmour.videomessagerecorder.camera.AwbSetting;
 import io.github.webarmour.videomessagerecorder.camera.ColorCorrectionSetting;
@@ -44,6 +49,17 @@ public final class RoundVideoRecorderSettings {
     private static final String TONEMAP = "tonemap";
     private static final String ZOOM = "zoom";
     private static final String AUDIO_BITRATE = "audio_bitrate";
+    private static final String HOT_PIXEL = "hot_pixel";
+    private static final String SHADING = "shading";
+    private static final String DISTORTION = "distortion";
+    private static final String ABERRATION = "aberration";
+    private static final String EXPOSURE_MODE = "exposure_mode";
+    private static final String MANUAL_ISO = "manual_iso";
+    private static final String MANUAL_EXPOSURE_US = "manual_exposure_us";
+    private static final String MANUAL_FOCUS_DISTANCE = "manual_focus_distance";
+    private static final String AE_LOCK = "ae_lock";
+    private static final String AWB_LOCK = "awb_lock";
+    private static final String COLOR_TEMPERATURE = "color_temperature_kelvin";
     // CUSTOM_RECORDER_CONFIGURABLE_START_DELAY_V1
     private static final String RECORDING_START_DELAY = "recording_start_delay_ms";
     private static final String MAX_DURATION = "max_duration_seconds";
@@ -185,7 +201,13 @@ public final class RoundVideoRecorderSettings {
 
         RecordingConfig d = new RecordingConfig();
         String storedQuality = p.getString(QUALITY, DEFAULT_QUALITY);
-        VideoQuality quality = safeEnum(VideoQuality.class, storedQuality, VideoQuality.TELEGRAM_NOTE_MAX);
+        VideoQuality quality;
+        switch (storedQuality == null ? "" : storedQuality) {
+            case "DEFAULT_TELEGRAM": quality = VideoQuality.TELEGRAM; break;
+            case "MEDIUM": quality = VideoQuality.IPHONE_LIKE; break;
+            case "MAX": quality = VideoQuality.TELEGRAM_NOTE_MAX; break;
+            default: quality = safeEnum(VideoQuality.class, storedQuality, VideoQuality.TELEGRAM_NOTE_MAX);
+        }
         // Telegram MessageObject.isRoundVideoDocument rejects w/h > 1280.
         // Old 1440x1440 selection must not silently send a square regular video.
         if (quality.getOutputSize().getWidth() > 1280 || quality.getOutputSize().getHeight() > 1280) {
@@ -202,26 +224,26 @@ public final class RoundVideoRecorderSettings {
                 fromPref(p, AE_PRIORITY, AePrioritySetting.class, DEFAULT_AE_PRIORITY),
                 fromPref(p, ANTIBANDING, AntibandingSetting.class, DEFAULT_ANTIBANDING),
                 fromPref(p, NOISE, NoiseReductionSetting.class, DEFAULT_NOISE),
-                d.getHotPixelCorrection(),
-                d.getLensShading(),
+                fromPref(p, HOT_PIXEL, HotPixelSetting.class, d.getHotPixelCorrection()),
+                fromPref(p, SHADING, ShadingSetting.class, d.getLensShading()),
                 fromPref(p, COLOR_CORRECTION, ColorCorrectionSetting.class, DEFAULT_COLOR_CORRECTION),
-                d.getColorTemperatureKelvin(),
+                p.getInt(COLOR_TEMPERATURE, d.getColorTemperatureKelvin()),
                 d.getColorTint(),
                 fromPref(p, STABILIZATION, StabilizationSetting.class, DEFAULT_STABILIZATION),
                 fromPref(p, OPTICAL_STABILIZATION, OpticalStabilizationSetting.class, DEFAULT_OPTICAL_STABILIZATION),
                 fromPref(p, EDGE, EdgeSetting.class, DEFAULT_EDGE),
-                d.getDistortionCorrection(),
-                d.getAberrationCorrection(),
+                fromPref(p, DISTORTION, DistortionCorrectionSetting.class, d.getDistortionCorrection()),
+                fromPref(p, ABERRATION, AberrationCorrectionSetting.class, d.getAberrationCorrection()),
                 fromPref(p, TONEMAP, TonemapSetting.class, DEFAULT_TONEMAP),
                 fromPref(p, AWB, AwbSetting.class, DEFAULT_AWB),
-                d.getAeLock(),
-                d.getAwbLock(),
+                p.getBoolean(AE_LOCK, d.getAeLock()),
+                p.getBoolean(AWB_LOCK, d.getAwbLock()),
                 p.getInt(EXPOSURE_STEPS, DEFAULT_EXPOSURE_STEPS),
-                d.getExposureMode(),
-                d.getManualExposureTimeUs(),
-                d.getManualIso(),
+                fromPref(p, EXPOSURE_MODE, ExposureMode.class, d.getExposureMode()),
+                (long) p.getInt(MANUAL_EXPOSURE_US, (int) d.getManualExposureTimeUs()),
+                p.getInt(MANUAL_ISO, d.getManualIso()),
                 fromPref(p, FOCUS, FocusSetting.class, DEFAULT_FOCUS),
-                d.getManualFocusDistance(),
+                Float.intBitsToFloat(p.getInt(MANUAL_FOCUS_DISTANCE, Float.floatToIntBits(d.getManualFocusDistance()))),
                 Float.intBitsToFloat(p.getInt(ZOOM, Float.floatToIntBits(DEFAULT_ZOOM))),
                 d.getAperture(),
                 false, // Never bake a circular mask into the MP4: Telegram clips the preview itself.
