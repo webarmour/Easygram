@@ -336,6 +336,12 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         buttonsLayout.addView(switchCameraButton, LayoutHelper.createLinear(44, 44));
         switchCameraButton.setOnClickListener(v -> {
             if (aarRecorder != null) {
+                if (finishZoomTransition != null) {
+                    finishZoomTransition.cancel();
+                    finishZoomTransition = null;
+                }
+                isInPinchToZoomTouchMode = false;
+                maybePinchToZoomTouchMode = false;
                 aarRecorder.switchCamera();
                 return;
             }
@@ -559,7 +565,18 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
     @Override
     public boolean onInterceptTouchEvent(MotionEvent ev) {
-        getParent().requestDisallowInterceptTouchEvent(true);
+        if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
+        // TextureView can become the touch target and prevent the parent from
+        // receiving POINTER_DOWN/MOVE. Own the full gesture from ACTION_DOWN when
+        // recording with the custom camera, but only inside the circular preview.
+        if (aarRecorder != null && recording && ev.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            float x = ev.getX() - cameraContainer.getX();
+            float y = ev.getY() - cameraContainer.getY();
+            if (x >= 0 && y >= 0 && x < cameraContainer.getWidth()
+                    && y < cameraContainer.getHeight()) {
+                return true;
+            }
+        }
         return super.onInterceptTouchEvent(ev);
     }
 
@@ -1158,6 +1175,12 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     }
 
     public void hideCamera(boolean async) {
+        if (finishZoomTransition != null) {
+            finishZoomTransition.cancel();
+            finishZoomTransition = null;
+        }
+        isInPinchToZoomTouchMode = false;
+        maybePinchToZoomTouchMode = false;
         if (aarRecorder != null && !aarFinishing) {
             aarRecorder.close();
             aarRecorder = null;
@@ -1182,6 +1205,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     // START video-message-recorder-0.0.2 bridge (Android 9+).
     // This is a source integration for the upstream Telegram InstantCameraView.
     private VideoMessageRecorderAdapter aarRecorder;
+    private float aarPinchStartZoomRatio = 1f;
     private File aarRecordedFile;
     private boolean aarFinishing;
     private int aarStopState;
@@ -1200,6 +1224,13 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
     private void showAarCamera(boolean fromPaused) {
         if (aarRecorder != null || aarFinishing || textureView != null) return;
+        if (finishZoomTransition != null) {
+            finishZoomTransition.cancel();
+            finishZoomTransition = null;
+        }
+        isInPinchToZoomTouchMode = false;
+        maybePinchToZoomTouchMode = false;
+        aarPinchStartZoomRatio = 1f;
         if (aarRecordedFile != null) {
             // Version 0.0.2 has no pause/resume API. A new recording replaces the paused one.
             aarRecordedFile.delete();
@@ -4151,10 +4182,20 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         }
 
         if (ev.getActionMasked() == MotionEvent.ACTION_DOWN || ev.getActionMasked() == MotionEvent.ACTION_POINTER_DOWN) {
+            if (aarRecorder != null && ev.getActionMasked() == MotionEvent.ACTION_POINTER_DOWN
+                    && finishZoomTransition != null) {
+                // A new pinch may interrupt an in-progress release animation.
+                finishZoomTransition.cancel();
+                finishZoomTransition = null;
+            }
             if (maybePinchToZoomTouchMode && !isInPinchToZoomTouchMode && ev.getPointerCount() == 2 && finishZoomTransition == null && recording) {
                 pinchStartDistance = (float) Math.hypot(ev.getX(1) - ev.getX(0), ev.getY(1) - ev.getY(0));
+                if (aarRecorder != null && pinchStartDistance < dp(24)) return true;
 
                 pinchScale = 1f;
+                if (aarRecorder != null) {
+                    aarPinchStartZoomRatio = aarRecorder.getZoomRatio();
+                }
 
                 pointerId1 = ev.getPointerId(0);
                 pointerId2 = ev.getPointerId(1);
@@ -4182,8 +4223,11 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 finishZoom();
                 return false;
             }
+            if (pinchStartDistance <= 0f) return true;
             pinchScale = (float) Math.hypot(ev.getX(index2) - ev.getX(index1), ev.getY(index2) - ev.getY(index1)) / pinchStartDistance;
-            if (useCamera2) {
+            if (aarRecorder != null) {
+                aarRecorder.zoom(aarPinchStartZoomRatio * pinchScale);
+            } else if (useCamera2) {
                 if (camera2SessionCurrent != null) {
                     float zoom = Utilities.clamp(pinchScale, camera2SessionCurrent.getMaxZoom(), camera2SessionCurrent.getMinZoom());
                     camera2SessionCurrent.setZoom(zoom);
@@ -4203,6 +4247,32 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
     public void finishZoom() {
         if (finishZoomTransition != null) {
+            return;
+        }
+
+        if (aarRecorder != null) {
+            final VideoMessageRecorderAdapter activeRecorder = aarRecorder;
+            float currentZoom = activeRecorder.getZoomRatio();
+            if (Math.abs(currentZoom - aarPinchStartZoomRatio) < 0.001f) return;
+
+            // Same release animation as Telegram's native camera, returning to
+            // the zoom that was active before the gesture (including 0.8x).
+            final ValueAnimator transition = ValueAnimator.ofFloat(currentZoom, aarPinchStartZoomRatio);
+            finishZoomTransition = transition;
+            transition.addUpdateListener(animation -> {
+                if (aarRecorder == activeRecorder) {
+                    activeRecorder.zoom((float) animation.getAnimatedValue());
+                }
+            });
+            transition.addListener(new AnimatorListenerAdapter() {
+                @Override
+                public void onAnimationEnd(Animator animation) {
+                    if (finishZoomTransition == animation) finishZoomTransition = null;
+                }
+            });
+            transition.setDuration(350);
+            transition.setInterpolator(CubicBezierInterpolator.DEFAULT);
+            transition.start();
             return;
         }
 
