@@ -3,8 +3,8 @@
     <string name="EasygramVideoMessagesTitle">Видеосообщения</string>
     <string name="EasygramVideoMessagesInfo">Настройте видеосообщения как вам нравится</string>
 
-    <string name="AppName">Telegram</string>
-    <string name="AppNameBeta">Telegram Beta</string>
+    <string name="AppName">Easygram</string>
+    <string name="AppNameBeta">Easygram Beta</string>
     <string name="LanguageName">Русский</string>
     <string name="English">Английский</string>
     <string name="LanguageNameInEnglish">Russian</string>
