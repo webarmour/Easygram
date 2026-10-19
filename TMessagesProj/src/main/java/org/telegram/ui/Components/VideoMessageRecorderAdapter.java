@@ -70,6 +70,9 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
     private float lastDispatchedZoomRatio = Float.NaN;
     private boolean zoomDispatchPending;
     private CameraRole zoomCameraRole;
+    private boolean restoreRearCamera;
+    private boolean restoreSwitchRequested;
+    private boolean restoreSwitchObserved;
     private final Runnable dispatchZoom = () -> {
         zoomDispatchPending = false;
         if (recorder == null || completion != Completion.NONE
@@ -96,6 +99,10 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
         recordStarted = true;
         startedAt = SystemClock.elapsedRealtime();
         recorder.startRecording();
+        if (zoomCameraRole != null) {
+            RoundVideoRecorderSettings.setLastCameraWasRear(applicationContext,
+                    zoomCameraRole == CameraRole.REAR_WIDE);
+        }
         listener.onRecordingStarted();
     };
 
@@ -147,6 +154,10 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
         maxZoomRatio = 1f;
         lastDispatchedZoomRatio = Float.NaN;
         zoomCameraRole = null;
+        restoreRearCamera = RoundVideoRecorderSettings.rememberLastCamera(applicationContext)
+                && RoundVideoRecorderSettings.lastCameraWasRear(applicationContext);
+        restoreSwitchRequested = false;
+        restoreSwitchObserved = false;
         // Use explicit constructor parameters, matching the actual 0.0.2 AAR API.
         recorder = new VideoMessageRecorder(
                 applicationContext,
@@ -240,6 +251,20 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
     private void onRecorderState(CameraUiState state) {
         // The AAR callback may run on a camera or worker thread; this method runs on main.
         if (recorder == null || completion != Completion.NONE) return;
+        if (restoreRearCamera) {
+            if (state.isSwitchingCamera()) restoreSwitchObserved = true;
+            if (state.getCameraReady() && !state.isBusy() && !state.isSwitchingCamera()) {
+                if (state.getActiveCameraRole() == CameraRole.REAR_WIDE
+                        || !state.getCameraSwitchAvailable()
+                        || (restoreSwitchRequested && restoreSwitchObserved)) {
+                    restoreRearCamera = false;
+                } else if (!restoreSwitchRequested && state.getActiveCameraRole() == CameraRole.FRONT) {
+                    restoreSwitchRequested = true;
+                    recorder.switchCamera();
+                }
+            }
+            if (restoreRearCamera) return;
+        }
         android.util.Range<Float> zoomRange = state.getCapabilities().getZoomRatioRange();
         if (zoomRange != null) {
             minZoomRatio = zoomRange.getLower();
@@ -252,6 +277,11 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
             zoomCameraRole = state.getActiveCameraRole();
             zoomRatio = state.getConfig().getZoomRatio();
             lastDispatchedZoomRatio = Float.NaN;
+        }
+        if (state.getCameraReady() && !state.isSwitchingCamera() && recordStarted
+                && state.getActiveCameraRole() != null) {
+            RoundVideoRecorderSettings.setLastCameraWasRear(applicationContext,
+                    state.getActiveCameraRole() == CameraRole.REAR_WIDE);
         }
         cameraReadyForStart = state.getCameraReady() && !state.isBusy()
                 && !state.isSwitchingCamera() && !state.isRecording();
