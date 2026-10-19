@@ -1248,9 +1248,9 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         key = null;
         iv = null;
         aarStopState = 0;
-        textureOverlayView.setImageResource(R.drawable.icplaceholder);
-        textureOverlayView.setVisibility(View.VISIBLE);
-        textureOverlayView.setAlpha(1f);
+        // The AAR draws its own circular preview; do not show Telegram's placeholder over it.
+        textureOverlayView.setImageDrawable(null);
+        textureOverlayView.setVisibility(View.INVISIBLE);
         needDrawFlickerStub = false;
         if (switchCameraDrawable == null) {
             switchCameraDrawable = new RLottieDrawable(R.raw.roundcamera_flip, buttonsSizePx, buttonsSizePx);
