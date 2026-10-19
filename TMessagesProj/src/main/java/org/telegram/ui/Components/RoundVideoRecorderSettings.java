@@ -30,6 +30,8 @@ import io.github.webarmour.videomessagerecorder.camera.VideoQuality;
 public final class RoundVideoRecorderSettings {
     private static final String PREFS = "round_video_custom_recorder";
     private static final String RECORDER = "recorder";
+    private static final String REMEMBER_LAST_CAMERA = "remember_last_camera";
+    private static final String LAST_CAMERA_REAR = "last_camera_rear";
     private static final String MODE = "mode";
     private static final String QUALITY = "quality";
     private static final String FPS = "fps";
@@ -101,6 +103,18 @@ public final class RoundVideoRecorderSettings {
     };
 
     private RoundVideoRecorderSettings() { }
+
+    public static boolean rememberLastCamera(Context context) {
+        return prefs(context).getBoolean(REMEMBER_LAST_CAMERA, false);
+    }
+
+    public static boolean lastCameraWasRear(Context context) {
+        return prefs(context).getBoolean(LAST_CAMERA_REAR, false);
+    }
+
+    public static void setLastCameraWasRear(Context context, boolean rear) {
+        prefs(context).edit().putBoolean(LAST_CAMERA_REAR, rear).apply();
+    }
 
     /** Fill missing preferences once, preserving existing user choices. */
     private static SharedPreferences prefs(Context c) {
