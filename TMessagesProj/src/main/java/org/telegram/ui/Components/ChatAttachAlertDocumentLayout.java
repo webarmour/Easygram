@@ -467,7 +467,11 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
                         parentAlert.presentFragment(fragment);
                         parentAlert.dismiss(true);
                     } else if (item.icon == R.drawable.camera) {
-                        parentAlert.getPhotoLayout().openCameraForPhoto();
+                        // Launch the camera directly through Telegram's existing
+                        // external camera flow. Do not switch to the photo attach tab.
+                        if (parentAlert.delegate != null) {
+                            parentAlert.delegate.didPressedButton(0, false, true, 0, 0, 0, parentAlert.isCaptionAbove(), false, 0);
+                        }
                     } else if (item.icon == R.drawable.files_music) {
                         if (delegate != null) {
                             delegate.startMusicSelectActivity();
