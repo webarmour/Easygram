@@ -6,10 +6,25 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.graphics.Canvas;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
+import android.text.TextUtils;
+import android.util.TypedValue;
+import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.FrameLayout;
-import android.widget.LinearLayout;
+import android.widget.ImageView;
+import android.widget.TextView;
 
+import androidx.annotation.NonNull;
+import androidx.recyclerview.widget.ItemTouchHelper;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+
+import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
@@ -19,20 +34,21 @@ import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.HeaderCell;
-import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Cells.TextInfoPrivacyCell;
 import org.telegram.ui.Cells.TextSettingsCell;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.RecyclerListView;
+import org.telegram.ui.Components.Switch;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.List;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
-/** Easygram settings for optional app integrations. */
+/** Easygram settings for optional app integrations and navigation. */
 public class OtherSettingsActivity extends BaseFragment {
     public static final String DEFAULT_GALLERY_PACKAGE = "easygram_default_gallery_package";
     public static final String EMBEDDED_PHOTO_PICKER = "__embedded_photo_picker__";
@@ -43,13 +59,29 @@ public class OtherSettingsActivity extends BaseFragment {
     public static final String KEY_TAB_SETTINGS = "easygram_tab_settings";
     public static final String KEY_TAB_PROFILE = "easygram_tab_profile";
 
+    public static final String KEY_TAB_ORDER = "easygram_tab_order";
+    public static final String DEFAULT_TAB_ORDER = "0,1,2,3,4";
+
     public static final int INDEX_CHATS = 0;
     public static final int INDEX_CONTACTS = 1;
     public static final int INDEX_CALLS = 2;
     public static final int INDEX_SETTINGS = 3;
     public static final int INDEX_PROFILE = 4;
 
-    private TextSettingsCell galleryCell;
+    private RecyclerListView listView;
+    private ListAdapter adapter;
+    private ItemTouchHelper itemTouchHelper;
+
+    private int headerRow;
+    private int galleryRow;
+    private int galleryInfoRow;
+    private int navHeaderRow;
+    private int navStartRow;
+    private int navEndRow;
+    private int navInfoRow;
+    private int rowCount;
+
+    private final ArrayList<Integer> navItems = new ArrayList<>();
 
     private SharedPreferences preferences() {
         return ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
@@ -80,6 +112,37 @@ public class OtherSettingsActivity extends BaseFragment {
         return count;
     }
 
+    public static List<Integer> getTabOrder(SharedPreferences prefs) {
+        String orderStr = prefs.getString(KEY_TAB_ORDER, DEFAULT_TAB_ORDER);
+        List<Integer> order = new ArrayList<>();
+        if (orderStr != null && !orderStr.isEmpty()) {
+            String[] parts = orderStr.split(",");
+            for (String part : parts) {
+                try {
+                    int idx = Integer.parseInt(part.trim());
+                    if (idx >= 0 && idx <= INDEX_PROFILE && !order.contains(idx)) {
+                        order.add(idx);
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+        for (int i = 0; i <= INDEX_PROFILE; i++) {
+            if (!order.contains(i)) {
+                order.add(i);
+            }
+        }
+        return order;
+    }
+
+    public static void saveTabOrder(SharedPreferences prefs, List<Integer> order) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < order.size(); i++) {
+            if (i > 0) sb.append(",");
+            sb.append(order.get(i));
+        }
+        prefs.edit().putString(KEY_TAB_ORDER, sb.toString()).apply();
+    }
+
     private String getSelectedGalleryLabel() {
         String packageName = preferences().getString(DEFAULT_GALLERY_PACKAGE, null);
         if (packageName == null) {
@@ -97,6 +160,26 @@ public class OtherSettingsActivity extends BaseFragment {
         }
     }
 
+    private void updateRows() {
+        rowCount = 0;
+        headerRow = rowCount++;
+        galleryRow = rowCount++;
+        galleryInfoRow = rowCount++;
+        navHeaderRow = rowCount++;
+        navStartRow = rowCount;
+        rowCount += navItems.size();
+        navEndRow = rowCount;
+        navInfoRow = rowCount++;
+    }
+
+    @Override
+    public boolean onFragmentCreate() {
+        navItems.clear();
+        navItems.addAll(getTabOrder(preferences()));
+        updateRows();
+        return super.onFragmentCreate();
+    }
+
     @Override
     public View createView(Context context) {
         actionBar.setBackButtonImage(R.drawable.ic_ab_back);
@@ -111,71 +194,32 @@ public class OtherSettingsActivity extends BaseFragment {
 
         FrameLayout root = new FrameLayout(context);
         root.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
-        LinearLayout content = new LinearLayout(context);
-        content.setOrientation(LinearLayout.VERTICAL);
-        root.addView(content, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
-        HeaderCell header = new HeaderCell(context);
-        header.setText(LocaleController.getString(R.string.EasygramOther));
-        content.addView(header, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+        listView = new RecyclerListView(context);
+        listView.setLayoutManager(new LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false));
+        listView.setAdapter(adapter = new ListAdapter(context));
+        listView.setVerticalScrollBarEnabled(false);
+        root.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
-        galleryCell = new TextSettingsCell(context);
-        galleryCell.setTextAndValue(
-                LocaleController.getString(R.string.EasygramDefaultGallery),
-                getSelectedGalleryLabel(),
-                false
-        );
-        galleryCell.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
-        galleryCell.setOnClickListener(this::showGalleryChooser);
-        content.addView(galleryCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+        itemTouchHelper = new ItemTouchHelper(new TouchHelperCallback());
+        itemTouchHelper.attachToRecyclerView(listView);
 
-        TextInfoPrivacyCell info = new TextInfoPrivacyCell(context);
-        info.setText(LocaleController.getString(R.string.EasygramDefaultGalleryInfo));
-        content.addView(info, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
-
-        HeaderCell navHeader = new HeaderCell(context);
-        navHeader.setText(LocaleController.getString(R.string.EasygramNavigationBar));
-        content.addView(navHeader, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
-
-        TextCheckCell chatsCell = new TextCheckCell(context);
-        chatsCell.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
-        chatsCell.setTextAndCheck(LocaleController.getString(R.string.MainTabsChats), isTabEnabled(INDEX_CHATS, preferences(), currentAccount), true);
-        chatsCell.setOnClickListener(v -> toggleTab(INDEX_CHATS, chatsCell));
-        content.addView(chatsCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
-
-        TextCheckCell contactsCell = new TextCheckCell(context);
-        contactsCell.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
-        contactsCell.setTextAndCheck(LocaleController.getString(R.string.MainTabsContacts), isTabEnabled(INDEX_CONTACTS, preferences(), currentAccount), true);
-        contactsCell.setOnClickListener(v -> toggleTab(INDEX_CONTACTS, contactsCell));
-        content.addView(contactsCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
-
-        TextCheckCell callsCell = new TextCheckCell(context);
-        callsCell.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
-        callsCell.setTextAndCheck(LocaleController.getString(R.string.MainTabsCalls), isTabEnabled(INDEX_CALLS, preferences(), currentAccount), true);
-        callsCell.setOnClickListener(v -> toggleTab(INDEX_CALLS, callsCell));
-        content.addView(callsCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
-
-        TextCheckCell settingsCell = new TextCheckCell(context);
-        settingsCell.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
-        settingsCell.setTextAndCheck(LocaleController.getString(R.string.Settings), isTabEnabled(INDEX_SETTINGS, preferences(), currentAccount), true);
-        settingsCell.setOnClickListener(v -> toggleTab(INDEX_SETTINGS, settingsCell));
-        content.addView(settingsCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
-
-        TextCheckCell profileCell = new TextCheckCell(context);
-        profileCell.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
-        profileCell.setTextAndCheck(LocaleController.getString(R.string.MainTabsProfile), isTabEnabled(INDEX_PROFILE, preferences(), currentAccount), false);
-        profileCell.setOnClickListener(v -> toggleTab(INDEX_PROFILE, profileCell));
-        content.addView(profileCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
-
-        TextInfoPrivacyCell navInfo = new TextInfoPrivacyCell(context);
-        navInfo.setText(LocaleController.getString(R.string.EasygramNavigationBarInfo));
-        content.addView(navInfo, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+        listView.setOnItemClickListener((view, position) -> {
+            if (position == galleryRow) {
+                showGalleryChooser(view);
+            } else if (position >= navStartRow && position < navEndRow) {
+                int index = navItems.get(position - navStartRow);
+                if (view instanceof ReorderCheckCell) {
+                    toggleTab(index, (ReorderCheckCell) view);
+                }
+            }
+        });
 
         fragmentView = root;
         return fragmentView;
     }
 
-    private void toggleTab(int index, TextCheckCell cell) {
+    private void toggleTab(int index, ReorderCheckCell cell) {
         boolean current = isTabEnabled(index, preferences(), currentAccount);
         if (current && getEnabledTabsCount(preferences(), currentAccount) <= 1) {
             BulletinFactory.of(this).createSimpleBulletin(
@@ -246,14 +290,240 @@ public class OtherSettingsActivity extends BaseFragment {
                 editor.putString(DEFAULT_GALLERY_PACKAGE, apps.get(index - 2).activityInfo.packageName);
             }
             editor.apply();
-            if (galleryCell != null) {
-                galleryCell.setTextAndValue(
-                        LocaleController.getString(R.string.EasygramDefaultGallery),
-                        getSelectedGalleryLabel(),
-                        false
-                );
+            if (adapter != null) {
+                adapter.notifyItemChanged(galleryRow);
             }
         });
         builder.show();
+    }
+
+    public static class ReorderCheckCell extends FrameLayout {
+        private final TextView textView;
+        private final Switch switchView;
+        private final ImageView moveImageView;
+        private boolean needDivider;
+
+        public ReorderCheckCell(Context context) {
+            super(context);
+            setWillNotDraw(false);
+
+            moveImageView = new ImageView(context);
+            moveImageView.setScaleType(ImageView.ScaleType.CENTER);
+            moveImageView.setImageResource(R.drawable.list_reorder);
+            moveImageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_stickers_menu), PorterDuff.Mode.MULTIPLY));
+            moveImageView.setFocusable(false);
+            addView(moveImageView, LayoutHelper.createFrame(48, 48, (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT) | Gravity.CENTER_VERTICAL, 6, 0, 6, 0));
+
+            switchView = new Switch(context);
+            switchView.setColors(Theme.key_switchTrack, Theme.key_switchTrackChecked, Theme.key_windowBackgroundWhite, Theme.key_windowBackgroundWhite);
+            switchView.setFocusable(false);
+            addView(switchView, LayoutHelper.createFrame(37, 20, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL, 22, 0, 22, 0));
+
+            textView = new TextView(context);
+            textView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+            textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
+            textView.setLines(1);
+            textView.setMaxLines(1);
+            textView.setSingleLine(true);
+            textView.setEllipsize(TextUtils.TruncateAt.END);
+            textView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL);
+            addView(textView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL, LocaleController.isRTL ? 60 : 72, 0, LocaleController.isRTL ? 72 : 60, 0));
+        }
+
+        public void setItem(String title, boolean checked, boolean divider) {
+            textView.setText(title);
+            switchView.setChecked(checked, false);
+            needDivider = divider;
+            invalidate();
+        }
+
+        public void setChecked(boolean checked) {
+            switchView.setChecked(checked, true);
+        }
+
+        public ImageView getMoveImageView() {
+            return moveImageView;
+        }
+
+        @Override
+        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            super.onMeasure(MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(AndroidUtilities.dp(50), MeasureSpec.EXACTLY));
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            if (needDivider) {
+                canvas.drawLine(LocaleController.isRTL ? 0 : AndroidUtilities.dp(72), getHeight() - 1, getWidth() - (LocaleController.isRTL ? AndroidUtilities.dp(72) : 0), getHeight() - 1, Theme.dividerPaint);
+            }
+        }
+    }
+
+    private class ListAdapter extends RecyclerListView.SelectionAdapter {
+        private final Context mContext;
+
+        public ListAdapter(Context context) {
+            mContext = context;
+        }
+
+        @Override
+        public boolean isEnabled(RecyclerView.ViewHolder holder) {
+            int type = holder.getItemViewType();
+            return type == 1 || type == 4;
+        }
+
+        @Override
+        public int getItemCount() {
+            return rowCount;
+        }
+
+        @Override
+        public int getItemViewType(int position) {
+            if (position == headerRow || position == navHeaderRow) return 0;
+            if (position == galleryRow) return 1;
+            if (position == galleryInfoRow || position == navInfoRow) return 2;
+            if (position >= navStartRow && position < navEndRow) return 4;
+            return 0;
+        }
+
+        @NonNull
+        @Override
+        public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+            View view;
+            switch (viewType) {
+                case 0:
+                    view = new HeaderCell(mContext);
+                    view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+                    break;
+                case 1:
+                    view = new TextSettingsCell(mContext);
+                    view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+                    break;
+                case 2:
+                    view = new TextInfoPrivacyCell(mContext);
+                    break;
+                case 4:
+                default:
+                    view = new ReorderCheckCell(mContext);
+                    view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+                    break;
+            }
+            return new RecyclerListView.Holder(view);
+        }
+
+        @Override
+        public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
+            switch (holder.getItemViewType()) {
+                case 0:
+                    HeaderCell headerCell = (HeaderCell) holder.itemView;
+                    if (position == headerRow) {
+                        headerCell.setText(LocaleController.getString(R.string.EasygramOther));
+                    } else if (position == navHeaderRow) {
+                        headerCell.setText(LocaleController.getString(R.string.EasygramNavigationBar));
+                    }
+                    break;
+                case 1:
+                    TextSettingsCell textCell = (TextSettingsCell) holder.itemView;
+                    textCell.setTextAndValue(
+                            LocaleController.getString(R.string.EasygramDefaultGallery),
+                            getSelectedGalleryLabel(),
+                            false
+                    );
+                    break;
+                case 2:
+                    TextInfoPrivacyCell infoCell = (TextInfoPrivacyCell) holder.itemView;
+                    if (position == galleryInfoRow) {
+                        infoCell.setText(LocaleController.getString(R.string.EasygramDefaultGalleryInfo));
+                    } else if (position == navInfoRow) {
+                        infoCell.setText(LocaleController.getString(R.string.EasygramNavigationBarInfo));
+                    }
+                    break;
+                case 4:
+                    ReorderCheckCell checkCell = (ReorderCheckCell) holder.itemView;
+                    int index = navItems.get(position - navStartRow);
+                    String title;
+                    switch (index) {
+                        case INDEX_CHATS:
+                            title = LocaleController.getString(R.string.MainTabsChats);
+                            break;
+                        case INDEX_CONTACTS:
+                            title = LocaleController.getString(R.string.MainTabsContacts);
+                            break;
+                        case INDEX_CALLS:
+                            title = LocaleController.getString(R.string.MainTabsCalls);
+                            break;
+                        case INDEX_SETTINGS:
+                            title = LocaleController.getString(R.string.Settings);
+                            break;
+                        case INDEX_PROFILE:
+                        default:
+                            title = LocaleController.getString(R.string.MainTabsProfile);
+                            break;
+                    }
+                    boolean checked = isTabEnabled(index, preferences(), currentAccount);
+                    checkCell.setItem(title, checked, position != navEndRow - 1);
+                    checkCell.getMoveImageView().setOnTouchListener((v, event) -> {
+                        if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                            itemTouchHelper.startDrag(holder);
+                        }
+                        return false;
+                    });
+                    break;
+            }
+        }
+    }
+
+    public class TouchHelperCallback extends ItemTouchHelper.Callback {
+
+        @Override
+        public boolean isLongPressDragEnabled() {
+            return true;
+        }
+
+        @Override
+        public int getMovementFlags(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder) {
+            if (viewHolder.getItemViewType() != 4) {
+                return makeMovementFlags(0, 0);
+            }
+            return makeMovementFlags(ItemTouchHelper.UP | ItemTouchHelper.DOWN, 0);
+        }
+
+        @Override
+        public boolean onMove(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder source, @NonNull RecyclerView.ViewHolder target) {
+            if (source.getItemViewType() != target.getItemViewType()) {
+                return false;
+            }
+            int fromPos = source.getAdapterPosition();
+            int toPos = target.getAdapterPosition();
+            if (fromPos >= navStartRow && fromPos < navEndRow && toPos >= navStartRow && toPos < navEndRow) {
+                int fromIdx = fromPos - navStartRow;
+                int toIdx = toPos - navStartRow;
+                Collections.swap(navItems, fromIdx, toIdx);
+                saveTabOrder(preferences(), navItems);
+                adapter.notifyItemMoved(fromPos, toPos);
+                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.mainTabsLayoutChanged);
+                return true;
+            }
+            return false;
+        }
+
+        @Override
+        public void onSwiped(@NonNull RecyclerView.ViewHolder viewHolder, int direction) {
+
+        }
+
+        @Override
+        public void onSelectedChanged(RecyclerView.ViewHolder viewHolder, int actionState) {
+            if (actionState != ItemTouchHelper.ACTION_STATE_IDLE) {
+                listView.cancelClickRunnables(false);
+                viewHolder.itemView.setPressed(true);
+            }
+            super.onSelectedChanged(viewHolder, actionState);
+        }
+
+        @Override
+        public void clearView(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder) {
+            super.clearView(recyclerView, viewHolder);
+            viewHolder.itemView.setPressed(false);
+        }
     }
 }
