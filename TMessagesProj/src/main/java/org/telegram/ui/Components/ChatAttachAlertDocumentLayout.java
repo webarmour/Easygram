@@ -466,6 +466,8 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
                         fragment.setMaxSelectedPhotos(maxSelectedFiles, false);
                         parentAlert.presentFragment(fragment);
                         parentAlert.dismiss(true);
+                    } else if (item.icon == R.drawable.camera) {
+                        parentAlert.getPhotoLayout().openCameraForPhoto();
                     } else if (item.icon == R.drawable.files_music) {
                         if (delegate != null) {
                             delegate.startMusicSelectActivity();
@@ -1369,6 +1371,13 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
             fs.title = LocaleController.getString(R.string.Gallery);
             fs.subtitle = LocaleController.getString(R.string.GalleryInfo);
             fs.icon = R.drawable.files_gallery;
+            fs.file = null;
+            listAdapter.items.add(fs);
+
+            fs = new ListItem();
+            fs.title = LocaleController.getString(R.string.EasygramPhoto);
+            fs.subtitle = LocaleController.getString(R.string.EasygramTakePhoto);
+            fs.icon = R.drawable.camera;
             fs.file = null;
             listAdapter.items.add(fs);
         }

@@ -26,7 +26,9 @@ import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -94,9 +96,11 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.AnimationNotificationsLocker;
+import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.DialogObject;
+import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LiteMode;
@@ -112,6 +116,7 @@ import org.telegram.messenger.SendMessagesHelper;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
+import android.provider.MediaStore;
 import org.telegram.messenger.Utilities;
 import org.telegram.messenger.VideoEditedInfo;
 import org.telegram.messenger.utils.EphemeralMessagesHelper;
@@ -205,6 +210,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
     public static final int LAYOUT_TYPE_LINK = 15;
     public static final int LAYOUT_TYPE_RICH = 16;
     public static final int LAYOUT_TYPE_MONEY = 17;
+    public static final int LAYOUT_TYPE_MEDIA_PICKER = 18;
 
     private static final int ANIMATOR_ID_CAPTION_ABOVE = 0;
     private static final int ANIMATOR_ID_CAPTION_VISIBLE = 1;
@@ -1036,6 +1042,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
     private ChatAttachAlertRichLayout richLayout;
     private ChatAttachAlertGramLayout gramLayout;
     private boolean gramSendDismissalInProgress;
+    private int[] cameraTabSavedVisibility;
     private float gramSendExitTranslationY;
     private AttachAlertLayout[] layouts = new AttachAlertLayout[12];
     private LongSparseArray<ChatAttachAlertBotWebViewLayout> botAttachLayouts = new LongSparseArray<>();
@@ -2786,7 +2793,17 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
                     if (!photosEnabled && !videosEnabled) {
                         showLayout(restrictedLayout = new ChatAttachRestrictedLayout(1, this, getContext(), resourcesProvider));
                     }
+                    selectAttachTab(1);
                     showLayout(photoLayout);
+                } else if (num == LAYOUT_TYPE_MEDIA_PICKER) {
+                    if (!photosEnabled && !videosEnabled && checkCanRemoveRestrictionsByBoosts()) {
+                        return;
+                    }
+                    if (!photosEnabled && !videosEnabled) {
+                        showLayout(restrictedLayout = new ChatAttachRestrictedLayout(1, this, getContext(), resourcesProvider));
+                        return;
+                    }
+                    openMediaPicker(lastFragment);
                 } else if (num == LAYOUT_TYPE_MONEY) {
                     if (gramLayout == null && baseFragment instanceof ChatActivity) {
                         final TLRPC.User recipient = ((ChatActivity) baseFragment).getCurrentUser();
@@ -6180,9 +6197,15 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
                 typeButtonsAvailable = false;
             }
         } else {
-            layoutToSet = photoLayout;
             typeButtonsAvailable = avatarPicker == 0 && !storyMediaPicker;
-            selectedId = 1;
+            if (baseFragment instanceof ChatActivity && typeButtonsAvailable) {
+                openDocumentsLayout(false);
+                layoutToSet = documentLayout;
+                selectedId = 4;
+            } else {
+                layoutToSet = photoLayout;
+                selectedId = 1;
+            }
         }
         buttonsRecyclerViewWrapper.setVisibility(typeButtonsAvailable ? View.VISIBLE : View.GONE);
         if (currentAttachLayout != layoutToSet) {
@@ -6466,7 +6489,6 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
         return locationLayout;
     }
 
-
     private static boolean checkPhotoAndCameraPermission(Context context) {
         if (Build.VERSION.SDK_INT >= 33) {
             return ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED
@@ -6578,6 +6600,97 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
         return Build.VERSION.SDK_INT < 23 || ContextCompat.checkSelfPermission(context, Build.VERSION.SDK_INT >= 33 ? Manifest.permission.READ_MEDIA_AUDIO : Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
     }
 
+    private void openMediaPicker(BaseFragment fragment) {
+        SharedPreferences preferences = ApplicationLoader.applicationContext
+                .getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
+        String packageName = preferences.getString(org.telegram.ui.OtherSettingsActivity.DEFAULT_GALLERY_PACKAGE, null);
+
+        showLayout(photoLayout);
+        selectAttachTab(LAYOUT_TYPE_MEDIA_PICKER);
+
+        // No configured package means the Telegram gallery is the selected picker.
+        // Keep it in this tab instead of launching the system chooser.
+        if (packageName == null || packageName.isEmpty()) {
+            return;
+        }
+
+        if (org.telegram.ui.OtherSettingsActivity.EMBEDDED_PHOTO_PICKER.equals(packageName)) {
+            if (photoLayout != null && photoLayout.showEmbeddedPhotoPicker()) {
+                return;
+            }
+            openSystemMediaPicker(fragment);
+            return;
+        }
+
+        if (packageName != null && !packageName.isEmpty()) {
+            Intent mediaPicker = createMultipleMediaPickerIntent(packageName);
+            try {
+                fragment.startActivityForResult(mediaPicker, 1);
+                dismiss(true);
+                return;
+            } catch (Exception e) {
+                FileLog.e(e);
+                try {
+                    Intent imagePicker = new Intent(Intent.ACTION_GET_CONTENT);
+                    imagePicker.setType("image/*");
+                    imagePicker.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/*", "video/*"});
+                    imagePicker.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                    imagePicker.addCategory(Intent.CATEGORY_OPENABLE);
+                    imagePicker.setPackage(packageName);
+                    fragment.startActivityForResult(imagePicker, 1);
+                    dismiss(true);
+                    return;
+                } catch (Exception fallbackError) {
+                    FileLog.e(fallbackError);
+                    preferences.edit().remove(org.telegram.ui.OtherSettingsActivity.DEFAULT_GALLERY_PACKAGE).apply();
+                }
+            }
+        }
+
+        openSystemMediaPicker(fragment);
+    }
+
+    private void selectAttachTab(int id) {
+        selectedId = id;
+        animatorCurrentVisibleLayout.replace((long) id, false);
+        buttonsAdapter.notifyDataSetChanged();
+        for (int i = 0; i < buttonsRecyclerView.getChildCount(); i++) {
+            View child = buttonsRecyclerView.getChildAt(i);
+            if (child instanceof AttachButton) {
+                ((AttachButton) child).updateCheckedState(true);
+            }
+        }
+    }
+
+    void openSystemMediaPicker(BaseFragment fragment) {
+        try {
+            fragment.startActivityForResult(createMultipleMediaPickerIntent(null), 1);
+            dismiss(true);
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }
+
+    private Intent createMultipleMediaPickerIntent(String packageName) {
+        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+        intent.setType("*/*");
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/*", "video/*"});
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.putExtra(MediaStore.EXTRA_SIZE_LIMIT, FileLoader.DEFAULT_MAX_FILE_SIZE);
+        if (packageName != null) {
+            intent.setPackage(packageName);
+        }
+        return intent;
+    }
+
+    void sendEmbeddedMedia(ArrayList<Uri> uris) {
+        if (baseFragment instanceof ChatActivity && !uris.isEmpty()) {
+            ((ChatActivity) baseFragment).didSelectEmbeddedMedia(uris);
+        }
+        dismiss(true);
+    }
+
     private class ButtonsAdapter extends RecyclerListView.SelectionAdapter {
         private final static int VIEW_TYPE_BUTTON = 0, VIEW_TYPE_BOT_BUTTON = 1;
 
@@ -6633,17 +6746,22 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
                     attachButton.glassTabView.onPreBind();
                     boolean err = false;
                     boolean needPremium = false;
-                    if (position == galleryButton) {
-                        attachButton.setTextAndIcon(1, getString(R.string.ChatGallery), GlassTabView.TabAnimation.GALLERY);
-                        attachButton.setTag(1);
-                        err = !checkPhotoAndCameraPermission(mContext);
-                    } else if (position == moneyButton) {
-                        attachButton.setTextAndIcon(LAYOUT_TYPE_MONEY, getString(R.string.WalletAttachMoney), GlassTabView.TabAnimation.GRAM);
-                        attachButton.setTag(LAYOUT_TYPE_MONEY);
-                    } else if (position == documentButton) {
+                    if (position == documentButton) {
                         attachButton.setTextAndIcon(4, getString(R.string.ChatDocument), GlassTabView.TabAnimation.FILES);
                         attachButton.setTag(4);
                         err = !checkPhotoAndDocumentsPermission(mContext);
+                    } else if (position == galleryButton) {
+                        if (baseFragment instanceof ChatActivity && editingMessageObject == null && !isPollAttach) {
+                            attachButton.setTextAndIcon(LAYOUT_TYPE_MEDIA_PICKER, getString(R.string.Gallery), GlassTabView.TabAnimation.GALLERY);
+                            attachButton.setTag(LAYOUT_TYPE_MEDIA_PICKER);
+                        } else {
+                            attachButton.setTextAndIcon(1, getString(R.string.Gallery), GlassTabView.TabAnimation.GALLERY);
+                            attachButton.setTag(1);
+                            err = !checkPhotoAndCameraPermission(mContext);
+                        }
+                    } else if (position == moneyButton) {
+                        attachButton.setTextAndIcon(LAYOUT_TYPE_MONEY, getString(R.string.WalletAttachMoney), GlassTabView.TabAnimation.GRAM);
+                        attachButton.setTag(LAYOUT_TYPE_MONEY);
                     } else if (position == locationButton) {
                         attachButton.setTextAndIcon(6, getString(R.string.ChatLocation), GlassTabView.TabAnimation.LOCATION);
                         attachButton.setTag(6);
@@ -6786,8 +6904,8 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
                 TLRPC.User user = baseFragment instanceof ChatActivity ? ((ChatActivity) baseFragment).getCurrentUser() : null;
                 TLRPC.Chat chat = baseFragment instanceof ChatActivity ? ((ChatActivity) baseFragment).getCurrentChat() : null;
                 final boolean paidUser = user != null && ((ChatActivity) baseFragment).getMessagesController().getSendPaidMessagesStars(user.id) > 0;
-                galleryButton = buttonsCount++;
                 documentButton = buttonsCount++;
+                galleryButton = buttonsCount++;
                 if (MessagesController.getInstance(currentAccount).config.walletAvailable.get() && ((ChatActivity) baseFragment).getChatMode() == ChatActivity.MODE_DEFAULT && isMoneyTabRecipient(user)) {
                     moneyButton = buttonsCount++;
                 }

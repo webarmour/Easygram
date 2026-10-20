@@ -10834,6 +10834,26 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
 
             for (int a = 0; a < count; a++) {
                 final SendingMediaInfo info = media.get(a);
+                // Media selected from SAF providers (for example, Files) can have a
+                // content:// URI without a filesystem path. Video compression and
+                // thumbnail code below requires a local path, so materialize the URI
+                // on this background queue before processing it.
+                if (info.isVideo && TextUtils.isEmpty(info.path) && info.uri != null) {
+                    String extension = "mp4";
+                    try {
+                        String mimeType = ApplicationLoader.applicationContext.getContentResolver().getType(info.uri);
+                        String mimeExtension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType);
+                        if (!TextUtils.isEmpty(mimeExtension)) {
+                            extension = mimeExtension;
+                        }
+                    } catch (Exception e) {
+                        FileLog.e(e);
+                    }
+                    info.path = MediaController.copyFileToCache(info.uri, extension);
+                    if (TextUtils.isEmpty(info.path)) {
+                        FileLog.e("Unable to copy selected video to cache");
+                    }
+                }
                 if (info.path != null && info.isLivePhoto && info.discardLivePhoto) {
                     final File wholeFile = new File(info.path);
                     final File imageFile = new File(FileLoader.getDirectory(FileLoader.MEDIA_DIR_CACHE), Integer.MIN_VALUE + "_" + SharedConfig.getLastLocalId() + ".jpeg");
@@ -11178,6 +11198,10 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                     }
                 } else {
                     if ((info.isVideo || info.videoEditedInfo != null) && !(info.isLivePhoto && info.discardLivePhoto)) {
+                        if (TextUtils.isEmpty(info.path)) {
+                            FileLog.e("Skipping video without a local file path");
+                            continue;
+                        }
                         Bitmap thumb = null;
                         String thumbKey = null;
                         TLRPC.PhotoSize cover = null;
@@ -11920,6 +11944,9 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
     }
 
     private static VideoEditedInfo createCompressionSettings(String videoPath, long videoOffset) {
+        if (TextUtils.isEmpty(videoPath)) {
+            return null;
+        }
         int[] params = new int[AnimatedFileInfo.PARAM_NUM_COUNT];
         AnimatedFileNative.getVideoInfo(videoPath, params, videoOffset);
 

@@ -14093,6 +14093,49 @@ public class ChatActivity extends BaseFragment implements
         }
     }
 
+    public void didSelectEmbeddedMedia(ArrayList<Uri> uris) {
+        didSelectExternalMedia(uris);
+    }
+
+    public void didSelectExternalMedia(ArrayList<Uri> uris) {
+        if (uris == null || uris.isEmpty() || !checkSlowModeAlert()) {
+            return;
+        }
+        if (editingMessageObject == null && chatMode == MODE_SCHEDULED) {
+            AlertsCreator.createScheduleDatePickerDialog(getParentActivity(), dialog_id, (notify, scheduleDate, scheduleRepeatPeriod) -> {
+                sendExternalMediaNow(uris, notify, scheduleDate, scheduleRepeatPeriod);
+            }, themeDelegate);
+            return;
+        }
+        sendExternalMediaNow(uris, true, 0, 0);
+    }
+
+    private void sendExternalMediaNow(ArrayList<Uri> uris, boolean notify, int scheduleDate, int scheduleRepeatPeriod) {
+        fillEditingMediaWithCaption(null, null);
+        ArrayList<SendMessagesHelper.SendingMediaInfo> media = new ArrayList<>(uris.size());
+        for (Uri uri : uris) {
+            SendMessagesHelper.SendingMediaInfo info = new SendMessagesHelper.SendingMediaInfo();
+            info.uri = uri;
+            String mimeType = null;
+            try {
+                mimeType = getParentActivity().getContentResolver().getType(uri);
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+            info.isVideo = mimeType != null && mimeType.startsWith("video/");
+            media.add(info);
+        }
+        SendMessagesHelper.prepareSendingMedia(getAccountInstance(), media, dialog_id, replyingMessageObject, getThreadMessage(), null, replyingQuote, false, media.size() > 1, editingMessageObject, notify, scheduleDate, scheduleRepeatPeriod, chatMode, false, null, getMessageChatSendParams(), 0, false, 0, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
+        afterMessageSend();
+        if (scheduleDate != 0) {
+            if (scheduledMessagesCount == -1) {
+                scheduledMessagesCount = 0;
+            }
+            scheduledMessagesCount += media.size();
+            updateScheduledInterface(true);
+        }
+    }
+
     public void didSelectSearchPhotos(ArrayList<SendMessagesHelper.SendingMediaInfo> photos, boolean notify, int scheduleDate) {
         if (photos.isEmpty()) {
             return;
@@ -18938,7 +18981,12 @@ public class ChatActivity extends BaseFragment implements
         } else if ((requestCode == BasePermissionsActivity.REQUEST_CODE_ATTACH_CONTACT || requestCode == 30) && chatAttachAlert != null) {
             chatAttachAlert.onRequestPermissionsResultFragment(requestCode, permissions, grantResults);
         } else if ((requestCode == 17 || requestCode == 18) && chatAttachAlert != null) {
-            chatAttachAlert.getPhotoLayout().checkCamera(grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED);
+            boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+            if (requestCode == 18) {
+                chatAttachAlert.getPhotoLayout().onCameraPermissionResult(granted);
+            } else {
+                chatAttachAlert.getPhotoLayout().checkCamera(granted);
+            }
             chatAttachAlert.getPhotoLayout().checkStorage();
         } else if (requestCode == 21) {
             if (getParentActivity() == null) {
@@ -20428,12 +20476,33 @@ public class ChatActivity extends BaseFragment implements
                 ((ChatAttachAlertRichLayout) chatAttachAlert.getCurrentAttachLayout()).onExternalDocumentPicked(data);
                 return;
             } else if (requestCode == 1) {
-                if (data == null || data.getData() == null) {
+                if (data == null) {
                     showAttachmentError();
                     return;
                 }
                 if (chatAttachAlert != null && chatAttachAlert.getCurrentAttachLayout() instanceof ChatAttachAlertRichLayout) {
                     ((ChatAttachAlertRichLayout) chatAttachAlert.getCurrentAttachLayout()).onExternalMediaPicked(data);
+                    return;
+                }
+                if (data.getClipData() != null) {
+                    ArrayList<Uri> selectedUris = new ArrayList<>();
+                    ClipData clipData = data.getClipData();
+                    for (int i = 0; i < clipData.getItemCount(); i++) {
+                        Uri selectedUri = clipData.getItemAt(i).getUri();
+                        if (selectedUri != null && !selectedUris.contains(selectedUri)) {
+                            selectedUris.add(selectedUri);
+                        }
+                    }
+                    if (!selectedUris.isEmpty()) {
+                        didSelectExternalMedia(selectedUris);
+                        if (chatAttachAlert != null) {
+                            chatAttachAlert.dismiss();
+                        }
+                        return;
+                    }
+                }
+                if (data.getData() == null) {
+                    showAttachmentError();
                     return;
                 }
                 Uri uri = data.getData();
