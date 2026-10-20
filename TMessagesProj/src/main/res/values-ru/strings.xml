@@ -391,4 +391,12 @@
     <string name="EasygramCheckUpdates">Проверить обновления</string>
     <string name="EasygramCheckUpdatesInfo">Скачать новую версию Easygram</string>
     <!-- EASYGRAM_UPDATER_STRINGS_END -->
+    <string name="EasygramOther">Другое</string>
+    <string name="EasygramOtherInfo">Приложения и поведение</string>
+    <string name="EasygramDefaultGallery">Приложение галереи</string>
+    <string name="EasygramBuiltInGallery">Галерея Telegram</string>
+    <string name="EasygramDefaultGalleryInfo">Открывать выбранную галерею сразу при нажатии на скрепку в чате.</string>
+    <string name="EasygramEmbeddedPhotoPicker">Встроенный выбор фото</string>
+    <string name="EasygramPhoto">Камера</string>
+    <string name="EasygramTakePhoto">Сделать фото</string>
 </resources>

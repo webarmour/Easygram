@@ -11664,4 +11664,12 @@
     <string name="EasygramCheckUpdates">Check for updates</string>
     <string name="EasygramCheckUpdatesInfo">Download the latest Easygram version</string>
     <!-- EASYGRAM_UPDATER_STRINGS_END -->
+    <string name="EasygramOther">Other</string>
+    <string name="EasygramOtherInfo">Apps and behavior</string>
+    <string name="EasygramDefaultGallery">Gallery app</string>
+    <string name="EasygramBuiltInGallery">Telegram gallery</string>
+    <string name="EasygramDefaultGalleryInfo">Open this gallery directly when you tap the attachment button in a chat.</string>
+    <string name="EasygramEmbeddedPhotoPicker">Embedded Photo Picker</string>
+    <string name="EasygramPhoto">Camera</string>
+    <string name="EasygramTakePhoto">Take photo</string>
 </resources>
