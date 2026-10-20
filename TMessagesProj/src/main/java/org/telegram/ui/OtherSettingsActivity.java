@@ -29,6 +29,7 @@ import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
+import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
@@ -76,6 +77,8 @@ public class OtherSettingsActivity extends BaseFragment {
     private int headerRow;
     private int galleryRow;
     private int galleryInfoRow;
+    private int sendMediaHdRow;
+    private int sendMediaHdInfoRow;
     private int disableStoriesRow;
     private int storiesInfoRow;
     private int disableAdsRow;
@@ -170,6 +173,8 @@ public class OtherSettingsActivity extends BaseFragment {
         headerRow = rowCount++;
         galleryRow = rowCount++;
         galleryInfoRow = rowCount++;
+        sendMediaHdRow = rowCount++;
+        sendMediaHdInfoRow = rowCount++;
         disableStoriesRow = rowCount++;
         storiesInfoRow = rowCount++;
         disableAdsRow = rowCount++;
@@ -216,6 +221,16 @@ public class OtherSettingsActivity extends BaseFragment {
         listView.setOnItemClickListener((view, position) -> {
             if (position == galleryRow) {
                 showGalleryChooser(view);
+            } else if (position == sendMediaHdRow) {
+                boolean current = preferences().getBoolean("easygram_send_media_hd", SharedConfig.photoHighQualityDefault);
+                boolean next = !current;
+                preferences().edit().putBoolean("easygram_send_media_hd", next).apply();
+                SharedConfig.photoHighQualityDefault = next;
+                ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE)
+                        .edit().putBoolean("photoHighQualityDefault", next).apply();
+                if (view instanceof TextCheckCell) {
+                    ((TextCheckCell) view).setChecked(next);
+                }
             } else if (position == disableStoriesRow) {
                 boolean current = preferences().getBoolean("easygram_disable_stories", false);
                 boolean next = !current;
@@ -409,8 +424,8 @@ public class OtherSettingsActivity extends BaseFragment {
         public int getItemViewType(int position) {
             if (position == headerRow || position == navHeaderRow) return 0;
             if (position == galleryRow) return 1;
-            if (position == galleryInfoRow || position == storiesInfoRow || position == adsInfoRow || position == navInfoRow) return 2;
-            if (position == disableStoriesRow || position == disableAdsRow) return 3;
+            if (position == galleryInfoRow || position == sendMediaHdInfoRow || position == storiesInfoRow || position == adsInfoRow || position == navInfoRow) return 2;
+            if (position == sendMediaHdRow || position == disableStoriesRow || position == disableAdsRow) return 3;
             if (position >= navStartRow && position < navEndRow) return 4;
             return 0;
         }
@@ -467,6 +482,8 @@ public class OtherSettingsActivity extends BaseFragment {
                     TextInfoPrivacyCell infoCell = (TextInfoPrivacyCell) holder.itemView;
                     if (position == galleryInfoRow) {
                         infoCell.setText(LocaleController.getString(R.string.EasygramDefaultGalleryInfo));
+                    } else if (position == sendMediaHdInfoRow) {
+                        infoCell.setText(LocaleController.getString(R.string.EasygramSendMediaHdInfo));
                     } else if (position == storiesInfoRow) {
                         infoCell.setText(LocaleController.getString(R.string.EasygramDisableStoriesInfo));
                     } else if (position == adsInfoRow) {
@@ -477,7 +494,14 @@ public class OtherSettingsActivity extends BaseFragment {
                     break;
                 case 3:
                     TextCheckCell checkCell = (TextCheckCell) holder.itemView;
-                    if (position == disableStoriesRow) {
+                    if (position == sendMediaHdRow) {
+                        boolean sendMediaHd = preferences().getBoolean("easygram_send_media_hd", SharedConfig.photoHighQualityDefault);
+                        checkCell.setTextAndCheck(
+                                LocaleController.getString(R.string.EasygramSendMediaHd),
+                                sendMediaHd,
+                                false
+                        );
+                    } else if (position == disableStoriesRow) {
                         boolean disabledStories = preferences().getBoolean("easygram_disable_stories", false);
                         checkCell.setTextAndCheck(
                                 LocaleController.getString(R.string.EasygramDisableStories),

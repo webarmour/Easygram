@@ -683,7 +683,7 @@ public class SharedConfig {
             debugVideoQualities = preferences.getBoolean("debugVideoQualities", false);
             shadowsInSections = preferences.getBoolean("shadowsInSections", false);
             debugViewMetrics = preferences.getBoolean("debugViewMetrics", false);
-            photoHighQualityDefault = preferences.getBoolean("photoHighQualityDefault", false);
+            photoHighQualityDefault = preferences.getBoolean("easygram_send_media_hd", preferences.getBoolean("photoHighQualityDefault", false));
             photoLiveDefault = preferences.getBoolean("photoLiveDefault", false);
 
             loadDebugConfig(preferences);

@@ -645,7 +645,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         public boolean hasMediaSpoilers;
         public TLRPC.VideoSize emojiMarkup;
         public long stars;
-        public boolean highQuality;
+        public boolean highQuality = SharedConfig.photoHighQualityDefault;
         public MediaController.PhotoEntry originalPhotoEntry;
         public long livePhotoVideoOffset;
         public long livePhotoTimestampUs;
@@ -9347,7 +9347,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
     }
 
     public TLRPC.TL_photo generatePhotoSizes(String path, Uri imageUri) {
-        return generatePhotoSizes(null, path, imageUri, false);
+        return generatePhotoSizes(null, path, imageUri, SharedConfig.photoHighQualityDefault);
     }
 
     public TLRPC.TL_photo generatePhotoSizes(TLRPC.TL_photo photo, String path, Uri imageUri, boolean highQuality) {
@@ -11610,10 +11610,10 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                                             parentObject = (String) sentData[1];
                                         }
                                     }
-                                    ensureMediaThumbExists(accountInstance, isEncrypted, photo, info.path, info.uri, 0);
+                                    ensureMediaThumbExists(accountInstance, isEncrypted, photo, info.path, info.uri, 0, info.highQuality);
                                 }
                                 if (photo == null) {
-                                    photo = accountInstance.getSendMessagesHelper().generatePhotoSizes(info.path, info.uri);
+                                    photo = accountInstance.getSendMessagesHelper().generatePhotoSizes(null, info.path, info.uri, info.highQuality);
                                     if (isEncrypted && info.canDeleteAfter) {
                                         new File(info.path).delete();
                                     }
