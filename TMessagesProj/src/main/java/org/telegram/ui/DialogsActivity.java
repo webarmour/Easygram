@@ -2937,6 +2937,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             .add(NotificationCenter.onDatabaseReset)
             .add(NotificationCenter.storiesUpdated)
             .add(NotificationCenter.storiesEnabledUpdate)
+            .add(NotificationCenter.mainTabsLayoutChanged)
             .add(NotificationCenter.unconfirmedAuthUpdate)
             .add(NotificationCenter.premiumPromoUpdated)
             .add(NotificationCenter.starBalanceUpdated)
@@ -10854,11 +10855,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     }
                 }
             }
-        } else if (id == NotificationCenter.storiesUpdated) {
+        } else if (id == NotificationCenter.storiesUpdated || id == NotificationCenter.storiesEnabledUpdate || id == NotificationCenter.mainTabsLayoutChanged) {
+            updateStoriesPosting();
             updateStoriesVisibility(wasDrawn);
             updateVisibleRows(0);
-        } else if (id == NotificationCenter.storiesEnabledUpdate) {
-            updateStoriesPosting();
         } else if (id == NotificationCenter.unconfirmedAuthUpdate) {
             updateDialogsHint();
         } else if (id == NotificationCenter.premiumPromoUpdated) {
@@ -12757,8 +12757,11 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
         boolean onlySelfStories = !isArchive() && getStoriesController().hasOnlySelfStories();
         boolean newVisibility;
-        if (communityId != 0) {
+        SharedPreferences prefs = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Context.MODE_PRIVATE);
+        boolean disableStories = prefs.getBoolean("easygram_disable_stories", false);
+        if (disableStories || communityId != 0) {
             newVisibility = false;
+            onlySelfStories = false;
         } else if (isArchive()) {
             newVisibility = !getStoriesController().getHiddenList().isEmpty();
         } else {
