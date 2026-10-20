@@ -399,4 +399,7 @@
     <string name="EasygramEmbeddedPhotoPicker">Встроенный выбор фото</string>
     <string name="EasygramPhoto">Камера</string>
     <string name="EasygramTakePhoto">Сделать фото</string>
+    <string name="EasygramNavigationBar">Нижняя панель навигации</string>
+    <string name="EasygramNavigationBarInfo">Выберите разделы, которые будут отображаться на нижней панели навигации.</string>
+    <string name="EasygramNavMinError">Должен быть выбран хотя бы один раздел</string>
 </resources>

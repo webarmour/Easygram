@@ -7,6 +7,7 @@ import static org.telegram.ui.Components.Premium.LimitReachedBottomSheet.TYPE_AC
 
 import android.animation.Animator;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.graphics.Canvas;
 import android.graphics.Paint;
@@ -90,29 +91,42 @@ import me.vkryl.android.animator.FactorAnimator;
 
 public class MainTabsActivity extends ViewPagerActivity implements NotificationCenter.NotificationCenterDelegate, FactorAnimator.Target {
 
-    public static final int TABS_COUNT = 4;
-    private static final int POSITION_CHATS = 0;
-    private static final int POSITION_CONTACTS = 1;
-    private static final int POSITION_CALLS_OR_SETTINGS = 2;
-    private static final int POSITION_PROFILE = 3;
+    public static final int INDEX_CHATS = 0;
+    public static final int INDEX_CONTACTS = 1;
+    public static final int INDEX_CALLS = 2;
+    public static final int INDEX_SETTINGS = 3;
+    public static final int INDEX_PROFILE = 4;
 
-    private static final int INDEX_CHATS = 0;
-    private static final int INDEX_CONTACTS = 1;
-    private static final int INDEX_SETTINGS = 2;
-    private static final int INDEX_CALLS = 3;
-    private static final int INDEX_PROFILE = 4;
+    private final ArrayList<Integer> activeTabs = new ArrayList<>();
 
-    private static int indexToPosition(int index) {
-        return index > 2 ? index - 1 : index;
+    private void rebuildActiveTabs() {
+        activeTabs.clear();
+        SharedPreferences prefs = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Context.MODE_PRIVATE);
+        if (OtherSettingsActivity.isTabEnabled(INDEX_CHATS, prefs, currentAccount)) {
+            activeTabs.add(INDEX_CHATS);
+        }
+        if (OtherSettingsActivity.isTabEnabled(INDEX_CONTACTS, prefs, currentAccount)) {
+            activeTabs.add(INDEX_CONTACTS);
+        }
+        if (OtherSettingsActivity.isTabEnabled(INDEX_CALLS, prefs, currentAccount)) {
+            activeTabs.add(INDEX_CALLS);
+        }
+        if (OtherSettingsActivity.isTabEnabled(INDEX_SETTINGS, prefs, currentAccount)) {
+            activeTabs.add(INDEX_SETTINGS);
+        }
+        if (OtherSettingsActivity.isTabEnabled(INDEX_PROFILE, prefs, currentAccount)) {
+            activeTabs.add(INDEX_PROFILE);
+        }
+        if (activeTabs.isEmpty()) {
+            activeTabs.add(INDEX_CHATS);
+        }
     }
 
     private static final int ANIMATOR_ID_TABS_VISIBLE = 0;
     private final BoolAnimator animatorTabsVisible = new BoolAnimator(ANIMATOR_ID_TABS_VISIBLE,
         this, CubicBezierInterpolator.EASE_OUT_QUINT, 380, true);
 
-
     private IUpdateLayout updateLayout;
-    private boolean dropCallsFragmentAfterPageScroll;
 
     private UpdateLayoutWrapper updateLayoutWrapper;
     private FrameLayout tabsViewWrapper;
@@ -122,6 +136,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
     public MainTabsActivity() {
         super();
+        rebuildActiveTabs();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             iBlur3SourceTabGlass = new BlurredBackgroundSourceRenderNode(null);
             iBlur3SourceTabGlass.setupRenderer(new RenderNodeWithHash.Renderer() {
@@ -241,26 +256,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
     private boolean tabletLayout;
     public void updateLayout() {
-//        if (tabletLayout == AndroidUtilities.isTablet()) return;
-//        tabletLayout = AndroidUtilities.isTablet();
-//
-//        final boolean isUpdateLayoutVisible = updateLayoutWrapper.isUpdateLayoutVisible();
-//        final int updateLayoutHeight = isUpdateLayoutVisible ? dp(UpdateLayoutWrapper.HEIGHT) : 0;
-//        int bottomMargin = isUpdateLayoutVisible ? (navigationBarHeight + updateLayoutHeight) : 0;
-//        if (tabletLayout) {
-//            bottomMargin = Math.max(bottomMargin, navigationBarHeight + dp(DialogsActivity.MAIN_TABS_HEIGHT_WITH_MARGINS));
-//        }
-//        final FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.FILL);
-//        if (tabletLayout) {
-//            lp.leftMargin = dp(6);
-//            lp.rightMargin = dp(6);
-//            lp.topMargin = dp(6);
-//        }
-//        lp.bottomMargin = bottomMargin;
-//
-//        viewPager.setLayoutParams(lp);
-//        viewPager.setTabletLayout(tabletLayout);
-//        checkUi_fadeView();
+
     }
 
     @Override
@@ -280,7 +276,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
     }
 
     private void checkContactsTabBadge() {
-        if (tabsView != null && tabs[INDEX_CONTACTS] != null) {
+        if (tabsView != null && tabs != null && tabs[INDEX_CONTACTS] != null) {
             final boolean hasPermission = Build.VERSION.SDK_INT >= 23 && ContactsController.hasContactsPermission();
             if (hasPermission) {
                 MessagesController.getGlobalNotificationsSettings().edit().putBoolean("askAboutContacts2", true).apply();
@@ -301,10 +297,21 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         }
     }
 
+    private void updateTabsVisibility(boolean animated) {
+        rebuildActiveTabs();
+        if (tabsView != null && tabs != null) {
+            for (int index = 0; index < tabs.length; index++) {
+                boolean visible = activeTabs.contains(index);
+                tabsView.setViewVisible(tabs[index], visible, animated);
+            }
+        }
+    }
+
     @Override
     public View createView(Context context) {
         super.createView(context);
         tabletLayout = false;
+        rebuildActiveTabs();
 
         tabsView = new MainTabsLayout(context, resourceProvider);
         tabsView.setClipChildren(false);
@@ -314,27 +321,27 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         tabs = new GlassTabView[5];
         tabs[INDEX_CHATS] = GlassTabView.createMainTab(context, resourceProvider, GlassTabView.TabAnimation.CHATS, R.string.MainTabsChats);
         tabs[INDEX_CONTACTS] = GlassTabView.createMainTab(context, resourceProvider, GlassTabView.TabAnimation.CONTACTS, R.string.MainTabsContacts);
-        tabs[INDEX_SETTINGS] = GlassTabView.createMainTab(context, resourceProvider, GlassTabView.TabAnimation.SETTINGS, R.string.Settings);
         tabs[INDEX_CALLS] = GlassTabView.createMainTab(context, resourceProvider, GlassTabView.TabAnimation.CALLS, R.string.MainTabsCalls);
+        tabs[INDEX_SETTINGS] = GlassTabView.createMainTab(context, resourceProvider, GlassTabView.TabAnimation.SETTINGS, R.string.Settings);
         tabs[INDEX_PROFILE] = GlassTabView.createAvatar(context, resourceProvider, currentAccount, R.string.MainTabsProfile);
+
         tabs[INDEX_CHATS].setOnLongClickListener(this::openFoldersSelector);
         tabs[INDEX_CONTACTS].setOnLongClickListener(this::openContactsSelector);
         tabs[INDEX_CALLS].setOnLongClickListener(this::openCallsSelector);
         tabs[INDEX_PROFILE].setOnLongClickListener(this::openAccountSelector);
 
-        tabsView.addTabToIgnoreClick(tabs[INDEX_CHATS]);
-        tabsView.addTabToIgnoreClick(tabs[INDEX_CONTACTS]);
-        tabsView.addTabToIgnoreClick(tabs[INDEX_PROFILE]);
-        tabsView.addTabToIgnoreClick(tabs[INDEX_CALLS]);
+        for (int index = 0; index < tabs.length; index++) {
+            tabsView.addTabToIgnoreClick(tabs[index]);
+        }
 
         for (int index = 0; index < tabs.length; index++) {
-            final GlassTabView view = tabs[index];
-
-            final int position = indexToPosition(index);
+            final int tabIndex = index;
             tabs[index].setOnClickListener(v -> {
                 if (viewPager.isManualScrolling() || viewPager.isTouch()) {
                     return;
                 }
+                int position = activeTabs.indexOf(tabIndex);
+                if (position == -1) return;
 
                 if (viewPager.getCurrentPosition() == position) {
                     final BaseFragment fragment = getCurrentVisibleFragment();
@@ -349,9 +356,8 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             });
 
             tabsView.addView(tabs[index]);
-            tabsView.setViewVisible(view, true, false);
         }
-        checkUi_callTabVisible(getUserConfig().showCallsTab, false);
+        updateTabsVisibility(false);
 
         selectTab(viewPager.getCurrentPosition(), false);
 
@@ -398,7 +404,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
     }
 
     private void checkUnreadCount(boolean animated) {
-        if (tabsView == null) {
+        if (tabsView == null || tabs == null || tabs[INDEX_CHATS] == null) {
             return;
         }
 
@@ -436,17 +442,19 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         if (getContext() == null || getParentActivity() == null) return false;
         final ItemOptions o = ItemOptions.makeOptions(this, anchor);
         o.add(R.drawable.menu_call_create, getString(R.string.GroupCallCreate2), () -> CallLogActivity.openCreateCall(this));
-        if (getUserConfig().showCallsTab) {
+        SharedPreferences prefs = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Context.MODE_PRIVATE);
+        boolean callsEnabled = OtherSettingsActivity.isTabEnabled(INDEX_CALLS, prefs, currentAccount);
+        if (callsEnabled) {
             o.add(R.drawable.msg_archive_hide, getString(R.string.HideCallTab), () -> {
+                prefs.edit().putBoolean(OtherSettingsActivity.KEY_TAB_CALLS, false).apply();
                 getUserConfig().setShowCallsTab(false);
-                checkUi_callTabVisible(false, true);
-                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.callTabsVisibleToggled);
+                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.mainTabsLayoutChanged);
             });
         } else {
             o.add(R.drawable.menu_add_tab_24, getString(R.string.GroupCallShowInMainTabs), () -> {
+                prefs.edit().putBoolean(OtherSettingsActivity.KEY_TAB_CALLS, true).apply();
                 getUserConfig().setShowCallsTab(true);
-                checkUi_callTabVisible(true, true);
-                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.callTabsVisibleToggled);
+                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.mainTabsLayoutChanged);
             });
         }
         o.setBlur(true);
@@ -498,254 +506,134 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
                 );
             }
             folderItem.setEmojiCacheType(folder.title_noanimate ? AnimatedEmojiDrawable.CACHE_TYPE_NOANIMATE_FOLDER : AnimatedEmojiDrawable.CACHE_TYPE_MESSAGES);
-            final int color = getMessagesController().folderTags ? folder.color : -1;
-            folderItem.setTextAndIcon(title, 0, new FolderDrawable(getContext(), R.drawable.msg_folders, color));
-            folderItem.getTextView().setEmojiColor(getThemedColor(Theme.key_featuredStickers_addButton));
-            folderItem.setMinimumWidth(160);
-            folderItem.setOnClickListener(e -> {
+            final int filterId = folder.id;
+            folderItem.setText(title);
+            if (folder.isDefault()) {
+                folderItem.setIcon(R.drawable.msg_folders);
+            } else {
+                final FolderDrawable drawable = new FolderDrawable(getParentActivity(), R.drawable.msg_folders, folder.color);
+                folderItem.setIcon(drawable);
+            }
+            folderItem.setOnClickListener(v -> {
+                if (dialogsActivity != null) {
+                    dialogsActivity.switchToFolderId(filterId);
+                } else {
+                    pendingFolderId = filterId;
+                }
                 o.dismiss();
-                openFolder(folder.id);
             });
-            o.addView(folderItem, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+            o.addView(folderItem);
         }
-//        o.setBlur(true);
-        o.translate(-dp(8), -dp(4));
-        o.setMaxHeight(dp(400));
+        o.setBlur(true);
+        o.translate(0, -dp(4));
+        o.setGravity(Gravity.LEFT);
         final ShapeDrawable bg = Theme.createRoundRectDrawable(dp(28), getThemedColor(Theme.key_windowBackgroundWhite));
         bg.getPaint().setShadowLayer(dp(6), 0, dp(1), Theme.multAlpha(0xFF000000, 0.15f));
         o.setScrimViewBackground(bg);
-        o.setGravity(Gravity.LEFT);
         o.show();
-
         return true;
     }
 
-    private boolean hasUnmutedUnreadDialogs(MessagesController.DialogFilter folder) {
-        final MessagesController messagesController = getMessagesController();
-        final ArrayList<TLRPC.Dialog> dialogs = folder.isDefault()
-                ? messagesController.getDialogs(0)
-                : messagesController.getAllDialogs();
-        for (int i = 0; i < dialogs.size(); i++) {
-            final TLRPC.Dialog dialog = dialogs.get(i);
-            if (!folder.isDefault()) {
-                long dialogId = dialog.id;
-                if (DialogObject.isEncryptedDialog(dialogId)) {
-                    final TLRPC.EncryptedChat encryptedChat = messagesController.getEncryptedChat(DialogObject.getEncryptedChatId(dialogId));
-                    if (encryptedChat != null) {
-                        dialogId = encryptedChat.user_id;
+    private boolean openAccountSelector(View anchor) {
+        if (getContext() == null || getParentActivity() == null) return false;
+        final ItemOptions o = ItemOptions.makeOptions(this, anchor);
+        for (int accountIndex = 0; accountIndex < UserConfig.MAX_ACCOUNT_COUNT; accountIndex++) {
+            if (!UserConfig.getInstance(accountIndex).isClientActivated()) continue;
+            final int acc = accountIndex;
+            final ActionBarMenuSubItem accountItem = new ActionBarMenuSubItem(getParentActivity(), 2, false, false, getResourceProvider());
+            accountItem.setPadding(dp(18), 0, dp(18), 0);
+            TLRPC.User u = UserConfig.getInstance(acc).getCurrentUser();
+            accountItem.setText(UserObject.getUserName(u));
+            AvatarDrawable avatarDrawable = new AvatarDrawable(u);
+            avatarDrawable.setInfo(acc, u);
+            accountItem.setIcon(avatarDrawable);
+            if (acc == currentAccount) {
+                accountItem.setSubtext(getString(R.string.Account));
+            }
+            accountItem.setOnClickListener(v -> {
+                if (acc != currentAccount) {
+                    LaunchActivity.instance.switchToAccount(acc, true);
+                }
+                o.dismiss();
+            });
+            o.addView(accountItem);
+        }
+
+        if (UserConfig.getActivatedAccountsCount() < UserConfig.MAX_ACCOUNT_COUNT) {
+            o.add(R.drawable.msg_add, getString(R.string.AddAccount), () -> {
+                int freeAccount = -1;
+                for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
+                    if (!UserConfig.getInstance(a).isClientActivated()) {
+                        freeAccount = a;
+                        break;
                     }
                 }
-                if (!folder.includesDialog(getAccountInstance(), dialogId, dialog)) {
-                    continue;
+                if (freeAccount >= 0) {
+                    presentFragment(new LoginActivity(freeAccount));
                 }
-            }
-            if ((messagesController.getDialogUnreadCount(dialog) > 0 || dialog.unread_mark)
-                    && !messagesController.isDialogMuted(dialog.id, 0)) {
+            });
+        }
+        o.setBlur(true);
+        o.translate(0, -dp(4));
+        o.setGravity(Gravity.RIGHT);
+        final ShapeDrawable bg = Theme.createRoundRectDrawable(dp(28), getThemedColor(Theme.key_windowBackgroundWhite));
+        bg.getPaint().setShadowLayer(dp(6), 0, dp(1), Theme.multAlpha(0xFF000000, 0.15f));
+        o.setScrimViewBackground(bg);
+        o.show();
+        return true;
+    }
+
+    private static class FolderCounterSpan extends ReplacementSpan {
+        private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final String text;
+
+        FolderCounterSpan(int count, boolean unmuted) {
+            text = String.valueOf(count);
+            backgroundPaint.setColor(Theme.getColor(unmuted ? Theme.key_chats_unreadCounter : Theme.key_chats_unreadCounterMuted));
+            textPaint.setColor(Theme.getColor(Theme.key_chats_unreadCounterText));
+            textPaint.setTextSize(dp(11));
+            textPaint.setTypeface(AndroidUtilities.bold());
+        }
+
+        @Override
+        public int getSize(@NonNull Paint paint, CharSequence text, int start, int end, @Nullable Paint.FontMetricsInt fm) {
+            final float textWidth = textPaint.measureText(this.text);
+            return (int) (textWidth + dp(14));
+        }
+
+        @Override
+        public void draw(@NonNull Canvas canvas, CharSequence text, int start, int end, float x, int top, int y, int bottom, @NonNull Paint paint) {
+            final float textWidth = textPaint.measureText(this.text);
+            final float width = textWidth + dp(10);
+            final float height = dp(16);
+            final float centerY = (top + bottom) / 2f;
+            final RectF rect = new RectF(x + dp(4), centerY - height / 2f, x + dp(4) + width, centerY + height / 2f);
+            canvas.drawRoundRect(rect, height / 2f, height / 2f, backgroundPaint);
+            canvas.drawText(this.text, rect.centerX() - textWidth / 2f, centerY - (textPaint.descent() + textPaint.ascent()) / 2f, textPaint);
+        }
+    }
+
+    private boolean hasUnmutedUnreadDialogs(MessagesController.DialogFilter folder) {
+        final ArrayList<TLRPC.Dialog> dialogs = getMessagesController().getDialogs(folder.id);
+        for (int i = 0; i < dialogs.size(); i++) {
+            final TLRPC.Dialog dialog = dialogs.get(i);
+            if (dialog instanceof TLRPC.TL_dialog && ((TLRPC.TL_dialog) dialog).unread_count > 0 && !getMessagesController().isDialogMuted(dialog.id, 0)) {
                 return true;
             }
         }
         return false;
     }
 
-    private class FolderCounterSpan extends ReplacementSpan {
-
-        private static final float HEIGHT_DP = 17.333f;
-        private final String count;
-        private final boolean hasUnmutedUnreadDialogs;
-        private final TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final float counterWidth;
-
-        FolderCounterSpan(int count, boolean hasUnmutedUnreadDialogs) {
-            this.count = String.valueOf(count);
-            this.hasUnmutedUnreadDialogs = hasUnmutedUnreadDialogs;
-            textPaint.setTextSize(AndroidUtilities.dpf2(11));
-            textPaint.setTypeface(AndroidUtilities.bold());
-            counterWidth = Math.max(dp(HEIGHT_DP - 10), textPaint.measureText(this.count)) + dp(10);
-        }
-
-        @Override
-        public int getSize(@NonNull Paint paint, CharSequence text, int start, int end, @Nullable Paint.FontMetricsInt fm) {
-            return (int) Math.ceil(dp(5) + counterWidth);
-        }
-
-        @Override
-        public void draw(@NonNull Canvas canvas, CharSequence text, int start, int end, float x, int top, int y, int bottom, @NonNull Paint paint) {
-            final float left = x + dp(5);
-            final float centerY = (top + bottom) / 2f + dp(1);
-            final float halfHeight = dp(HEIGHT_DP) / 2f;
-            backgroundPaint.setColor(getThemedColor(
-                hasUnmutedUnreadDialogs ?
-                    Theme.key_featuredStickers_addButton :
-                    Theme.key_chats_tabUnreadUnactiveBackground
-            ));
-            textPaint.setColor(getThemedColor(Theme.key_actionBarDefault));
-            AndroidUtilities.rectTmp.set(left, centerY - halfHeight, left + counterWidth, centerY + halfHeight);
-            canvas.drawRoundRect(AndroidUtilities.rectTmp, halfHeight, halfHeight, backgroundPaint);
-            final Paint.FontMetrics fontMetrics = textPaint.getFontMetrics();
-            final float baseline = centerY - (fontMetrics.ascent + fontMetrics.descent) / 2f;
-            canvas.drawText(count, left + (counterWidth - textPaint.measureText(count)) / 2f, baseline, textPaint);
-        }
-    }
-
-    private void openFolder(int folderId) {
-        if (viewPager.getCurrentPosition() == POSITION_CHATS && dialogsActivity != null) {
-            dialogsActivity.scrollToFolder(folderId);
-        } else {
-            if (dialogsActivity == null) {
-                prepareDialogsActivity(null);
-            }
-            pendingFolderId = folderId;
-            selectTab(POSITION_CHATS, true);
-            viewPager.scrollToPosition(POSITION_CHATS);
-        }
-    }
-
-    public boolean openAccountSelector(View button) {
-        final ArrayList<Integer> accountNumbers = new ArrayList<>();
-
-        accountNumbers.clear();
-        for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
-            if (UserConfig.getInstance(a).isClientActivated()) {
-                accountNumbers.add(a);
-            }
-        }
-        Collections.sort(accountNumbers, (o1, o2) -> {
-            long l1 = UserConfig.getInstance(o1).loginTime;
-            long l2 = UserConfig.getInstance(o2).loginTime;
-            if (l1 > l2) {
-                return 1;
-            } else if (l1 < l2) {
-                return -1;
-            }
-            return 0;
-        });
-
-        ItemOptions o = ItemOptions.makeOptions(this, button);
-        if (UserConfig.getActivatedAccountsCount() < UserConfig.MAX_ACCOUNT_COUNT) {
-            o.add(R.drawable.msg_addbot, getString(R.string.AddAccount), () -> {
-                int freeAccounts = 0;
-                Integer availableAccount = null;
-                for (int a = UserConfig.MAX_ACCOUNT_COUNT - 1; a >= 0; a--) {
-                    if (!UserConfig.getInstance(a).isClientActivated()) {
-                        freeAccounts++;
-                        if (availableAccount == null) {
-                            availableAccount = a;
-                        }
-                    }
-                }
-                if (!UserConfig.hasPremiumOnAccounts()) {
-                    freeAccounts -= (UserConfig.MAX_ACCOUNT_COUNT - UserConfig.MAX_ACCOUNT_DEFAULT_COUNT);
-                }
-                if (freeAccounts > 0 && availableAccount != null) {
-                    presentFragment(new LoginActivity(availableAccount));
-                } else if (!UserConfig.hasPremiumOnAccounts()) {
-                    showDialog(new LimitReachedBottomSheet(this, getContext(), TYPE_ACCOUNTS, currentAccount, null));
-                }
-            });
-        }
-
-        if (BuildConfig.DEBUG_PRIVATE_VERSION) {
-            o.add(R.drawable.menu_download_round, "Dump Canvas", () -> AndroidUtilities.runOnUIThread(this::dumpCanvas, 1000));
-        }
-
-        if (accountNumbers.size() > 0) {
-            if (o.getItemsCount() > 0) o.addGap();
-            for (int acc : accountNumbers) {
-                final int account = acc;
-                final View btn = accountView(acc, currentAccount == acc);
-                btn.setOnClickListener(v -> {
-                    if (currentAccount == account) return;
-                    o.dismiss();
-                    if (LaunchActivity.instance != null) {
-                        LaunchActivity.instance.switchToAccount(account, true);
-                    }
-                });
-                o.addView(btn, LayoutHelper.createLinear(230, 48));
-            }
-        }
-
-        o.setBlur(true);
-        o.translate(0, -dp(4));
-        final ShapeDrawable bg = Theme.createRoundRectDrawable(dp(28), getThemedColor(Theme.key_windowBackgroundWhite));
-        bg.getPaint().setShadowLayer(dp(6), 0, dp(1), Theme.multAlpha(0xFF000000, 0.15f));
-        o.setScrimViewBackground(bg);
-        o.show();
-
-        HintsController.Hint.AccountSwitchHint.doNotShowAgain();
-
-        return true;
-    }
-
-    public LinearLayout accountView(int account, boolean selected) {
-        final LinearLayout btn = new LinearLayout(getContext());
-        btn.setOrientation(LinearLayout.HORIZONTAL);
-        btn.setBackground(Theme.createRadSelectorDrawable(getThemedColor(Theme.key_listSelector), 0, 0));
-
-        final TLRPC.User user = UserConfig.getInstance(account).getCurrentUser();
-
-        final AvatarDrawable avatarDrawable = new AvatarDrawable();
-        avatarDrawable.setInfo(user);
-
-        final FrameLayout avatarContainer = new FrameLayout(getContext()) {
-            private final Paint selectedPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-            @Override
-            protected void dispatchDraw(@NonNull Canvas canvas) {
-                if (selected) {
-                    selectedPaint.setStyle(Paint.Style.STROKE);
-                    selectedPaint.setStrokeWidth(dp(1.33f));
-                    selectedPaint.setColor(getThemedColor(Theme.key_featuredStickers_addButton));
-                    canvas.drawCircle(getWidth() / 2.0f, getHeight() / 2.0f, dp(16), selectedPaint);
-                }
-                super.dispatchDraw(canvas);
-            }
-        };
-        btn.addView(avatarContainer, LayoutHelper.createLinear(34, 34, Gravity.CENTER_VERTICAL, 12, 0, 0, 0));
-
-        final BackupImageView avatarView = new BackupImageView(getContext());
-        if (selected) {
-            avatarView.setScaleX(0.833f);
-            avatarView.setScaleY(0.833f);
-        }
-        avatarView.setRoundRadius(dp(16));
-        avatarView.getImageReceiver().setCurrentAccount(account);
-        avatarView.setForUserOrChat(user, avatarDrawable);
-        avatarContainer.addView(avatarView, LayoutHelper.createLinear(32, 32, Gravity.CENTER, 1, 1, 1, 1));
-
-        final TextView textView = new TextView(getContext());
-        textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
-        textView.setTextColor(getThemedColor(Theme.key_dialogTextBlack));
-        textView.setText(UserObject.getUserName(user));
-        textView.setMaxLines(2);
-        textView.setEllipsize(TextUtils.TruncateAt.END);
-        btn.addView(textView, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f, Gravity.CENTER_VERTICAL, 13, 0, 14, 0));
-
-        return btn;
-    }
-
     @Override
     protected void onViewPagerScrollEnd() {
-        if (tabsView != null) {
-            selectTab(viewPager.getCurrentPosition(), true);
-            setGestureSelectedOverride(0, false);
+        super.onViewPagerScrollEnd();
+        selectTab(viewPager.getCurrentPosition(), true);
+        final int currentPosition = viewPager.getCurrentPosition();
+        if (pendingFolderId != null && activeTabs.contains(INDEX_CHATS) && currentPosition == activeTabs.indexOf(INDEX_CHATS) && dialogsActivity != null) {
+            dialogsActivity.switchToFolderId(pendingFolderId);
+            pendingFolderId = null;
         }
-        blur3_invalidateBlur();
-
-        if (viewPager != null) {
-            final int currentPosition = viewPager.getCurrentPosition();
-            if (currentPosition != POSITION_CALLS_OR_SETTINGS && dropCallsFragmentAfterPageScroll) {
-                dropFragmentAtPosition(POSITION_CALLS_OR_SETTINGS);
-                dropCallsFragmentAfterPageScroll = false;
-            }
-            if (currentPosition != POSITION_PROFILE) {
-                dropFragmentAtPosition(POSITION_PROFILE);
-            }
-            if (pendingFolderId != null && currentPosition == POSITION_CHATS && dialogsActivity != null) {
-                dialogsActivity.scrollToFolder(pendingFolderId);
-                pendingFolderId = null;
-            }
-        }
-
     }
 
     @Override
@@ -765,15 +653,16 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         contentView.invalidate();
     }
 
-
     @Override
     protected int getFragmentsCount() {
-        return TABS_COUNT;
+        if (activeTabs.isEmpty()) rebuildActiveTabs();
+        return activeTabs.size();
     }
 
     @Override
     protected int getStartPosition() {
-        return POSITION_CHATS;
+        int pos = activeTabs.indexOf(INDEX_CHATS);
+        return pos != -1 ? pos : 0;
     }
 
     private DialogsActivity dialogsActivity;
@@ -801,39 +690,44 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         bundle.putBoolean("hasMainTabs", true);
         dialogsActivity = new DialogsActivity(bundle);
         dialogsActivity.setMainTabsActivityController(new MainTabsActivityControllerImpl());
-        putFragmentAtPosition(POSITION_CHATS, dialogsActivity);
+        if (activeTabs.isEmpty()) rebuildActiveTabs();
+        int pos = activeTabs.indexOf(INDEX_CHATS);
+        if (pos != -1) {
+            putFragmentAtPosition(pos, dialogsActivity);
+        }
         return dialogsActivity;
     }
 
     @Override
     protected BaseFragment createBaseFragmentAt(int position) {
-        if (position == POSITION_CONTACTS) {
+        if (activeTabs.isEmpty()) rebuildActiveTabs();
+        if (position < 0 || position >= activeTabs.size()) return null;
+        int index = activeTabs.get(position);
+        if (index == INDEX_CONTACTS) {
             Bundle args = new Bundle();
             args.putBoolean("needPhonebook", true);
             args.putBoolean("needFinishFragment", false);
             args.putBoolean("hasMainTabs", true);
             return new ContactsActivity(args);
-        } else if (position == POSITION_CALLS_OR_SETTINGS) {
-            if (getUserConfig().showCallsTab) {
-                Bundle args = new Bundle();
-                args.putBoolean("needFinishFragment", false);
-                args.putBoolean("hasMainTabs", true);
-                return new CallLogActivity(args);
-            }
+        } else if (index == INDEX_CALLS) {
+            Bundle args = new Bundle();
+            args.putBoolean("needFinishFragment", false);
+            args.putBoolean("hasMainTabs", true);
+            return new CallLogActivity(args);
+        } else if (index == INDEX_SETTINGS) {
             Bundle args = new Bundle();
             args.putBoolean("hasMainTabs", true);
             return new SettingsActivity(args);
-        } else if (position == POSITION_CHATS) {
+        } else if (index == INDEX_CHATS) {
             Bundle args = new Bundle();
             args.putBoolean("hasMainTabs", true);
             dialogsActivity = new DialogsActivity(args);
             dialogsActivity.setMainTabsActivityController(new MainTabsActivityControllerImpl());
             return dialogsActivity;
-        } else if (position == POSITION_PROFILE) {
+        } else if (index == INDEX_PROFILE) {
             Bundle args = new Bundle();
             args.putLong("user_id", UserConfig.getInstance(currentAccount).getClientUserId());
             args.putBoolean("my_profile", true);
-            // args.putBoolean("expandPhoto", true);
             args.putBoolean("hasMainTabs", true);
             return new ProfileActivity(args);
         }
@@ -844,28 +738,26 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         return dialogsActivity;
     }
 
-    /* */
-
     public GlassTabView[] tabs;
 
     public void selectTab(int position, boolean animated) {
-        for (int a = 0; a < tabs.length; a++) {
-            GlassTabView tab = tabs[a];
-            tab.setSelected(indexToPosition(a) == position, animated);
+        if (tabs == null) return;
+        for (int index = 0; index < tabs.length; index++) {
+            GlassTabView tab = tabs[index];
+            int pos = activeTabs.indexOf(index);
+            tab.setSelected(pos == position, animated);
         }
     }
 
     public void setGestureSelectedOverride(float animatedPosition, boolean allow) {
+        if (tabs == null) return;
         for (int index = 0; index < tabs.length; index++) {
-            final int position = indexToPosition(index);
-            final float visibility = Math.max(0, 1f - Math.abs(position - animatedPosition));
+            int pos = activeTabs.indexOf(index);
+            float visibility = pos != -1 ? Math.max(0, 1f - Math.abs(pos - animatedPosition)) : 0f;
             tabs[index].setGestureSelectedOverride(visibility, allow);
         }
         tabsView.invalidate();
     }
-
-
-    /* * */
 
     public interface TabFragmentDelegate {
         default boolean canParentTabsSlide(MotionEvent ev, boolean forward) {
@@ -901,9 +793,6 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
         return false;
     }
-
-
-    /* * */
 
     private int navigationBarHeight;
     private int insetLeft;
@@ -991,15 +880,17 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             }
         } else if (id == NotificationCenter.needSetDayNightTheme) {
             clearAllHiddenFragments();
-        } else if (id == NotificationCenter.callTabsVisibleToggled) {
-            final boolean callTabsVisible = getUserConfig().showCallsTab;
-            checkUi_callTabVisible(callTabsVisible, true);
-            if (viewPager != null && viewPager.getCurrentPosition() == POSITION_CALLS_OR_SETTINGS) {
-                viewPager.scrollToPosition(POSITION_CHATS);
-                selectTab(POSITION_CHATS, true);
-                dropCallsFragmentAfterPageScroll = true;
-            } else {
-                dropFragmentAtPosition(POSITION_CALLS_OR_SETTINGS);
+        } else if (id == NotificationCenter.mainTabsLayoutChanged || id == NotificationCenter.callTabsVisibleToggled) {
+            updateTabsVisibility(true);
+            if (viewPager != null) {
+                int currentPos = viewPager.getCurrentPosition();
+                if (currentPos >= activeTabs.size()) {
+                    currentPos = getStartPosition();
+                    viewPager.scrollToPosition(currentPos);
+                }
+                fragmentsArr.clear();
+                viewPager.rebuild(false);
+                selectTab(viewPager.getCurrentPosition(), false);
             }
         } else if (id == NotificationCenter.mainUserInfoChanged) {
             if (tabs != null && tabs[INDEX_PROFILE] != null) {
@@ -1022,6 +913,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             .add(NotificationCenter.notificationsCountUpdated)
             .add(NotificationCenter.updateInterfaces)
             .add(NotificationCenter.callTabsVisibleToggled)
+            .add(NotificationCenter.mainTabsLayoutChanged)
             .add(NotificationCenter.mainUserInfoChanged)
             .add(NotificationCenter.contactsPermissionBadgeCheck)
             .addGlobal(NotificationCenter.appUpdateAvailable)
@@ -1058,7 +950,8 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         }
 
         final float animatedPosition = viewPager.getPositionAnimated();
-        final float isProfile = 1f - MathUtils.clamp(Math.abs(POSITION_PROFILE - animatedPosition), 0, 1);
+        int profilePos = activeTabs.indexOf(INDEX_PROFILE);
+        final float isProfile = profilePos != -1 ? 1f - MathUtils.clamp(Math.abs(profilePos - animatedPosition), 0, 1) : 0f;
         final float hide = 1f - AndroidUtilities.getNavigationBarThirdButtonsFactor(0, 1f, navigationBarHeight);
         float alpha = (1f - isProfile * hide) * animatorTabsVisible.getFloatValue();
         if (tabletLayout) {
@@ -1077,20 +970,12 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         final int hiddenY = normalY + dp(40);
 
         final float factor = animatorTabsVisible.getFloatValue();
-        final float scale = lerp(0.85f, 1f, factor);
 
         tabsViewWrapper.setTranslationY(lerp(hiddenY, normalY, factor));
         tabsView.setClickable(factor > 1);
         tabsView.setEnabled(factor > 1);
         tabsView.setAlpha(factor);
         tabsView.setVisibility(factor > 0 ? View.VISIBLE : View.GONE);
-    }
-
-    private void checkUi_callTabVisible(boolean callTabsVisible, boolean animated) {
-        if (tabsView != null) {
-            tabsView.setViewVisible(tabs[INDEX_SETTINGS], !callTabsVisible, animated);
-            tabsView.setViewVisible(tabs[INDEX_CALLS], callTabsVisible, animated);
-        }
     }
 
     @Override
@@ -1104,17 +989,12 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         return themeDescriptions;
     }
 
-    /* * */
-
     private class MainTabsActivityControllerImpl implements MainTabsActivityController {
         @Override
         public void setTabsVisible(boolean visible) {
             animatorTabsVisible.setValue(visible, true);
         }
     }
-
-
-    /* Slide */
 
     @Override
     public boolean canBeginSlide() {
@@ -1153,7 +1033,6 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         }
     }
 
-
     private HintView2 accountSwitchHint;
     private boolean accountSwitchHintShown;
 
@@ -1163,6 +1042,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         if (accountSwitchHint == null && HintsController.Hint.AccountSwitchHint.show()) {
             AndroidUtilities.runOnUIThread(() -> {
                 if (getContext() == null || tabs == null) return;
+                if (!activeTabs.contains(INDEX_PROFILE)) return;
 
                 final View v = tabs[INDEX_PROFILE];
                 final float translate = (contentView.getWidth() - ((tabsView.getX() + v.getX()) + v.getWidth()) + v.getWidth() / 2f) / AndroidUtilities.density;
@@ -1185,9 +1065,6 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
         accountSwitchHintShown = true;
     }
-
-
-    /* * */
 
     private final @NonNull BlurredBackgroundSourceColor iBlur3SourceColor;
     private final @Nullable BlurredBackgroundSourceRenderNode iBlur3SourceTabGlass;

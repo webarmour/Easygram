@@ -11672,4 +11672,7 @@
     <string name="EasygramEmbeddedPhotoPicker">Embedded Photo Picker</string>
     <string name="EasygramPhoto">Camera</string>
     <string name="EasygramTakePhoto">Take photo</string>
+    <string name="EasygramNavigationBar">Bottom navigation bar</string>
+    <string name="EasygramNavigationBarInfo">Select sections to display in the bottom navigation bar.</string>
+    <string name="EasygramNavMinError">At least one section must be selected</string>
 </resources>
