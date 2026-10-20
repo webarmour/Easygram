@@ -6829,6 +6829,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         checkListLoad(viewPages[a]);
     }
 
+    public void switchToFolderId(int folderId) {
+        if (filterTabsView != null) {
+            filterTabsView.selectTabWithStableId(folderId);
+        }
+    }
+
     private boolean scrollBarVisible = true;
 
     private void showScrollbars(boolean show) {
