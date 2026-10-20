@@ -406,4 +406,6 @@
     <string name="EasygramDisableStoriesInfo">Не отображать блок историй над списком чатов.</string>
     <string name="EasygramDisableAds">Выключить рекламу</string>
     <string name="EasygramDisableAdsInfo">Отключает спонсорские сообщения в каналах, рекламу в поиске, промо-каналы и видеорекламу.</string>
+    <string name="EasygramSendMediaHd">Отправлять медиа в HD</string>
+    <string name="EasygramSendMediaHdInfo">Применимо в сторонних пикерах, выбранных в настройках.</string>
 </resources>

@@ -11679,4 +11679,6 @@
     <string name="EasygramDisableStoriesInfo">Do not display the stories block above the chats list.</string>
     <string name="EasygramDisableAds">Disable ads</string>
     <string name="EasygramDisableAdsInfo">Disables sponsored messages in channels, ads in search, promo channels, and video ads.</string>
+    <string name="EasygramSendMediaHd">Send media in HD</string>
+    <string name="EasygramSendMediaHdInfo">Applies to third-party pickers selected in settings.</string>
 </resources>
