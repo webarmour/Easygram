@@ -11675,4 +11675,6 @@
     <string name="EasygramNavigationBar">Bottom navigation bar</string>
     <string name="EasygramNavigationBarInfo">Select sections and drag them to reorder the navigation bar.</string>
     <string name="EasygramNavMinError">At least one section must be selected</string>
+    <string name="EasygramDisableStories">Disable stories</string>
+    <string name="EasygramDisableStoriesInfo">Do not display the stories block above the chats list.</string>
 </resources>

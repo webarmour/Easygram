@@ -34,6 +34,7 @@ import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.HeaderCell;
+import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Cells.TextInfoPrivacyCell;
 import org.telegram.ui.Cells.TextSettingsCell;
 import org.telegram.ui.Components.BulletinFactory;
@@ -48,7 +49,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Easygram settings for optional app integrations and navigation. */
+/** Easygram settings for optional app integrations, stories, and navigation. */
 public class OtherSettingsActivity extends BaseFragment {
     public static final String DEFAULT_GALLERY_PACKAGE = "easygram_default_gallery_package";
     public static final String EMBEDDED_PHOTO_PICKER = "__embedded_photo_picker__";
@@ -75,6 +76,8 @@ public class OtherSettingsActivity extends BaseFragment {
     private int headerRow;
     private int galleryRow;
     private int galleryInfoRow;
+    private int disableStoriesRow;
+    private int storiesInfoRow;
     private int navHeaderRow;
     private int navStartRow;
     private int navEndRow;
@@ -165,6 +168,8 @@ public class OtherSettingsActivity extends BaseFragment {
         headerRow = rowCount++;
         galleryRow = rowCount++;
         galleryInfoRow = rowCount++;
+        disableStoriesRow = rowCount++;
+        storiesInfoRow = rowCount++;
         navHeaderRow = rowCount++;
         navStartRow = rowCount;
         rowCount += navItems.size();
@@ -207,6 +212,16 @@ public class OtherSettingsActivity extends BaseFragment {
         listView.setOnItemClickListener((view, position) -> {
             if (position == galleryRow) {
                 showGalleryChooser(view);
+            } else if (position == disableStoriesRow) {
+                boolean current = preferences().getBoolean("easygram_disable_stories", false);
+                boolean next = !current;
+                preferences().edit().putBoolean("easygram_disable_stories", next).apply();
+                if (view instanceof TextCheckCell) {
+                    ((TextCheckCell) view).setChecked(next);
+                }
+                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.storiesUpdated);
+                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.storiesEnabledUpdate);
+                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.mainTabsLayoutChanged);
             } else if (position >= navStartRow && position < navEndRow) {
                 int index = navItems.get(position - navStartRow);
                 if (view instanceof ReorderCheckCell) {
@@ -368,7 +383,7 @@ public class OtherSettingsActivity extends BaseFragment {
         @Override
         public boolean isEnabled(RecyclerView.ViewHolder holder) {
             int type = holder.getItemViewType();
-            return type == 1 || type == 4;
+            return type == 1 || type == 3 || type == 4;
         }
 
         @Override
@@ -380,7 +395,8 @@ public class OtherSettingsActivity extends BaseFragment {
         public int getItemViewType(int position) {
             if (position == headerRow || position == navHeaderRow) return 0;
             if (position == galleryRow) return 1;
-            if (position == galleryInfoRow || position == navInfoRow) return 2;
+            if (position == galleryInfoRow || position == storiesInfoRow || position == navInfoRow) return 2;
+            if (position == disableStoriesRow) return 3;
             if (position >= navStartRow && position < navEndRow) return 4;
             return 0;
         }
@@ -400,6 +416,10 @@ public class OtherSettingsActivity extends BaseFragment {
                     break;
                 case 2:
                     view = new TextInfoPrivacyCell(mContext);
+                    break;
+                case 3:
+                    view = new TextCheckCell(mContext);
+                    view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                     break;
                 case 4:
                 default:
@@ -433,9 +453,20 @@ public class OtherSettingsActivity extends BaseFragment {
                     TextInfoPrivacyCell infoCell = (TextInfoPrivacyCell) holder.itemView;
                     if (position == galleryInfoRow) {
                         infoCell.setText(LocaleController.getString(R.string.EasygramDefaultGalleryInfo));
+                    } else if (position == storiesInfoRow) {
+                        infoCell.setText(LocaleController.getString(R.string.EasygramDisableStoriesInfo));
                     } else if (position == navInfoRow) {
                         infoCell.setText(LocaleController.getString(R.string.EasygramNavigationBarInfo));
                     }
+                    break;
+                case 3:
+                    TextCheckCell storiesCheckCell = (TextCheckCell) holder.itemView;
+                    boolean disabledStories = preferences().getBoolean("easygram_disable_stories", false);
+                    storiesCheckCell.setTextAndCheck(
+                            LocaleController.getString(R.string.EasygramDisableStories),
+                            disabledStories,
+                            false
+                    );
                     break;
                 case 4:
                     ReorderCheckCell checkCell = (ReorderCheckCell) holder.itemView;
