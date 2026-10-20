@@ -11673,6 +11673,6 @@
     <string name="EasygramPhoto">Camera</string>
     <string name="EasygramTakePhoto">Take photo</string>
     <string name="EasygramNavigationBar">Bottom navigation bar</string>
-    <string name="EasygramNavigationBarInfo">Select sections to display in the bottom navigation bar.</string>
+    <string name="EasygramNavigationBarInfo">Select sections and drag them to reorder the navigation bar.</string>
     <string name="EasygramNavMinError">At least one section must be selected</string>
 </resources>

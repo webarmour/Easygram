@@ -300,7 +300,11 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
     private void updateTabsVisibility(boolean animated) {
         rebuildActiveTabs();
         if (tabsView != null && tabs != null) {
-            for (int index = 0; index < tabs.length; index++) {
+            SharedPreferences prefs = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Context.MODE_PRIVATE);
+            java.util.List<Integer> order = OtherSettingsActivity.getTabOrder(prefs);
+            tabsView.removeAllViews();
+            for (int index : order) {
+                tabsView.addView(tabs[index]);
                 boolean visible = activeTabs.contains(index);
                 tabsView.setViewVisible(tabs[index], visible, animated);
             }
@@ -354,8 +358,6 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
                 selectTab(position, true);
                 viewPager.scrollToPosition(position);
             });
-
-            tabsView.addView(tabs[index]);
         }
         updateTabsVisibility(false);
 
