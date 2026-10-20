@@ -11664,8 +11664,8 @@
     <string name="EasygramCheckUpdates">Check for updates</string>
     <string name="EasygramCheckUpdatesInfo">Download the latest Easygram version</string>
     <!-- EASYGRAM_UPDATER_STRINGS_END -->
-    <string name="EasygramOther">Other</string>
-    <string name="EasygramOtherInfo">Apps and behavior</string>
+    <string name="EasygramOther">Advanced</string>
+    <string name="EasygramOtherInfo">Easygram features</string>
     <string name="EasygramDefaultGallery">Gallery app</string>
     <string name="EasygramBuiltInGallery">Telegram gallery</string>
     <string name="EasygramDefaultGalleryInfo">Open this gallery directly when you tap the attachment button in a chat.</string>
@@ -11680,5 +11680,5 @@
     <string name="EasygramDisableAds">Disable ads</string>
     <string name="EasygramDisableAdsInfo">Disables sponsored messages in channels, ads in search, promo channels, and video ads.</string>
     <string name="EasygramSendMediaHd">Send media in HD</string>
-    <string name="EasygramSendMediaHdInfo">Applies to third-party pickers selected in settings.</string>
+    <string name="EasygramSendMediaHdInfo">Applies to third-party pickers selected above.</string>
 </resources>
