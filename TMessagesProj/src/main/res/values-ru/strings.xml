@@ -391,8 +391,8 @@
     <string name="EasygramCheckUpdates">Проверить обновления</string>
     <string name="EasygramCheckUpdatesInfo">Скачать новую версию Easygram</string>
     <!-- EASYGRAM_UPDATER_STRINGS_END -->
-    <string name="EasygramOther">Другое</string>
-    <string name="EasygramOtherInfo">Приложения и поведение</string>
+    <string name="EasygramOther">Дополнительно</string>
+    <string name="EasygramOtherInfo">Функционал Easygram</string>
     <string name="EasygramDefaultGallery">Приложение галереи</string>
     <string name="EasygramBuiltInGallery">Галерея Telegram</string>
     <string name="EasygramDefaultGalleryInfo">Открывать выбранную галерею сразу при нажатии на скрепку в чате.</string>
@@ -407,5 +407,5 @@
     <string name="EasygramDisableAds">Выключить рекламу</string>
     <string name="EasygramDisableAdsInfo">Отключает спонсорские сообщения в каналах, рекламу в поиске, промо-каналы и видеорекламу.</string>
     <string name="EasygramSendMediaHd">Отправлять медиа в HD</string>
-    <string name="EasygramSendMediaHdInfo">Применимо в сторонних пикерах, выбранных в настройках.</string>
+    <string name="EasygramSendMediaHdInfo">Применимо в сторонних пикерах, выбранных выше.</string>
 </resources>

@@ -707,6 +707,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                     getString(R.string.EasygramVideoMessagesInfo)
             ));
         }
+        items.add(SettingCell.Factory.of(27, IconBackgroundColors.RED.top, IconBackgroundColors.RED.bottom, R.drawable.settings_other, getString(R.string.EasygramOther), getString(R.string.EasygramOtherInfo)));
         items.add(SettingCell.Factory.of(3, IconBackgroundColors.GREEN.top, IconBackgroundColors.GREEN.bottom, R.drawable.settings_privacy, getString(R.string.SettingsPrivacySecurity), getString(R.string.SettingsPrivacySecurityInfo)));
         items.add(SettingCell.Factory.of(5, IconBackgroundColors.RED.top, IconBackgroundColors.RED.bottom, R.drawable.settings_sounds, getString(R.string.SettingsNotifications), getString(R.string.SettingsNotificationsInfo)));
         items.add(SettingCell.Factory.of(6, IconBackgroundColors.BLUE_DEEP.top, IconBackgroundColors.BLUE_DEEP.bottom, R.drawable.settings_data, getString(R.string.SettingsData), getString(R.string.SettingsDataInfo)));
@@ -714,7 +715,6 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         items.add(SettingCell.Factory.of(8, IconBackgroundColors.CYAN.top, IconBackgroundColors.CYAN.bottom, R.drawable.settings_devices, getString(R.string.SettingsDevices), getString(R.string.SettingsDevicesInfo)));
         items.add(SettingCell.Factory.of(9, IconBackgroundColors.ORANGE_DEEP.top, IconBackgroundColors.ORANGE_DEEP.bottom, R.drawable.settings_power, getString(R.string.SettingsPowerSaving), getString(R.string.SettingsPowerSavingInfo)));
         items.add(SettingCell.Factory.of(10, IconBackgroundColors.PURPLE.top, IconBackgroundColors.PURPLE.bottom, R.drawable.settings_language, getString(R.string.SettingsLanguage), LocaleController.getCurrentLanguageName()));
-        items.add(SettingCell.Factory.of(27, IconBackgroundColors.RED.top, IconBackgroundColors.RED.bottom, R.drawable.settings_other, getString(R.string.EasygramOther), getString(R.string.EasygramOtherInfo)));
         // EASYGRAM_UPDATER_START
         items.add(SettingCell.Factory.of(26, IconBackgroundColors.BLUE.top, IconBackgroundColors.BLUE.bottom, R.drawable.settings_features, getString(R.string.EasygramCheckUpdates), getString(R.string.EasygramCheckUpdatesInfo)));
         // EASYGRAM_UPDATER_END
