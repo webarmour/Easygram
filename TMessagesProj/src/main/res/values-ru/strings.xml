@@ -404,4 +404,6 @@
     <string name="EasygramNavMinError">Должен быть выбран хотя бы один раздел</string>
     <string name="EasygramDisableStories">Выключить сторис</string>
     <string name="EasygramDisableStoriesInfo">Не отображать блок историй над списком чатов.</string>
+    <string name="EasygramDisableAds">Выключить рекламу</string>
+    <string name="EasygramDisableAdsInfo">Отключает спонсорские сообщения в каналах, рекламу в поиске, промо-каналы и видеорекламу.</string>
 </resources>

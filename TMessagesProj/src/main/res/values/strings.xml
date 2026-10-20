@@ -11677,4 +11677,6 @@
     <string name="EasygramNavMinError">At least one section must be selected</string>
     <string name="EasygramDisableStories">Disable stories</string>
     <string name="EasygramDisableStoriesInfo">Do not display the stories block above the chats list.</string>
+    <string name="EasygramDisableAds">Disable ads</string>
+    <string name="EasygramDisableAdsInfo">Disables sponsored messages in channels, ads in search, promo channels, and video ads.</string>
 </resources>

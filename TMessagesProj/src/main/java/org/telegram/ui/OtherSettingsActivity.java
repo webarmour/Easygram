@@ -49,7 +49,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Easygram settings for optional app integrations, stories, and navigation. */
+/** Easygram settings for optional app integrations, stories, ads, and navigation. */
 public class OtherSettingsActivity extends BaseFragment {
     public static final String DEFAULT_GALLERY_PACKAGE = "easygram_default_gallery_package";
     public static final String EMBEDDED_PHOTO_PICKER = "__embedded_photo_picker__";
@@ -78,6 +78,8 @@ public class OtherSettingsActivity extends BaseFragment {
     private int galleryInfoRow;
     private int disableStoriesRow;
     private int storiesInfoRow;
+    private int disableAdsRow;
+    private int adsInfoRow;
     private int navHeaderRow;
     private int navStartRow;
     private int navEndRow;
@@ -170,6 +172,8 @@ public class OtherSettingsActivity extends BaseFragment {
         galleryInfoRow = rowCount++;
         disableStoriesRow = rowCount++;
         storiesInfoRow = rowCount++;
+        disableAdsRow = rowCount++;
+        adsInfoRow = rowCount++;
         navHeaderRow = rowCount++;
         navStartRow = rowCount;
         rowCount += navItems.size();
@@ -221,6 +225,16 @@ public class OtherSettingsActivity extends BaseFragment {
                 }
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.storiesUpdated);
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.storiesEnabledUpdate);
+                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.mainTabsLayoutChanged);
+            } else if (position == disableAdsRow) {
+                boolean current = preferences().getBoolean("easygram_disable_ads", false);
+                boolean next = !current;
+                preferences().edit().putBoolean("easygram_disable_ads", next).apply();
+                if (view instanceof TextCheckCell) {
+                    ((TextCheckCell) view).setChecked(next);
+                }
+                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.updateInterfaces);
+                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.storiesUpdated);
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.mainTabsLayoutChanged);
             } else if (position >= navStartRow && position < navEndRow) {
                 int index = navItems.get(position - navStartRow);
@@ -395,8 +409,8 @@ public class OtherSettingsActivity extends BaseFragment {
         public int getItemViewType(int position) {
             if (position == headerRow || position == navHeaderRow) return 0;
             if (position == galleryRow) return 1;
-            if (position == galleryInfoRow || position == storiesInfoRow || position == navInfoRow) return 2;
-            if (position == disableStoriesRow) return 3;
+            if (position == galleryInfoRow || position == storiesInfoRow || position == adsInfoRow || position == navInfoRow) return 2;
+            if (position == disableStoriesRow || position == disableAdsRow) return 3;
             if (position >= navStartRow && position < navEndRow) return 4;
             return 0;
         }
@@ -455,21 +469,32 @@ public class OtherSettingsActivity extends BaseFragment {
                         infoCell.setText(LocaleController.getString(R.string.EasygramDefaultGalleryInfo));
                     } else if (position == storiesInfoRow) {
                         infoCell.setText(LocaleController.getString(R.string.EasygramDisableStoriesInfo));
+                    } else if (position == adsInfoRow) {
+                        infoCell.setText(LocaleController.getString(R.string.EasygramDisableAdsInfo));
                     } else if (position == navInfoRow) {
                         infoCell.setText(LocaleController.getString(R.string.EasygramNavigationBarInfo));
                     }
                     break;
                 case 3:
-                    TextCheckCell storiesCheckCell = (TextCheckCell) holder.itemView;
-                    boolean disabledStories = preferences().getBoolean("easygram_disable_stories", false);
-                    storiesCheckCell.setTextAndCheck(
-                            LocaleController.getString(R.string.EasygramDisableStories),
-                            disabledStories,
-                            false
-                    );
+                    TextCheckCell checkCell = (TextCheckCell) holder.itemView;
+                    if (position == disableStoriesRow) {
+                        boolean disabledStories = preferences().getBoolean("easygram_disable_stories", false);
+                        checkCell.setTextAndCheck(
+                                LocaleController.getString(R.string.EasygramDisableStories),
+                                disabledStories,
+                                true
+                        );
+                    } else if (position == disableAdsRow) {
+                        boolean disabledAds = preferences().getBoolean("easygram_disable_ads", false);
+                        checkCell.setTextAndCheck(
+                                LocaleController.getString(R.string.EasygramDisableAds),
+                                disabledAds,
+                                false
+                        );
+                    }
                     break;
                 case 4:
-                    ReorderCheckCell checkCell = (ReorderCheckCell) holder.itemView;
+                    ReorderCheckCell checkCell2 = (ReorderCheckCell) holder.itemView;
                     int index = navItems.get(position - navStartRow);
                     String title;
                     switch (index) {
@@ -491,8 +516,8 @@ public class OtherSettingsActivity extends BaseFragment {
                             break;
                     }
                     boolean checked = isTabEnabled(index, preferences(), currentAccount);
-                    checkCell.setItem(title, checked, position != navEndRow - 1);
-                    checkCell.getMoveImageView().setOnTouchListener((v, event) -> {
+                    checkCell2.setItem(title, checked, position != navEndRow - 1);
+                    checkCell2.getMoveImageView().setOnTouchListener((v, event) -> {
                         if (event.getAction() == MotionEvent.ACTION_DOWN) {
                             itemTouchHelper.startDrag(holder);
                         }
