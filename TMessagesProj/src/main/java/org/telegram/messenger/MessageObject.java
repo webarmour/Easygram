@@ -4266,6 +4266,10 @@ public class MessageObject {
     }
 
     public boolean isSponsored() {
+        android.content.SharedPreferences prefs = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", android.content.Context.MODE_PRIVATE);
+        if (prefs.getBoolean("easygram_disable_ads", false)) {
+            return false;
+        }
         return sponsoredId != null;
     }
 
