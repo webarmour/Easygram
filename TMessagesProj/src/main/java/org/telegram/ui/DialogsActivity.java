@@ -10589,7 +10589,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         } else if (id == NotificationCenter.proxySettingsChanged) {
             updateProxyButton(false, false);
         } else if (id == NotificationCenter.updateInterfaces) {
-            Integer mask = (Integer) args[0];
+            int mask = args != null && args.length > 0 && args[0] instanceof Integer ? (Integer) args[0] : MessagesController.UPDATE_MASK_ALL;
             updateVisibleRows(mask);
             if (filterTabsView != null && filterTabsView.getVisibility() == View.VISIBLE && (mask & MessagesController.UPDATE_MASK_READ_DIALOG_MESSAGE) != 0) {
                 filterTabsView.checkTabsCounter();
