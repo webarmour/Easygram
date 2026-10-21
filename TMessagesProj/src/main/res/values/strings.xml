@@ -5927,8 +5927,8 @@
     <string name="BioLimitTitle">Bio</string>
     <string name="BioLimitSubtitle">Add more symbols and use links in your bio.</string>
     <string name="AppIcon">App Icon</string>
-    <string name="AppIconDefault">Bloom Light</string>
-    <string name="AppIconBloomDark">Bloom Dark</string>
+    <string name="AppIconDefault">Easygram Light</string>
+    <string name="AppIconBloomDark">Easygram Dark</string>
     <string name="AppIconVintage">Vintage</string>
     <string name="AppIconAqua">Aqua</string>
     <string name="AppIconPremium">Premium</string>
