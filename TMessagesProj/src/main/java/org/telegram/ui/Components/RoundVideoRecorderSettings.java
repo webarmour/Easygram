@@ -65,9 +65,13 @@ public final class RoundVideoRecorderSettings {
     // CUSTOM_RECORDER_CONFIGURABLE_START_DELAY_V1
     private static final String RECORDING_START_DELAY = "recording_start_delay_ms";
     private static final String MAX_DURATION = "max_duration_seconds";
+    public static final String ENABLE_CONCURRENT_PREWARM = "enable_concurrent_prewarm";
+    public static final String CONCURRENT_PREWARM_FPS = "concurrent_prewarm_fps";
     private static final int DEFAULT_MAX_DURATION_SECONDS = 60;
     private static final int DEFAULT_RECORDING_START_DELAY_MS = 200;
     private static final int MAX_RECORDING_START_DELAY_MS = 2000;
+    public static final boolean DEFAULT_ENABLE_CONCURRENT_PREWARM = false;
+    public static final int DEFAULT_CONCURRENT_PREWARM_FPS = 30;
 
     // Defaults for new Easygram installs (existing SharedPreferences always take precedence).
     // Resetting CustomRecorder options also returns to these defaults.
@@ -145,6 +149,8 @@ public final class RoundVideoRecorderSettings {
                     if (!p.contains(AUDIO_BITRATE)) e.putInt(AUDIO_BITRATE, 128_000);
                     if (!p.contains(RECORDING_START_DELAY)) e.putInt(RECORDING_START_DELAY, 200);
                     if (!p.contains(MAX_DURATION)) e.putInt(MAX_DURATION, DEFAULT_MAX_DURATION_SECONDS);
+                    if (!p.contains(ENABLE_CONCURRENT_PREWARM)) e.putBoolean(ENABLE_CONCURRENT_PREWARM, DEFAULT_ENABLE_CONCURRENT_PREWARM);
+                    if (!p.contains(CONCURRENT_PREWARM_FPS)) e.putInt(CONCURRENT_PREWARM_FPS, DEFAULT_CONCURRENT_PREWARM_FPS);
                     e.putBoolean("easygram_native_defaults_initialized_v1", true).apply();
                 }
             }
@@ -227,36 +233,65 @@ public final class RoundVideoRecorderSettings {
         if (quality.getOutputSize().getWidth() > 1280 || quality.getOutputSize().getHeight() > 1280) {
             quality = VideoQuality.FULL_HD;
         }
+        AePrioritySetting aePriority = fromPref(p, AE_PRIORITY, AePrioritySetting.class, DEFAULT_AE_PRIORITY);
+        AntibandingSetting antibanding = fromPref(p, ANTIBANDING, AntibandingSetting.class, DEFAULT_ANTIBANDING);
+        NoiseReductionSetting noise = fromPref(p, NOISE, NoiseReductionSetting.class, DEFAULT_NOISE);
+        HotPixelSetting hotPixel = fromPref(p, HOT_PIXEL, HotPixelSetting.class, d.getHotPixelCorrection());
+        ShadingSetting shading = fromPref(p, SHADING, ShadingSetting.class, d.getLensShading());
+        ColorCorrectionSetting colorCorrection = fromPref(p, COLOR_CORRECTION, ColorCorrectionSetting.class, DEFAULT_COLOR_CORRECTION);
+        StabilizationSetting stabilization = fromPref(p, STABILIZATION, StabilizationSetting.class, DEFAULT_STABILIZATION);
+        OpticalStabilizationSetting opticalStabilization = fromPref(p, OPTICAL_STABILIZATION, OpticalStabilizationSetting.class, DEFAULT_OPTICAL_STABILIZATION);
+        EdgeSetting edge = fromPref(p, EDGE, EdgeSetting.class, DEFAULT_EDGE);
+        DistortionCorrectionSetting distortion = fromPref(p, DISTORTION, DistortionCorrectionSetting.class, d.getDistortionCorrection());
+        AberrationCorrectionSetting aberration = fromPref(p, ABERRATION, AberrationCorrectionSetting.class, d.getAberrationCorrection());
+        TonemapSetting tonemap = fromPref(p, TONEMAP, TonemapSetting.class, DEFAULT_TONEMAP);
+        AwbSetting awb = fromPref(p, AWB, AwbSetting.class, DEFAULT_AWB);
+        ExposureMode exposureMode = fromPref(p, EXPOSURE_MODE, ExposureMode.class, d.getExposureMode());
+        FocusSetting focus = fromPref(p, FOCUS, FocusSetting.class, DEFAULT_FOCUS);
+
+        boolean enablePrewarm = p.getBoolean(ENABLE_CONCURRENT_PREWARM, DEFAULT_ENABLE_CONCURRENT_PREWARM);
+        int prewarmFps = DEFAULT_CONCURRENT_PREWARM_FPS;
+        try {
+            prewarmFps = p.getInt(CONCURRENT_PREWARM_FPS, DEFAULT_CONCURRENT_PREWARM_FPS);
+        } catch (Exception e) {
+            try {
+                prewarmFps = Integer.parseInt(p.getString(CONCURRENT_PREWARM_FPS, "30"));
+            } catch (Exception ignore) {}
+            p.edit().putInt(CONCURRENT_PREWARM_FPS, prewarmFps).apply();
+        }
+
         return new RecordingMode.Custom(new RecordingConfig(
                 quality,
                 Math.max(500_000, Math.min(2_000_000, p.getInt(BITRATE, 2_000_000))),
                 p.getInt(FPS, DEFAULT_FPS),
+                enablePrewarm,
+                prewarmFps,
                 d.getIFrameIntervalSeconds(),
                 d.getMaxBFrames(),
                 p.getBoolean(HOLD_FPS, DEFAULT_HOLD_FPS),
                 p.getBoolean(LOW_LIGHT_BOOST, DEFAULT_LOW_LIGHT_BOOST),
-                fromPref(p, AE_PRIORITY, AePrioritySetting.class, DEFAULT_AE_PRIORITY),
-                fromPref(p, ANTIBANDING, AntibandingSetting.class, DEFAULT_ANTIBANDING),
-                fromPref(p, NOISE, NoiseReductionSetting.class, DEFAULT_NOISE),
-                fromPref(p, HOT_PIXEL, HotPixelSetting.class, d.getHotPixelCorrection()),
-                fromPref(p, SHADING, ShadingSetting.class, d.getLensShading()),
-                fromPref(p, COLOR_CORRECTION, ColorCorrectionSetting.class, DEFAULT_COLOR_CORRECTION),
+                aePriority,
+                antibanding,
+                noise,
+                hotPixel,
+                shading,
+                colorCorrection,
                 p.getInt(COLOR_TEMPERATURE, d.getColorTemperatureKelvin()),
                 d.getColorTint(),
-                fromPref(p, STABILIZATION, StabilizationSetting.class, DEFAULT_STABILIZATION),
-                fromPref(p, OPTICAL_STABILIZATION, OpticalStabilizationSetting.class, DEFAULT_OPTICAL_STABILIZATION),
-                fromPref(p, EDGE, EdgeSetting.class, DEFAULT_EDGE),
-                fromPref(p, DISTORTION, DistortionCorrectionSetting.class, d.getDistortionCorrection()),
-                fromPref(p, ABERRATION, AberrationCorrectionSetting.class, d.getAberrationCorrection()),
-                fromPref(p, TONEMAP, TonemapSetting.class, DEFAULT_TONEMAP),
-                fromPref(p, AWB, AwbSetting.class, DEFAULT_AWB),
+                stabilization,
+                opticalStabilization,
+                edge,
+                distortion,
+                aberration,
+                tonemap,
+                awb,
                 p.getBoolean(AE_LOCK, d.getAeLock()),
                 p.getBoolean(AWB_LOCK, d.getAwbLock()),
                 p.getInt(EXPOSURE_STEPS, DEFAULT_EXPOSURE_STEPS),
-                fromPref(p, EXPOSURE_MODE, ExposureMode.class, d.getExposureMode()),
+                exposureMode,
                 (long) p.getInt(MANUAL_EXPOSURE_US, (int) d.getManualExposureTimeUs()),
                 p.getInt(MANUAL_ISO, d.getManualIso()),
-                fromPref(p, FOCUS, FocusSetting.class, DEFAULT_FOCUS),
+                focus,
                 Float.intBitsToFloat(p.getInt(MANUAL_FOCUS_DISTANCE, Float.floatToIntBits(d.getManualFocusDistance()))),
                 Float.intBitsToFloat(p.getInt(ZOOM, Float.floatToIntBits(DEFAULT_ZOOM))),
                 d.getAperture(),
