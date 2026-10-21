@@ -34,7 +34,8 @@ public class LauncherIconController {
     }
 
     public enum LauncherIcon {
-        DEFAULT("DefaultIcon", R.drawable.icon_background_sa, R.mipmap.icon_foreground_sa, R.string.AppIconDefault),
+        DEFAULT("DefaultIcon", R.drawable.ic_easygram_bloom_blue_light_bg, R.drawable.ic_easygram_bloom_blue_light_foreground, R.string.AppIconDefault),
+        BLOOM_DARK("BloomDarkIcon", R.drawable.ic_easygram_bloom_blue_dark_bg, R.drawable.ic_easygram_bloom_blue_dark_foreground, R.string.AppIconBloomDark),
         VINTAGE("VintageIcon", R.drawable.icon_6_background_sa, R.mipmap.icon_6_foreground_sa, R.string.AppIconVintage),
         AQUA("AquaIcon", R.drawable.icon_4_background_sa, R.mipmap.icon_foreground_sa, R.string.AppIconAqua),
         PREMIUM("PremiumIcon", R.drawable.icon_3_background_sa, R.mipmap.icon_3_foreground_sa, R.string.AppIconPremium, true),

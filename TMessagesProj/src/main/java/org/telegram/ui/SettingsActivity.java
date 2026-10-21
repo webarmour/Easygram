@@ -759,8 +759,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         if (SharedSettings.experimentalSettingsAllowed.get()) {
             items.add(UItem.asShadow(null));
             items.add(UItem.asHeader("Experimental"));
-            items.add(SettingCell.Factory.of(24, 0xFFF45255, 0xFFDF3955, 0, getString(R.string.RoundVideoSettings)));
-            items.add(SettingCell.Factory.of(26, 0xFF55CA47, 0xFF27B434, 0, getString(R.string.AudioRecorderSettings)));
+            items.add(SettingCell.Factory.of(28, 0xFF55CA47, 0xFF27B434, 0, getString(R.string.AudioRecorderSettings)));
         }
 
         if (BuildVars.LOGS_ENABLED || BuildVars.DEBUG_PRIVATE_VERSION) {
@@ -904,22 +903,22 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 }
                 break;
             }
+            case 24: {
+                presentFragment(new RoundVideoSettingsActivity());
+                break;
+            }
             // EASYGRAM_UPDATER_ACTION_START
             case 26: {
                 org.telegram.ui.Components.EasygramUpdater.check(getParentActivity(), true);
                 break;
             }
             // EASYGRAM_UPDATER_ACTION_END
-            case 24: {
-                presentFragment(new RoundVideoSettingsActivity());
-                break;
-            }
-            case 26: {
-                presentFragment(new AudioRecorderSettingsActivity());
-                break;
-            }
-            case 27:
+            case 27: {
                 presentSettingFragment(new OtherSettingsActivity());
+                break;
+            }
+            case 28:
+                presentFragment(new AudioRecorderSettingsActivity());
                 break;
         }
     }
@@ -959,22 +958,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         try {
             PackageInfo pInfo = ApplicationLoader.applicationContext.getPackageManager().getPackageInfo(ApplicationLoader.applicationContext.getPackageName(), 0);
             int code = pInfo.versionCode / 10;
-            String abi = "";
-            switch (pInfo.versionCode % 10) {
-                case 1:
-                case 2:
-                    abi = "store bundled " + Build.CPU_ABI + " " + Build.CPU_ABI2;
-                    break;
-                default:
-                case 9:
-                    if (ApplicationLoader.isStandaloneBuild()) {
-                        abi = "direct " + Build.CPU_ABI + " " + Build.CPU_ABI2;
-                    } else {
-                        abi = "universal " + Build.CPU_ABI + " " + Build.CPU_ABI2;
-                    }
-                    break;
-            }
-            return formatString(R.string.TelegramVersion, String.format(Locale.US, "v%s (%d)\n%s", pInfo.versionName, code, abi));
+            return formatString(R.string.EasygramVersion, String.format(Locale.US, "v%s (%d)", pInfo.versionName, code));
         } catch (Exception e) {
             FileLog.e(e);
         }
