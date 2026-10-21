@@ -11696,4 +11696,10 @@
     <string name="EasygramDisableAdsInfo">Disables sponsored messages in channels, ads in search, promo channels, and video ads.</string>
     <string name="EasygramSendMediaHd">Send media in HD</string>
     <string name="EasygramSendMediaHdInfo">Applies to third-party pickers selected above.</string>
+
+    <string name="RVHeaderPrewarm">Camera Prewarm</string>
+    <string name="RVEnableConcurrentPrewarm">Prewarm background camera</string>
+    <string name="RVConcurrentPrewarmFps">Inactive camera FPS</string>
+    <string name="RVDescEnableConcurrentPrewarm">Keep front and rear cameras open in parallel for instant switching.</string>
+    <string name="RVDescConcurrentPrewarmFps">Frame rate of the background camera when prewarm is enabled.</string>
 </resources>

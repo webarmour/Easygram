@@ -18,8 +18,22 @@ import java.util.List;
 /** Camera2 capability intersection: settings are shared by front and rear cameras. */
 public final class RoundVideoCameraSupport {
     private final List<CameraCharacteristics> cameras = new ArrayList<>(2);
+    private final boolean prewarmAvailable;
 
     public RoundVideoCameraSupport(Context context) {
+        boolean canPrewarm = false;
+        if (Build.VERSION.SDK_INT >= 30) {
+            try {
+                CameraManager manager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
+                if (manager != null) {
+                    java.util.Set<java.util.Set<String>> concurrent = manager.getConcurrentCameraIds();
+                    if (concurrent != null && !concurrent.isEmpty()) {
+                        canPrewarm = true;
+                    }
+                }
+            } catch (Throwable ignore) {}
+        }
+        this.prewarmAvailable = canPrewarm;
         if (Build.VERSION.SDK_INT < 28) return;
         CameraManager manager = context.getSystemService(CameraManager.class);
         if (manager == null) return;
@@ -63,7 +77,14 @@ public final class RoundVideoCameraSupport {
         return Math.abs(min * 36f / side - 26f);
     }
 
+    public boolean isPrewarmAvailable() {
+        return prewarmAvailable;
+    }
+
     public boolean rowAvailable(String key) {
+        if ("enable_concurrent_prewarm".equals(key) || "concurrent_prewarm_fps".equals(key)) {
+            return isPrewarmAvailable();
+        }
         if (cameras.isEmpty()) return false;
         switch (key) {
             case "quality": return countSupported(key,

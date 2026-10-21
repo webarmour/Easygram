@@ -410,4 +410,10 @@
     <string name="EasygramSendMediaHdInfo">Применимо в сторонних пикерах, выбранных выше.</string>
     <string name="AppIconDefault">Easygram Light</string>
     <string name="AppIconBloomDark">Easygram Dark</string>
+
+    <string name="RVHeaderPrewarm">Прогрев камер</string>
+    <string name="RVEnableConcurrentPrewarm">Прогрев фоновой камеры</string>
+    <string name="RVConcurrentPrewarmFps">FPS неактивной камеры</string>
+    <string name="RVDescEnableConcurrentPrewarm">Параллельное удержание фронтальной и основной камер в активном состоянии для мгновенного переключения.</string>
+    <string name="RVDescConcurrentPrewarmFps">Кадровая частота фоновой камеры при включенном прогреве.</string>
 </resources>

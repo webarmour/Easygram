@@ -58,6 +58,8 @@ public class RoundVideoSettingsActivity extends BaseFragment {
     private static final String PREFS = "round_video_custom_recorder";
     private static final String MODE = "mode";
     private static final String REMEMBER_LAST_CAMERA = "remember_last_camera";
+    private static final String ENABLE_CONCURRENT_PREWARM = "enable_concurrent_prewarm";
+    private static final String CONCURRENT_PREWARM_FPS = "concurrent_prewarm_fps";
     private static final String QUALITY = "quality";
     private static final String FPS = "fps";
     private static final String BITRATE = "bitrate";
@@ -138,6 +140,8 @@ public class RoundVideoSettingsActivity extends BaseFragment {
         switch (key) {
             case MODE: return R.string.RVDescMode;
             case REMEMBER_LAST_CAMERA: return R.string.RVDescRememberCamera;
+            case ENABLE_CONCURRENT_PREWARM: return R.string.RVDescEnableConcurrentPrewarm;
+            case CONCURRENT_PREWARM_FPS: return R.string.RVDescConcurrentPrewarmFps;
             case QUALITY: return R.string.RVDescQuality;
             case FPS: return R.string.RVDescFps;
             case BITRATE: return R.string.RVDescBitrate;
@@ -179,6 +183,9 @@ public class RoundVideoSettingsActivity extends BaseFragment {
         addValue(MODE, getString(R.string.RVMode));
         addHeader(getString(R.string.RVHeaderCamera));
         addCheck(REMEMBER_LAST_CAMERA, getString(R.string.RVRememberCamera));
+        addHeader(getString(R.string.RVHeaderPrewarm));
+        addCheck(ENABLE_CONCURRENT_PREWARM, getString(R.string.RVEnableConcurrentPrewarm));
+        addValue(CONCURRENT_PREWARM_FPS, getString(R.string.RVConcurrentPrewarmFps));
         addHeader(getString(R.string.RVHeaderVideoQuality));
         addValue(QUALITY, getString(R.string.RVQuality));
         addValue(FPS, getString(R.string.RVFps));
@@ -258,6 +265,13 @@ public class RoundVideoSettingsActivity extends BaseFragment {
         if (Build.VERSION.SDK_INT < 28) return false;
         if (row.type == ACTION || MODE.equals(row.key) || MAX_DURATION.equals(row.key)
                 || REMEMBER_LAST_CAMERA.equals(row.key)) return true;
+        if (ENABLE_CONCURRENT_PREWARM.equals(row.key)) {
+            return cameraSupport != null && cameraSupport.isPrewarmAvailable();
+        }
+        if (CONCURRENT_PREWARM_FPS.equals(row.key)) {
+            return cameraSupport != null && cameraSupport.isPrewarmAvailable()
+                    && prefs().getBoolean(ENABLE_CONCURRENT_PREWARM, false);
+        }
         if (!prefs().getBoolean(MODE, true)) return false;
         boolean manualExposure = "MANUAL".equals(prefs().getString(EXPOSURE_MODE, "AUTO"));
         if (manualExposure && (EXPOSURE_STEPS.equals(row.key) || AE_PRIORITY.equals(row.key)
@@ -300,6 +314,9 @@ public class RoundVideoSettingsActivity extends BaseFragment {
             case FPS:
                 choose(key, row.title, new String[]{"24 FPS", "30 FPS", "60 FPS"},
                         new String[]{"24", "30", "60"}); break;
+            case CONCURRENT_PREWARM_FPS:
+                choose(key, row.title, new String[]{"15 FPS", "30 FPS", "60 FPS"},
+                        new String[]{"15", "30", "60"}); break;
             case BITRATE:
                 choose(key, row.title, new String[]{bitrateLabel(0.5f), bitrateLabel(1f), bitrateLabel(1.5f), bitrateLabel(2f)},
                         new String[]{"500000", "1000000", "1500000", "2000000"}); break;
@@ -434,6 +451,7 @@ public class RoundVideoSettingsActivity extends BaseFragment {
                 case MODE:
                     edit.putBoolean(key, Boolean.parseBoolean(selected)); break;
                 case FPS:
+                case CONCURRENT_PREWARM_FPS:
                 case BITRATE:
                 case MAX_DURATION:
                 case EXPOSURE_STEPS:
@@ -558,6 +576,18 @@ public class RoundVideoSettingsActivity extends BaseFragment {
                 return "640 × 640";
             }
             case FPS: return p.getInt(FPS, 60) + " FPS";
+            case CONCURRENT_PREWARM_FPS: {
+                int fps = 30;
+                try {
+                    fps = p.getInt(CONCURRENT_PREWARM_FPS, 30);
+                } catch (Exception e) {
+                    try {
+                        fps = Integer.parseInt(p.getString(CONCURRENT_PREWARM_FPS, "30"));
+                    } catch (Exception ignore) {}
+                    p.edit().putInt(CONCURRENT_PREWARM_FPS, fps).apply();
+                }
+                return fps + " FPS";
+            }
             case BITRATE: {
                 int bps = Math.min(2_000_000, p.getInt(BITRATE, 2_000_000));
                 return bitrateLabel(bps / 1_000_000f);
