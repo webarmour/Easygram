@@ -703,7 +703,18 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
     public void togglePause() {
         if (aarRecorder != null) {
-            sendAarCamera(3, true, 0, 0, 0, 0L, 0L);
+            if (aarFinishing) return;
+            if (recording) {
+                sendAarCamera(3, true, 0, 0, 0, 0L, 0L);
+            } else if (aarRecordedFile != null) {
+                aarResuming = true;
+                if (videoPlayer != null) {
+                    videoPlayer.releasePlayer(true);
+                    videoPlayer = null;
+                }
+                MediaController.getInstance().requestRecordAudioFocus(true);
+                aarRecorder.resumeRecording();
+            }
             return;
         }
         if (recording) {
@@ -1208,6 +1219,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     private float aarPinchStartZoomRatio = 1f;
     private File aarRecordedFile;
     private boolean aarFinishing;
+    private boolean aarResuming;
     private int aarStopState;
     private boolean aarNotify;
     private int aarScheduleDate;
@@ -1231,11 +1243,8 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         isInPinchToZoomTouchMode = false;
         maybePinchToZoomTouchMode = false;
         aarPinchStartZoomRatio = 1f;
-        if (aarRecordedFile != null) {
-            // Version 0.0.2 has no pause/resume API. A new recording replaces the paused one.
-            aarRecordedFile.delete();
-            aarRecordedFile = null;
-        }
+        aarRecordedFile = null;
+        aarResuming = false;
         cancelled = false;
         recording = false;
         cameraReady = false;
@@ -1287,15 +1296,25 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                         recording = true;
                         aarMaxDurationMs = 1_000L * RoundVideoRecorderSettings.maxRecordingDurationSeconds(getContext());
                         // Finalization takes time; leave a 500ms safety margin, as before.
-                        AndroidUtilities.runOnUIThread(aarMaxDurationStop, Math.max(0L, aarMaxDurationMs - 500L));
+                        AndroidUtilities.runOnUIThread(aarMaxDurationStop,
+                                Math.max(0L, aarMaxDurationMs - recordPlusTime - 500L));
                         invalidate();
                         AndroidUtilities.lockOrientation(delegate.getParentActivity());
-                        NotificationCenter.getInstance(currentAccount).postNotificationName(
-                                NotificationCenter.recordStarted, recordingGuid, false);
+                        if (aarResuming) {
+                            aarResuming = false;
+                            NotificationCenter.getInstance(currentAccount).postNotificationName(
+                                    NotificationCenter.recordResumed);
+                        } else {
+                            NotificationCenter.getInstance(currentAccount).postNotificationName(
+                                    NotificationCenter.recordStarted, recordingGuid, false);
+                        }
+                    }
+                    @Override public void onRecordingPaused(File recordedFile, long durationMs) {
+                        finishAarRecording(recordedFile, recordPlusTime);
                     }
                     @Override public void onVideoNoteReady(File recordedFile, long durationMs) {
                         aarRecorder = null; // Underlying library has already been closed by adapter.
-                        finishAarRecording(recordedFile, durationMs);
+                        finishAarRecording(recordedFile, recordPlusTime + durationMs);
                     }
                     @Override public void onCancelled() {
                         aarRecorder = null;
@@ -1329,8 +1348,8 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         aarEffectId = effectId;
         aarStars = stars;
 
-        // A paused/previewed clip is already finalized and can be sent directly.
-        if (aarRecordedFile != null && state == 4) {
+        // A paused clip is already finalized and can be sent directly.
+        if (aarRecordedFile != null && !recording && (state == 1 || state == 4)) {
             sendCompletedAarVideo();
             return;
         }
@@ -1340,8 +1359,9 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             return;
         }
         recording = false;
-        recordedTime = System.currentTimeMillis() - recordStartTime;
+        recordedTime = System.currentTimeMillis() - recordStartTime + recordPlusTime;
         aarFinishing = true;
+        if (state == 3) recordPlusTime = recordedTime;
         NotificationCenter.getInstance(currentAccount).postNotificationName(
                 NotificationCenter.recordStopped, recordingGuid,
                 recordedTime < 800 ? 4 : state == 3 ? 2 : 5);
@@ -1353,7 +1373,11 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             startAnimation(false, false);
             MediaController.getInstance().requestRecordAudioFocus(false);
         } else {
-            aarRecorder.finishAndSend(); // Finished file arrives asynchronously.
+            if (state == 3) {
+                aarRecorder.pauseRecording();
+            } else {
+                aarRecorder.finishAndSend(); // Finished file arrives asynchronously.
+            }
         }
     }
 
@@ -1361,26 +1385,45 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         if (cancelled || aarStopState == 0 || original == null || !original.isFile() || original.length() == 0) {
             if (original != null) original.delete();
             aarFinishing = false;
-            startAnimation(false, false);
+            cancelAarCamera(false);
             return;
         }
         final File output = cameraFile;
-        // Copy off UI thread, then switch back for Telegram delegate/NotificationCenter.
+        final boolean append = aarRecordedFile != null && aarRecordedFile.isFile();
+        // Join recorded segments off the UI thread, then update Telegram's preview.
         new Thread(() -> {
             Exception failure = null;
+            File merged = null;
             try {
-                if (!original.equals(output)) {
-                    AndroidUtilities.copyFile(original, output);
+                if (append) {
+                    merged = File.createTempFile("round_video_merge_", ".mp4", output.getParentFile());
+                    VideoMessageSegmentMerger.merge(output, original, merged);
+                    if (!AndroidUtilities.copyFile(merged, output)) {
+                        throw new java.io.IOException("Could not save merged video message");
+                    }
+                    original.delete();
+                } else if (!original.equals(output)) {
+                    if (!AndroidUtilities.copyFile(original, output)) {
+                        throw new java.io.IOException("Could not save video message");
+                    }
                     original.delete();
                 }
             } catch (Exception e) {
                 failure = e;
+            } finally {
+                if (merged != null) merged.delete();
             }
             final Exception copyFailure = failure;
             AndroidUtilities.runOnUIThread(() -> {
                 aarFinishing = false;
+                if (cancelled || aarStopState == 0) {
+                    original.delete();
+                    if (output != null) output.delete();
+                    return;
+                }
                 if (copyFailure != null || output == null || !output.isFile() || output.length() == 0) {
                     if (copyFailure != null) FileLog.e(copyFailure);
+                    original.delete();
                     cancelAarCamera(false);
                     return;
                 }
@@ -1409,7 +1452,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     // Telegram UI switches from recording to the ready-to-send preview state.
                     NotificationCenter.getInstance(currentAccount).postNotificationName(
                             NotificationCenter.audioDidSent, recordingGuid,
-                            videoEditedInfo, output.getAbsolutePath(), null);
+                            videoEditedInfo, output.getAbsolutePath(), new ArrayList<>());
                 } else {
                     sendCompletedAarVideo();
                 }
@@ -1455,6 +1498,10 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     private void sendCompletedAarVideo() {
         File ready = aarRecordedFile;
         if (ready == null || !ready.exists() || videoEditedInfo == null) return;
+        if (aarRecorder != null) {
+            aarRecorder.close();
+            aarRecorder = null;
+        }
         aarRecordedFile = null;
         MediaController.PhotoEntry entry = new MediaController.PhotoEntry(
                 0, 0, 0, ready.getAbsolutePath(), 0, true, 0, 0, 0);
@@ -1476,10 +1523,10 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         AndroidUtilities.cancelRunOnUIThread(aarMaxDurationStop);
         cancelled = true;
         recording = false;
+        aarResuming = false;
         aarStopState = 0;
-        if (aarRecorder != null && !aarFinishing) {
+        if (aarRecorder != null) {
             aarRecorder.cancel();
-            // Don't close while finalizing; the adapter must complete stop asynchronously.
         }
         if (aarRecordedFile != null) {
             aarRecordedFile.delete();

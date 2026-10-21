@@ -8,11 +8,15 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.util.Log;
 import android.view.Display;
 import android.view.Surface;
 import android.view.TextureView;
 
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
 import io.github.webarmour.videomessagerecorder.DiagnosticsMode;
 import io.github.webarmour.videomessagerecorder.VideoMessageRecorder;
@@ -35,6 +39,7 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
     public interface Listener {
         void onCameraReady();
         void onRecordingStarted();
+        void onRecordingPaused(File videoFile, long durationMs);
         void onVideoNoteReady(File videoFile, long durationMs);
         void onCancelled();
         void onError(Exception exception);
@@ -46,7 +51,7 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
     // after recording has already begun or mask transitions during a camera switch.
     // CUSTOM_RECORDER_CONFIGURABLE_START_DELAY_V1
 
-    private enum Completion {NONE, SEND, DISCARD}
+    private enum Completion {NONE, PAUSE, SEND, DISCARD}
 
     private final Context applicationContext;
     private final TextureView preview;
@@ -55,6 +60,7 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
     private VideoMessageRecorder recorder;
     private Surface surface;
     private boolean pendingStart;
+    private boolean startRequested;
     private boolean recordStarted;
     private boolean cameraReadyNotified;
     private boolean previewHasFrame;
@@ -62,6 +68,7 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
     private boolean startDelayScheduled;
     private Completion completion = Completion.NONE;
     private long startedAt;
+    private long stoppedDurationMs;
     // Coalesce touch events within one main-loop iteration. The recorder then
     // submits the latest zoom on its camera executor without a fixed delay.
     private float zoomRatio = 1f;
@@ -91,23 +98,17 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
 
     private void startRecordingDelayed() {
         startDelayScheduled = false;
-        if (recorder == null || completion != Completion.NONE || recordStarted
+        if (recorder == null || completion != Completion.NONE || recordStarted || startRequested
                 || !pendingStart || !cameraReadyForStart || !previewHasFrame) {
             return;
         }
         pendingStart = false;
-        recordStarted = true;
-        startedAt = SystemClock.elapsedRealtime();
+        startRequested = true;
         recorder.startRecording();
-        if (zoomCameraRole != null) {
-            RoundVideoRecorderSettings.setLastCameraWasRear(applicationContext,
-                    zoomCameraRole == CameraRole.REAR_WIDE);
-        }
-        listener.onRecordingStarted();
     };
 
     private void scheduleRecordingStartIfReady() {
-        if (recorder == null || completion != Completion.NONE || recordStarted
+        if (recorder == null || completion != Completion.NONE || recordStarted || startRequested
                 || !pendingStart || !cameraReadyForStart || !previewHasFrame
                 || startDelayScheduled) {
             return;
@@ -142,12 +143,14 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
         }
         completion = Completion.NONE;
         pendingStart = true;
+        startRequested = false;
         recordStarted = false;
         cameraReadyNotified = false;
         previewHasFrame = false;
         cameraReadyForStart = false;
         startDelayScheduled = false;
         startedAt = 0L;
+        stoppedDurationMs = 0L;
         cancelPendingZoom();
         zoomRatio = 1f;
         minZoomRatio = 1f;
@@ -162,13 +165,14 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
         recorder = new VideoMessageRecorder(
                 applicationContext,
                 RoundVideoRecorderSettings.recordingMode(applicationContext),
-                DiagnosticsMode.Disabled,
+                DiagnosticsMode.TelemetryCsv,
                 state -> {
                     main.post(() -> onRecorderState(state));
                     return Unit.INSTANCE;
                 },
                 result -> {
                     File file = result.getFile();
+                    saveTelemetryCsv(result.getTelemetryCsv());
                     main.post(() -> onRecordingFinished(file));
                     return Unit.INSTANCE;
                 }
@@ -179,6 +183,26 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
         }
         recorder.setPermissionGranted(true); // actual permissions verified above
         recorder.onStart();
+    }
+
+    private void saveTelemetryCsv(String csv) {
+        if (csv == null) return;
+        byte[] data = csv.getBytes(StandardCharsets.UTF_8);
+        File cacheDir = applicationContext.getCacheDir();
+        File sessionFile = new File(cacheDir, "camera_pipeline_" + System.currentTimeMillis() + ".csv");
+        File latestFile = new File(cacheDir, "camera_pipeline_last.csv");
+        try {
+            writeTelemetryCsv(sessionFile, data);
+            writeTelemetryCsv(latestFile, data);
+        } catch (IOException e) {
+            Log.w("RoundVideoTelemetry", "Could not save recording diagnostics", e);
+        }
+    }
+
+    private static void writeTelemetryCsv(File file, byte[] data) throws IOException {
+        try (FileOutputStream output = new FileOutputStream(file)) {
+            output.write(data);
+        }
     }
 
     /**
@@ -193,7 +217,26 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
         }
         completion = Completion.SEND;
         pendingStart = false;
+        stoppedDurationMs = SystemClock.elapsedRealtime() - startedAt;
         recorder.stopRecording();
+    }
+
+    public void pauseRecording() {
+        requireMainThread();
+        if (recorder == null || !recordStarted || completion != Completion.NONE) return;
+        completion = Completion.PAUSE;
+        pendingStart = false;
+        stoppedDurationMs = SystemClock.elapsedRealtime() - startedAt;
+        recorder.stopRecording();
+    }
+
+    public void resumeRecording() {
+        requireMainThread();
+        if (recorder == null || recordStarted || startRequested
+                || completion != Completion.NONE || pendingStart) return;
+        pendingStart = true;
+        previewHasFrame = preview.isAvailable();
+        scheduleRecordingStartIfReady();
     }
 
     /**
@@ -250,7 +293,17 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
 
     private void onRecorderState(CameraUiState state) {
         // The AAR callback may run on a camera or worker thread; this method runs on main.
-        if (recorder == null || completion != Completion.NONE) return;
+        if (recorder == null || completion == Completion.SEND || completion == Completion.DISCARD) return;
+        if (startRequested && state.isRecording()) {
+            startRequested = false;
+            recordStarted = true;
+            startedAt = SystemClock.elapsedRealtime();
+            if (zoomCameraRole != null) {
+                RoundVideoRecorderSettings.setLastCameraWasRear(applicationContext,
+                        zoomCameraRole == CameraRole.REAR_WIDE);
+            }
+            listener.onRecordingStarted();
+        }
         if (restoreRearCamera) {
             if (state.isSwitchingCamera()) restoreSwitchObserved = true;
             if (state.getCameraReady() && !state.isBusy() && !state.isSwitchingCamera()) {
@@ -302,11 +355,18 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
     private void onRecordingFinished(File file) {
         if (recorder == null) {
             // This adapter no longer owns the session. Avoid stale callbacks.
-            if (completion == Completion.DISCARD) file.delete();
+            file.delete();
             return;
         }
         Completion action = completion;
-        long durationMs = startedAt == 0 ? 0 : SystemClock.elapsedRealtime() - startedAt;
+        long durationMs = stoppedDurationMs;
+        if (action == Completion.PAUSE) {
+            completion = Completion.NONE;
+            recordStarted = false;
+            startedAt = 0L;
+            listener.onRecordingPaused(file, durationMs);
+            return;
+        }
         disposeRecorder();
         if (action == Completion.SEND) {
             listener.onVideoNoteReady(file, durationMs);
@@ -334,6 +394,7 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
         cameraReadyForStart = false;
         previewHasFrame = false;
         pendingStart = false;
+        startRequested = false;
         recordStarted = false;
         if (recorder != null) {
             recorder.detachPreview();
