@@ -1,0 +1,91 @@
+diff --git a/video-message-recorder/src/main/java/io/github/webarmour/videomessagerecorder/gl/CameraGlRenderer.kt b/video-message-recorder/src/main/java/io/github/webarmour/videomessagerecorder/gl/CameraGlRenderer.kt
+--- a/video-message-recorder/src/main/java/io/github/webarmour/videomessagerecorder/gl/CameraGlRenderer.kt
++++ b/video-message-recorder/src/main/java/io/github/webarmour/videomessagerecorder/gl/CameraGlRenderer.kt
+@@ -145,7 +145,6 @@
+     private var encoderCircleMask = false
+     private var expectedFrameIntervalNs = 33_333_333L
+     private var lastSourceTimestampNs = Long.MIN_VALUE
+-    private var lastPreviewSourceTimestampNs = Long.MIN_VALUE
+     private var encoderSourceTimestampBaseNs =
+         Long.MIN_VALUE
+ 
+@@ -296,7 +295,7 @@
+             } else if (hasCameraFrame) {
+                 // A prewarmed camera already has a texture. Publish it immediately instead of
+                 // waiting for its next frame after the switch.
+-                renderTo(previewEglSurface, previewWidth, previewHeight, circleMask = true)
++                renderTo(previewEglSurface, previewWidth, previewHeight, circleMask = false)
+                 swapPreviewBuffers()
+             }
+         }
+@@ -327,7 +326,6 @@
+ 
+             lastSourceTimestampNs =
+                 Long.MIN_VALUE
+-            lastPreviewSourceTimestampNs = Long.MIN_VALUE
+ 
+             /*
+              * The first camera frame rendered after this attachment becomes
+@@ -407,7 +405,6 @@
+         maxEncoderGlSetupNs = 0L
+         maxEncoderGlDrawCallNs = 0L
+         lastSourceTimestampNs = Long.MIN_VALUE
+-        lastPreviewSourceTimestampNs = Long.MIN_VALUE
+     }
+ 
+     fun detachEncoder() {
+@@ -424,7 +421,6 @@
+ 
+             lastSourceTimestampNs =
+                 Long.MIN_VALUE
+-            lastPreviewSourceTimestampNs = Long.MIN_VALUE
+ 
+             encoderSourceTimestampBaseNs =
+                 Long.MIN_VALUE
+@@ -594,18 +590,13 @@
+                 }
+             }
+ 
+-            val previewAvailable = previewEglSurface != EGL14.EGL_NO_SURFACE &&
+-                previewContentVisible
+-            val previewDue = encoderEglSurface == EGL14.EGL_NO_SURFACE ||
+-                lastPreviewSourceTimestampNs == Long.MIN_VALUE ||
+-                cameraTimestampNs - lastPreviewSourceTimestampNs >= RECORDING_PREVIEW_INTERVAL_NS
+-            if (previewAvailable && previewDue) {
++            if (previewEglSurface != EGL14.EGL_NO_SURFACE && previewContentVisible) {
+                 val drawStartedNs = System.nanoTime()
+                 renderTo(
+                     target = previewEglSurface,
+                     width = previewWidth,
+                     height = previewHeight,
+-                    circleMask = true,
++                    circleMask = false,
+                 )
+                 val drawDurationNs = System.nanoTime() - drawStartedNs
+                 maxPreviewDrawNs = max(maxPreviewDrawNs, drawDurationNs)
+@@ -615,16 +606,11 @@
+                 val swapStartedNs = System.nanoTime()
+                 val swapped = swapPreviewBuffers()
+                 val swapDurationNs = System.nanoTime() - swapStartedNs
+-                if (swapped) {
+-                    previewFrames.incrementAndGet()
+-                    lastPreviewSourceTimestampNs = cameraTimestampNs
+-                }
++                if (swapped) previewFrames.incrementAndGet()
+                 if (swapDurationNs > maxPreviewSwapNs) maxPreviewSwapNs = swapDurationNs
+                 if (swapDurationNs > expectedFrameIntervalNs) {
+                     previewBackpressureEvents.incrementAndGet()
+                 }
+-            } else if (previewAvailable) {
+-                previewFramesCoalesced.incrementAndGet()
+             }
+         }.onFailure { error ->
+             Log.e(
+@@ -1122,7 +1108,6 @@
+     private companion object {
+         const val TAG = "CameraPipelineLab"
+         const val EGL_RECORDABLE_ANDROID = 0x3142
+-        const val RECORDING_PREVIEW_INTERVAL_NS = 1_000_000_000L / 30L
+ 
+         val DEFAULT_VERTICES = floatArrayOf(
+             -1f, -1f,

@@ -1,0 +1,185 @@
+diff --git a/video-message-recorder/src/main/java/io/github/webarmour/videomessagerecorder/gl/CameraGlRenderer.kt b/video-message-recorder/src/main/java/io/github/webarmour/videomessagerecorder/gl/CameraGlRenderer.kt
+--- a/video-message-recorder/src/main/java/io/github/webarmour/videomessagerecorder/gl/CameraGlRenderer.kt
++++ b/video-message-recorder/src/main/java/io/github/webarmour/videomessagerecorder/gl/CameraGlRenderer.kt
+@@ -111,6 +111,8 @@
+     val maxEncoderDrawNs: Long,
+     val maxPreviewDrawNs: Long,
+     val maxEglMakeCurrentNs: Long,
++    val maxEncoderGlSetupNs: Long,
++    val maxEncoderGlDrawCallNs: Long,
+ )
+ 
+ internal class CameraGlRenderer(
+@@ -143,6 +145,7 @@
+     private var encoderCircleMask = false
+     private var expectedFrameIntervalNs = 33_333_333L
+     private var lastSourceTimestampNs = Long.MIN_VALUE
++    private var lastPreviewSourceTimestampNs = Long.MIN_VALUE
+     private var encoderSourceTimestampBaseNs =
+         Long.MIN_VALUE
+ 
+@@ -166,6 +169,8 @@
+     @Volatile private var maxEncoderDrawNs = 0L
+     @Volatile private var maxPreviewDrawNs = 0L
+     @Volatile private var maxEglMakeCurrentNs = 0L
++    @Volatile private var maxEncoderGlSetupNs = 0L
++    @Volatile private var maxEncoderGlDrawCallNs = 0L
+ 
+     private var cameraSurfaceTexture: SurfaceTexture? = null
+     private var cameraInputSurface: Surface? = null
+@@ -322,6 +327,7 @@
+ 
+             lastSourceTimestampNs =
+                 Long.MIN_VALUE
++            lastPreviewSourceTimestampNs = Long.MIN_VALUE
+ 
+             /*
+              * The first camera frame rendered after this attachment becomes
+@@ -370,6 +376,8 @@
+         maxEncoderDrawNs = maxEncoderDrawNs,
+         maxPreviewDrawNs = maxPreviewDrawNs,
+         maxEglMakeCurrentNs = maxEglMakeCurrentNs,
++        maxEncoderGlSetupNs = maxEncoderGlSetupNs,
++        maxEncoderGlDrawCallNs = maxEncoderGlDrawCallNs,
+     )
+ 
+     fun resetPerformanceStats() {
+@@ -396,7 +404,10 @@
+         maxEncoderDrawNs = 0L
+         maxPreviewDrawNs = 0L
+         maxEglMakeCurrentNs = 0L
++        maxEncoderGlSetupNs = 0L
++        maxEncoderGlDrawCallNs = 0L
+         lastSourceTimestampNs = Long.MIN_VALUE
++        lastPreviewSourceTimestampNs = Long.MIN_VALUE
+     }
+ 
+     fun detachEncoder() {
+@@ -413,6 +424,7 @@
+ 
+             lastSourceTimestampNs =
+                 Long.MIN_VALUE
++            lastPreviewSourceTimestampNs = Long.MIN_VALUE
+ 
+             encoderSourceTimestampBaseNs =
+                 Long.MIN_VALUE
+@@ -582,7 +594,12 @@
+                 }
+             }
+ 
+-            if (previewEglSurface != EGL14.EGL_NO_SURFACE && previewContentVisible) {
++            val previewAvailable = previewEglSurface != EGL14.EGL_NO_SURFACE &&
++                previewContentVisible
++            val previewDue = encoderEglSurface == EGL14.EGL_NO_SURFACE ||
++                lastPreviewSourceTimestampNs == Long.MIN_VALUE ||
++                cameraTimestampNs - lastPreviewSourceTimestampNs >= RECORDING_PREVIEW_INTERVAL_NS
++            if (previewAvailable && previewDue) {
+                 val drawStartedNs = System.nanoTime()
+                 renderTo(
+                     target = previewEglSurface,
+@@ -598,11 +615,16 @@
+                 val swapStartedNs = System.nanoTime()
+                 val swapped = swapPreviewBuffers()
+                 val swapDurationNs = System.nanoTime() - swapStartedNs
+-                if (swapped) previewFrames.incrementAndGet()
++                if (swapped) {
++                    previewFrames.incrementAndGet()
++                    lastPreviewSourceTimestampNs = cameraTimestampNs
++                }
+                 if (swapDurationNs > maxPreviewSwapNs) maxPreviewSwapNs = swapDurationNs
+                 if (swapDurationNs > expectedFrameIntervalNs) {
+                     previewBackpressureEvents.incrementAndGet()
+                 }
++            } else if (previewAvailable) {
++                previewFramesCoalesced.incrementAndGet()
+             }
+         }.onFailure { error ->
+             Log.e(
+@@ -748,6 +770,8 @@
+         val makeCurrentStartedNs = System.nanoTime()
+         makeCurrent(target)
+         maxEglMakeCurrentNs = max(maxEglMakeCurrentNs, System.nanoTime() - makeCurrentStartedNs)
++        val measureEncoder = target == encoderEglSurface
++        val setupStartedNs = if (measureEncoder) System.nanoTime() else 0L
+         GLES20.glViewport(0, 0, width, height)
+         // The quad covers the full viewport, and the fragment shader paints the mask outside
+         // the circle. Clearing each output first adds a full-surface GPU pass per frame.
+@@ -784,7 +808,14 @@
+         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, oesTextureId)
+         GLES20.glUniform1i(samplerLocation, 0)
+ 
++        if (measureEncoder) {
++            maxEncoderGlSetupNs = max(maxEncoderGlSetupNs, System.nanoTime() - setupStartedNs)
++        }
++        val drawCallStartedNs = if (measureEncoder) System.nanoTime() else 0L
+         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
++        if (measureEncoder) {
++            maxEncoderGlDrawCallNs = max(maxEncoderGlDrawCallNs, System.nanoTime() - drawCallStartedNs)
++        }
+ 
+         GLES20.glDisableVertexAttribArray(positionLocation)
+         GLES20.glDisableVertexAttribArray(texCoordLocation)
+@@ -1091,6 +1122,7 @@
+     private companion object {
+         const val TAG = "CameraPipelineLab"
+         const val EGL_RECORDABLE_ANDROID = 0x3142
++        const val RECORDING_PREVIEW_INTERVAL_NS = 1_000_000_000L / 30L
+ 
+         val DEFAULT_VERTICES = floatArrayOf(
+             -1f, -1f,
+diff --git a/video-message-recorder/src/main/java/io/github/webarmour/videomessagerecorder/media/AudioEncoder.kt b/video-message-recorder/src/main/java/io/github/webarmour/videomessagerecorder/media/AudioEncoder.kt
+--- a/video-message-recorder/src/main/java/io/github/webarmour/videomessagerecorder/media/AudioEncoder.kt
++++ b/video-message-recorder/src/main/java/io/github/webarmour/videomessagerecorder/media/AudioEncoder.kt
+@@ -117,13 +117,6 @@
+ 
+             if (bytesRead <= 0) continue
+ 
+-            val inputIndex = codec.dequeueInputBuffer(10_000)
+-            if (inputIndex < 0) continue
+-
+-            val inputBuffer = codec.getInputBuffer(inputIndex) ?: continue
+-            inputBuffer.clear()
+-            inputBuffer.put(pcmBuffer, 0, bytesRead)
+-
+             val framesRead = bytesRead / bytesPerFrame
+             val timestampStatus = audioRecord.getTimestamp(
+                 audioTimestamp,
+@@ -147,6 +140,17 @@
+                 submittedFrames * 1_000_000_000L / config.audioSampleRate
+             val ptsUs = ptsNs / 1_000L
+ 
++            var inputIndex = -1
++            while (recording.get() && inputIndex < 0) {
++                inputIndex = codec.dequeueInputBuffer(10_000)
++            }
++            if (inputIndex < 0) break
++
++            val inputBuffer = checkNotNull(codec.getInputBuffer(inputIndex)) {
++                "AAC input buffer unavailable"
++            }
++            inputBuffer.clear()
++            inputBuffer.put(pcmBuffer, 0, bytesRead)
+             codec.queueInputBuffer(inputIndex, 0, bytesRead, ptsUs, 0)
+ 
+             submittedFrames += framesRead
+diff --git a/video-message-recorder/src/main/java/io/github/webarmour/videomessagerecorder/camera/CameraRecorderController.kt b/video-message-recorder/src/main/java/io/github/webarmour/videomessagerecorder/camera/CameraRecorderController.kt
+--- a/video-message-recorder/src/main/java/io/github/webarmour/videomessagerecorder/camera/CameraRecorderController.kt
++++ b/video-message-recorder/src/main/java/io/github/webarmour/videomessagerecorder/camera/CameraRecorderController.kt
+@@ -3027,6 +3027,8 @@
+                             add("rendererMaxPreviewSwapMs=${renderPerformance.maxOfOrNull { it.maxPreviewSwapNs }?.div(1_000_000.0) ?: 0.0}")
+                             add("rendererMaxSourceAcquireMs=${renderPerformance.maxOfOrNull { it.maxSourceAcquireNs }?.div(1_000_000.0) ?: 0.0}")
+                             add("rendererMaxEncoderDrawMs=${renderPerformance.maxOfOrNull { it.maxEncoderDrawNs }?.div(1_000_000.0) ?: 0.0}")
++                            add("rendererMaxEncoderGlSetupMs=${renderPerformance.maxOfOrNull { it.maxEncoderGlSetupNs }?.div(1_000_000.0) ?: 0.0}")
++                            add("rendererMaxEncoderGlDrawCallMs=${renderPerformance.maxOfOrNull { it.maxEncoderGlDrawCallNs }?.div(1_000_000.0) ?: 0.0}")
+                             add("rendererMaxPreviewDrawMs=${renderPerformance.maxOfOrNull { it.maxPreviewDrawNs }?.div(1_000_000.0) ?: 0.0}")
+                             renderPerformanceByRole.forEach { (role, stats) ->
+                                 add("renderer.${role.name}.threadPriority=${stats.threadPriority}")
+@@ -3039,6 +3041,8 @@
+                                 add("renderer.${role.name}.previewDrawOverBudgetEvents=${stats.previewDrawOverBudgetEvents}")
+                                 add("renderer.${role.name}.maxSourceAcquireMs=${stats.maxSourceAcquireNs / 1_000_000.0}")
+                                 add("renderer.${role.name}.maxEncoderDrawMs=${stats.maxEncoderDrawNs / 1_000_000.0}")
++                                add("renderer.${role.name}.maxEncoderGlSetupMs=${stats.maxEncoderGlSetupNs / 1_000_000.0}")
++                                add("renderer.${role.name}.maxEncoderGlDrawCallMs=${stats.maxEncoderGlDrawCallNs / 1_000_000.0}")
+                                 add("renderer.${role.name}.maxEglMakeCurrentMs=${stats.maxEglMakeCurrentNs / 1_000_000.0}")
+                             }
+                             add("maxPendingZoomRequests=${pipelines.values.maxOfOrNull { it.maxPendingZoomRequests } ?: 0L}")
