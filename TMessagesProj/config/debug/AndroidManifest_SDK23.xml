@@ -28,8 +28,8 @@
 
 
     <application
-        android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher_round"
+        android:icon="@mipmap/ic_easygram_bloom_blue_light"
+        android:roundIcon="@mipmap/ic_easygram_bloom_blue_light_round"
         android:label="@string/easygram_beta_app_name"
         android:theme="@style/Theme.TMessages.Start"
         android:hardwareAccelerated="true"

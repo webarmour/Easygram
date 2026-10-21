@@ -107,6 +107,8 @@
         android:name="org.telegram.messenger.ApplicationLoader"
         android:allowBackup="true"
         android:restoreAnyVersion="true"
+        android:icon="@mipmap/ic_easygram_bloom_blue_light"
+        android:roundIcon="@mipmap/ic_easygram_bloom_blue_light_round"
         android:backupAgent=".BackupAgent"
         android:hardwareAccelerated="true"
         android:largeHeap="true"
@@ -126,6 +128,24 @@
             android:enabled="true"
             android:name="org.telegram.messenger.DefaultIcon"
             android:targetActivity="org.telegram.ui.LaunchActivity"
+            android:icon="@mipmap/ic_easygram_bloom_blue_light"
+            android:roundIcon="@mipmap/ic_easygram_bloom_blue_light_round"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.MULTIWINDOW_LAUNCHER" />
+            </intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
+        </activity-alias>
+
+        <activity-alias
+            android:enabled="false"
+            android:name="org.telegram.messenger.BloomDarkIcon"
+            android:targetActivity="org.telegram.ui.LaunchActivity"
+            android:icon="@mipmap/ic_easygram_bloom_blue_dark"
+            android:roundIcon="@mipmap/ic_easygram_bloom_blue_dark_round"
             android:exported="true">
 
             <intent-filter>
