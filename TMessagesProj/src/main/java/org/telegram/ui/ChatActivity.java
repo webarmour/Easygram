@@ -14101,13 +14101,23 @@ public class ChatActivity extends BaseFragment implements
         if (uris == null || uris.isEmpty() || !checkSlowModeAlert()) {
             return;
         }
-        if (editingMessageObject == null && chatMode == MODE_SCHEDULED) {
-            AlertsCreator.createScheduleDatePickerDialog(getParentActivity(), dialog_id, (notify, scheduleDate, scheduleRepeatPeriod) -> {
-                sendExternalMediaNow(uris, notify, scheduleDate, scheduleRepeatPeriod);
-            }, themeDelegate);
-            return;
+        ArrayList<SendMessagesHelper.SendingMediaInfo> media = new ArrayList<>(uris.size());
+        for (Uri uri : uris) {
+            SendMessagesHelper.SendingMediaInfo info = new SendMessagesHelper.SendingMediaInfo();
+            info.uri = uri;
+            String mimeType = null;
+            try {
+                mimeType = getParentActivity().getContentResolver().getType(uri);
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+            info.isVideo = mimeType != null && mimeType.startsWith("video/");
+            info.highQuality = SharedConfig.photoHighQualityDefault;
+            media.add(info);
         }
-        sendExternalMediaNow(uris, true, 0, 0);
+        if (!openPhotosEditor(media, null)) {
+            sendExternalMediaNow(uris, true, 0, 0);
+        }
     }
 
     private void sendExternalMediaNow(ArrayList<Uri> uris, boolean notify, int scheduleDate, int scheduleRepeatPeriod) {
@@ -19886,10 +19896,13 @@ public class ChatActivity extends BaseFragment implements
             if (photoInfo.path != null) {
                 path = photoInfo.path;
             } else if (photoInfo.uri != null) {
-//                path = AndroidUtilities.getPath(photoInfo.uri);
-                if (path == null) {
+                try {
+                    path = AndroidUtilities.getPath(photoInfo.uri);
+                } catch (Exception ignore) {
+                }
+                if (path == null || !(new File(path).exists())) {
                     try {
-                        final File file = AndroidUtilities.generatePicturePath(isSecretChat, "");
+                        final File file = AndroidUtilities.generatePicturePath(isSecretChat, photoInfo.isVideo ? "mp4" : "jpg");
                         InputStream in = ApplicationLoader.applicationContext.getContentResolver().openInputStream(photoInfo.uri);
                         FileOutputStream fos = new FileOutputStream(file);
                         byte[] buffer = new byte[8 * 1024];
@@ -19911,7 +19924,34 @@ public class ChatActivity extends BaseFragment implements
                 continue;
             }
             Pair<Integer, Integer> orientation = AndroidUtilities.getImageOrientation(path);
-            MediaController.PhotoEntry entry = new MediaController.PhotoEntry(0, 0, 0, path, orientation.first, photoInfo.isVideo, 0, 0, 0).setOrientation(orientation);
+            int width = 0, height = 0, duration = 0;
+            if (photoInfo.isVideo) {
+                android.media.MediaMetadataRetriever mediaMetadataRetriever = null;
+                try {
+                    mediaMetadataRetriever = new android.media.MediaMetadataRetriever();
+                    mediaMetadataRetriever.setDataSource(path);
+                    String d = mediaMetadataRetriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION);
+                    if (d != null) {
+                        duration = (int) Math.ceil(Long.parseLong(d) / 1000.0f);
+                    }
+                    String w = mediaMetadataRetriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH);
+                    String h = mediaMetadataRetriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT);
+                    if (w != null && h != null) {
+                        width = Integer.parseInt(w);
+                        height = Integer.parseInt(h);
+                    }
+                } catch (Exception e) {
+                    FileLog.e(e);
+                } finally {
+                    try {
+                        if (mediaMetadataRetriever != null) {
+                            mediaMetadataRetriever.release();
+                        }
+                    } catch (Exception ignore) {}
+                }
+            }
+            MediaController.PhotoEntry entry = new MediaController.PhotoEntry(0, 0, 0, path, orientation.first, photoInfo.isVideo, width, height, 0).setOrientation(orientation);
+            entry.duration = duration;
             if (a == photoPathes.size() - 1 && caption != null) {
                 entry.caption = caption;
             }
@@ -20484,8 +20524,8 @@ public class ChatActivity extends BaseFragment implements
                     ((ChatAttachAlertRichLayout) chatAttachAlert.getCurrentAttachLayout()).onExternalMediaPicked(data);
                     return;
                 }
+                ArrayList<Uri> selectedUris = new ArrayList<>();
                 if (data.getClipData() != null) {
-                    ArrayList<Uri> selectedUris = new ArrayList<>();
                     ClipData clipData = data.getClipData();
                     for (int i = 0; i < clipData.getItemCount(); i++) {
                         Uri selectedUri = clipData.getItemAt(i).getUri();
@@ -20493,46 +20533,17 @@ public class ChatActivity extends BaseFragment implements
                             selectedUris.add(selectedUri);
                         }
                     }
-                    if (!selectedUris.isEmpty()) {
-                        didSelectExternalMedia(selectedUris);
-                        if (chatAttachAlert != null) {
-                            chatAttachAlert.dismiss();
-                        }
-                        return;
-                    }
+                } else if (data.getData() != null) {
+                    selectedUris.add(data.getData());
                 }
-                if (data.getData() == null) {
-                    showAttachmentError();
+                if (!selectedUris.isEmpty()) {
+                    didSelectExternalMedia(selectedUris);
+                    if (chatAttachAlert != null) {
+                        chatAttachAlert.dismiss();
+                    }
                     return;
                 }
-                Uri uri = data.getData();
-                if (uri.toString().contains("video")) {
-                    String videoPath = null;
-                    try {
-                        videoPath = AndroidUtilities.getPath(uri);
-                    } catch (Exception e) {
-                        FileLog.e(e);
-                    }
-                    if (videoPath == null) {
-                        showAttachmentError();
-                    }
-                    if (paused) {
-                        startVideoEdit = videoPath;
-                    } else {
-                        openVideoEditor(videoPath, null);
-                    }
-                } else {
-                    if (editingMessageObject == null && chatMode == MODE_SCHEDULED) {
-                        AlertsCreator.createScheduleDatePickerDialog(getParentActivity(), dialog_id, (notify, scheduleDate, scheduleRepeatPeriod) -> {
-                            fillEditingMediaWithCaption(null, null);
-                            SendMessagesHelper.prepareSendingPhoto(getAccountInstance(), null, uri, dialog_id, replyingMessageObject, getThreadMessage(), replyingQuote, null, null, null, null, 0, editingMessageObject, notify, scheduleDate, chatMode, getMessageChatSendParams());
-                        }, themeDelegate);
-                    } else {
-                        fillEditingMediaWithCaption(null, null);
-                        SendMessagesHelper.prepareSendingPhoto(getAccountInstance(), null, uri, dialog_id, replyingMessageObject, getThreadMessage(), replyingQuote, null, null, null, null, 0, editingMessageObject, true, 0, chatMode, getMessageChatSendParams());
-                    }
-                }
-                afterMessageSend();
+                showAttachmentError();
             } else if (requestCode == 21) {
                 if (data == null) {
                     showAttachmentError();
