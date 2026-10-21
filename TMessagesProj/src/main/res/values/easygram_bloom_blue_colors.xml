@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="easygram_bloom_blue_light_background">#CAE4FD</color>
+    <color name="easygram_bloom_blue_light_background">#A5D2FE</color>
     <color name="easygram_bloom_blue_light_foreground">#1361CF</color>
     <color name="easygram_bloom_blue_dark_background">#052040</color>
     <color name="easygram_bloom_blue_dark_foreground">#A5D2FE</color>
+
+    <color name="easygram_splash_background">#A5D2FE</color>
 </resources>
