@@ -977,7 +977,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         try {
             PackageInfo pInfo = ApplicationLoader.applicationContext.getPackageManager().getPackageInfo(ApplicationLoader.applicationContext.getPackageName(), 0);
             int code = pInfo.versionCode / 10;
-            return formatString(R.string.EasygramVersion, String.format(Locale.US, "v%s (%d)", pInfo.versionName, code));
+            int versionString = pInfo.packageName.endsWith(".beta") ? R.string.EasygramBetaVersion : R.string.EasygramVersion;
+            return formatString(versionString, String.format(Locale.US, "v%s (%d)", pInfo.versionName, code));
         } catch (Exception e) {
             FileLog.e(e);
         }
@@ -1494,7 +1495,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 BuildVars.DEBUG_PRIVATE_VERSION ? SharedConfig.photoViewerBlur ? "do not blur in photoviewer" : "blur in photoviewer" : null,
                 !SharedConfig.payByInvoice ? "Enable Invoice Payment" : "Disable Invoice Payment",
                 BuildVars.DEBUG_PRIVATE_VERSION ? "Update Attach Bots" : null,
-                !SharedConfig.isUsingCamera2(currentAccount) ? "Use Camera 2 API" : "Use old Camera 1 API",
+                null,
                 BuildVars.DEBUG_VERSION ? "Clear Mini Apps Permissions and Files" : null,
                 BuildVars.DEBUG_PRIVATE_VERSION ? "Clear all login tokens" : null,
                 SharedConfig.canBlurChat() && Build.VERSION.SDK_INT >= 31 ? SharedConfig.useNewBlur ? "back to cpu blur" : "use new gpu blur" : null,
@@ -1782,8 +1783,6 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 SharedConfig.togglePaymentByInvoice();
             } else if (which == 27) {
                 getMediaDataController().loadAttachMenuBots(false, true);
-            } else if (which == 28) {
-                SharedConfig.toggleUseCamera2(currentAccount);
             } else if (which == 29) {
                 BotBiometry.clear();
                 BotLocation.clear();

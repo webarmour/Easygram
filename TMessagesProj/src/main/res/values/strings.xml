@@ -4,6 +4,7 @@
     <string name="EasygramVideoMessagesTitle">Video Messages</string>
     <string name="EasygramVideoMessagesInfo">Customize video messages to your liking</string>
     <string name="EasygramVersion">Easygram %1$s</string>
+    <string name="EasygramBetaVersion">Easygram Beta %1$s</string>
 
     <string name="RVHeaderMode">Recording mode</string>
     <string name="RVHeaderCamera">Camera</string>
