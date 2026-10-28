@@ -107,8 +107,8 @@
         android:name="org.telegram.messenger.ApplicationLoader"
         android:allowBackup="true"
         android:restoreAnyVersion="true"
-        android:icon="@mipmap/ic_easygram_bloom_blue_light"
-        android:roundIcon="@mipmap/ic_easygram_bloom_blue_light_round"
+        android:icon="@mipmap/ic_easygram_bloom_blue_dark"
+        android:roundIcon="@mipmap/ic_easygram_bloom_blue_dark_round"
         android:backupAgent=".BackupAgent"
         android:hardwareAccelerated="true"
         android:largeHeap="true"
@@ -125,7 +125,7 @@
         <!-- usesCleartextTraffic for browser supporting opening http:// links -->
 
         <activity
-            android:enabled="true"
+            android:enabled="false"
             android:name="org.telegram.messenger.DefaultIcon"
             android:theme="@style/Theme.TMessages.Start"
             android:icon="@mipmap/ic_easygram_bloom_blue_light"
@@ -146,7 +146,7 @@
         </activity>
 
         <activity
-            android:enabled="false"
+            android:enabled="true"
             android:name="org.telegram.messenger.BloomDarkIcon"
             android:theme="@style/Theme.TMessages.Start.BloomDark"
             android:icon="@mipmap/ic_easygram_bloom_blue_dark"
