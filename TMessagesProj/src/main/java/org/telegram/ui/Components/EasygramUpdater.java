@@ -18,6 +18,7 @@ import android.view.ViewGroup;
 import androidx.core.content.FileProvider;
 
 import org.json.JSONObject;
+import org.json.JSONArray;
 import org.telegram.ui.ActionBar.AlertDialog;
 
 import java.lang.ref.WeakReference;
@@ -31,6 +32,8 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.security.MessageDigest;
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -41,9 +44,14 @@ public final class EasygramUpdater {
     // Public GitHub feed in this repository; no GitHub access token is required.
     private static final String FEED_BASE =
             "https://raw.githubusercontent.com/webarmour/Easygram/easygram-dev/updates/";
+    private static final String RELEASES_URL =
+            "https://api.github.com/repos/webarmour/Easygram/releases?per_page=100";
+    private static final String RELEASE_ASSET_BASE =
+            "https://github.com/webarmour/Easygram/releases/download/";
+    private static final Pattern RELEASE_TAG = Pattern.compile("^v?(\\d+(?:\\.\\d+){1,3})-(\\d+)$");
     private static final long CHECK_INTERVAL_MS = 60L * 60L * 1000L;
     private static final long MAX_APK_BYTES = 300L * 1024L * 1024L;
-    private static final int MAX_JSON_BYTES = 128 * 1024;
+    private static final int MAX_JSON_BYTES = 2 * 1024 * 1024;
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final AtomicBoolean CHECKING = new AtomicBoolean(false);
@@ -115,6 +123,64 @@ public final class EasygramUpdater {
         return update.url.startsWith("https://") && update.sha256.matches("[0-9a-f]{64}");
     }
 
+    private static Update newestGitHubRelease(String response, String packageName, boolean beta) throws Exception {
+        JSONArray releases = new JSONArray(response);
+        Update newest = null;
+        for (int i = 0; i < releases.length(); i++) {
+            JSONObject release = releases.getJSONObject(i);
+            if (release.optBoolean("draft") || release.optBoolean("prerelease") != beta) continue;
+            Matcher tag = RELEASE_TAG.matcher(release.optString("tag_name", ""));
+            if (!tag.matches()) continue;
+            long baseCode;
+            try {
+                baseCode = Long.parseLong(tag.group(2));
+            } catch (NumberFormatException ignored) {
+                continue;
+            }
+            if (baseCode > (Integer.MAX_VALUE - 9L) / 10L) continue;
+            long versionCode = baseCode * 10L + 9L; // afat APK's Gradle versionCode
+            if (newest != null && versionCode <= newest.versionCode) continue;
+
+            JSONArray assets = release.optJSONArray("assets");
+            if (assets == null) continue;
+            JSONObject apk = null;
+            for (int j = 0; j < assets.length(); j++) {
+                JSONObject asset = assets.getJSONObject(j);
+                if (!"uploaded".equals(asset.optString("state")) || !asset.optString("name").toLowerCase(Locale.ROOT).endsWith(".apk")) continue;
+                if (apk != null) { // An ambiguous release must not choose the wrong package or ABI.
+                    apk = null;
+                    break;
+                }
+                apk = asset;
+            }
+            if (apk == null || apk.optLong("size") <= 0 || apk.optLong("size") > MAX_APK_BYTES) continue;
+            String digest = apk.optString("digest", "");
+            String url = apk.optString("browser_download_url", "");
+            if (!digest.matches("sha256:[0-9a-fA-F]{64}") || !url.startsWith(RELEASE_ASSET_BASE)) continue;
+
+            Update candidate = new Update();
+            candidate.versionCode = versionCode;
+            candidate.versionName = tag.group(1);
+            candidate.packageName = packageName;
+            candidate.url = url;
+            candidate.sha256 = digest.substring(7).toLowerCase(Locale.ROOT);
+            candidate.changelog = release.optString("body", "");
+            newest = candidate;
+        }
+        return newest;
+    }
+
+    private static JSONObject toJson(Update update) throws Exception {
+        JSONObject json = new JSONObject();
+        json.put("version_code", update.versionCode);
+        json.put("version_name", update.versionName);
+        json.put("package_name", update.packageName);
+        json.put("apk_url", update.url);
+        json.put("sha256", update.sha256);
+        json.put("changelog", update.changelog);
+        return json;
+    }
+
     private static void render() {
         UpdateLayout layout = layoutRef.get();
         if (layout != null) {
@@ -154,17 +220,21 @@ public final class EasygramUpdater {
             try {
                 String name = app.getPackageName();
                 String channel = name.endsWith(".beta") ? "beta" : name.endsWith(".web") ? "web" : "stable";
-                String response = fetchText(FEED_BASE + channel + ".json");
-                Update update = parseUpdate(new JSONObject(response));
-                if (!name.equals(update.packageName)) {
+                Update update;
+                if ("web".equals(channel)) {
+                    update = parseUpdate(new JSONObject(fetchText(FEED_BASE + channel + ".json")));
+                } else {
+                    update = newestGitHubRelease(fetchText(RELEASES_URL), name, "beta".equals(channel));
+                }
+                if (update != null && !name.equals(update.packageName)) {
                     throw new IllegalStateException("Канал обновлений настроен для другого пакета: " + update.packageName);
                 }
-                if (update.versionCode > currentVersionCode(app) && !validUpdate(update)) {
+                if (update != null && update.versionCode > currentVersionCode(app) && !validUpdate(update)) {
                     throw new IllegalStateException("Манифест новой версии неполный или небезопасный.");
                 }
                 prefs.edit().putLong("checked_at", System.currentTimeMillis())
-                        .putString("last_manifest", response).apply();
-                if (update.versionCode <= currentVersionCode(app)) {
+                        .putString("last_manifest", update == null ? null : toJson(update).toString()).apply();
+                if (update == null || update.versionCode <= currentVersionCode(app)) {
                     pendingUpdate = null;
                     downloaded = false;
                     onUi(activity, () -> {
@@ -360,6 +430,7 @@ public final class EasygramUpdater {
         connection.setReadTimeout(30000);
         connection.setInstanceFollowRedirects(true);
         connection.setRequestProperty("User-Agent", "Easygram-Updater/1");
+        connection.setRequestProperty("Accept", "application/vnd.github+json");
         if (connection.getResponseCode() != 200) {
             int code = connection.getResponseCode();
             connection.disconnect();

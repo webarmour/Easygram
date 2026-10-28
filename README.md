@@ -26,6 +26,16 @@ Easygram продолжит развиваться: планируются но�
 
 Проект использует Android SDK 36, Android NDK 27.2.12479018 и Gradle Wrapper из репозитория. Для собственной сборки нужны свои `api_id` и `api_hash`, конфигурация Firebase и ключ подписи. Подробности получения ключей описаны в [документации Telegram API](https://core.telegram.org/api/obtaining_api_id). Перед публикацией сборки замените тестовые значения и файлы конфигурации своими.
 
+### Обновления APK
+
+Новые сборки проверяют [GitHub Releases](https://github.com/webarmour/Easygram/releases) напрямую. Релиз с флагом **Pre-release** предназначен для beta (`io.github.webarmour.easygram.beta`), обычный опубликованный релиз — для stable (`io.github.webarmour.easygram`). Черновики игнорируются. Проверка происходит при возобновлении приложения не чаще раза в час; вручную её можно запустить из настроек.
+
+1. Соберите `:TMessagesProj_App:assembleAfatDebug` для beta или `:TMessagesProj_App:assembleAfatRelease` для stable. Для stable используются параметры `EASYGRAM_RELEASE_*` из локального `local.properties`. Сохраняйте ключ подписи каждого канала: Android разрешает обновление установленного приложения только APK с тем же пакетом и подписью.
+2. Увеличьте `APP_VERSION_CODE` относительно уже установленного выпуска и создайте GitHub Release с тегом `v<versionName>-<APP_VERSION_CODE>`, например `v13.1.2-7240`. Нужен именно исходный `APP_VERSION_CODE` из `gradle.properties`: APK варианта `afat` получает код `APP_VERSION_CODE * 10 + 9`.
+3. Прикрепите **один** файл `TMessagesProj_App/build/outputs/apk/afat/<debug|release>/app.apk` к релизу и опубликуйте его. Приложение возьмёт SHA-256 и ссылку на APK из метаданных GitHub, а перед установкой проверит скачанный файл, пакет, versionCode и подпись. Если APK добавлен уже после публикации релиза, он появится при следующей проверке.
+
+Старые установленные версии, которые ещё читают `updates/beta.json` и `updates/stable.json`, требуют разового обновления feed для перехода на этот механизм. Для этого после загрузки APK можно использовать `Tools/update_feed.py`; затем новые версии будут видеть следующие GitHub Releases без изменения JSON.
+
 ## Исходный код и лицензия
 
 Easygram — независимый проект, не связанный с командой Telegram. Основа приложения — [Telegram для Android](https://github.com/DrKLO/Telegram). Условия распространения исходного кода приведены в файле [LICENSE](LICENSE).

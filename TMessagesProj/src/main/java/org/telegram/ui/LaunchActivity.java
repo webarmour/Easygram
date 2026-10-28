@@ -439,7 +439,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         } catch (Throwable ignore) {
 
         }
-        if (LauncherIconController.isEnabled(LauncherIconController.LauncherIcon.BLOOM_DARK)) {
+        if (LauncherIconController.isEnabled(LauncherIconController.LauncherIcon.DEFAULT)) {
             getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(0xff052040));
         } else {
             getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(0xffA5D2FE));

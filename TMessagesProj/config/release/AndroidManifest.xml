@@ -20,8 +20,8 @@
     <permission android:name="${applicationId}.permission.MAPS_RECEIVE" android:protectionLevel="signature"/>
 
     <application
-        android:icon="@mipmap/ic_easygram_bloom_blue_light"
-        android:roundIcon="@mipmap/ic_easygram_bloom_blue_light_round"
+        android:icon="@mipmap/ic_easygram_bloom_blue_dark"
+        android:roundIcon="@mipmap/ic_easygram_bloom_blue_dark_round"
         android:label="@string/easygram_app_name"
         android:theme="@style/Theme.TMessages.Start"
         android:hardwareAccelerated="true"

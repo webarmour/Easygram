@@ -408,8 +408,8 @@
     <string name="EasygramDisableAdsInfo">Отключает спонсорские сообщения в каналах, рекламу в поиске, промо-каналы и видеорекламу.</string>
     <string name="EasygramSendMediaHd">Отправлять медиа в HD</string>
     <string name="EasygramSendMediaHdInfo">Применимо в сторонних пикерах, выбранных выше.</string>
-    <string name="AppIconDefault">Easygram Light</string>
-    <string name="AppIconBloomDark">Easygram Dark</string>
+    <string name="AppIconDefault">Easygram Dark</string>
+    <string name="AppIconBloomLight">Easygram Light</string>
 
     <string name="RVHeaderPrewarm">Прогрев камер</string>
     <string name="RVEnableConcurrentPrewarm">Прогрев фоновой камеры</string>
