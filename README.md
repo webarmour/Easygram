@@ -1,6 +1,10 @@
-# Easygram
+<p align="center">
+  <img src="TMessagesProj/src/main/res/mipmap-xxxhdpi/ic_easygram_bloom_blue_dark_round.png" alt="Иконка Easygram" width="144" height="144">
+</p>
 
-[English](README_EN.md) · Русский
+<h1 align="center">Easygram</h1>
+
+<p align="center"><a href="README_EN.md">English</a> · Русский</p>
 
 Easygram — неофициальный клиент Telegram для Android. Он основан на открытом коде Telegram и развивает привычный мессенджер дополнительными возможностями. Сейчас основное внимание уделено записи видеосообщений — «кружков».
 
