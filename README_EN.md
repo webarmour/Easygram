@@ -1,6 +1,10 @@
-# Easygram
+<p align="center">
+  <img src="TMessagesProj/src/main/res/mipmap-xxxhdpi/ic_easygram_bloom_blue_dark_round.png" alt="Easygram icon" width="144" height="144">
+</p>
 
-English · [Русский](README.md)
+<h1 align="center">Easygram</h1>
+
+<p align="center">English · <a href="README.md">Русский</a></p>
 
 Easygram is an unofficial Telegram client for Android. It is based on Telegram's open source code and adds new features to the familiar messaging experience. Its current focus is video message recording.
 
