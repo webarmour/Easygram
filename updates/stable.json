@@ -1,8 +1,8 @@
 {
-  "version_code": 0,
-  "version_name": "0.0.0",
+  "version_code": 72389,
+  "version_name": "13.1.1",
   "package_name": "io.github.webarmour.easygram",
-  "apk_url": "",
-  "sha256": "",
-  "changelog": "Первый релиз будет опубликован позже"
+  "apk_url": "https://github.com/webarmour/Easygram/releases/download/v13.1.1-7238/app.apk",
+  "sha256": "94813f9429dcc64cd42fccfafc8ba75a4655e8cb06339f2976aa0eb87ca221ce",
+  "changelog": "Исправления записи видеосообщений и обновление базы Telegram до 13.1.1."
 }
