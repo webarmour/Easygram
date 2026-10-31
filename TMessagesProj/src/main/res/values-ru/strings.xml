@@ -45,7 +45,7 @@
     <string name="RVAudioBitrate">Битрейт звука</string>
     <string name="RVStartDelay">Задержка начала записи</string>
     <string name="RVReset">Сбросить настройки записи</string>
-    <string name="RVDescMode">Автоматические параметры или ручная настройка камеры.</string>
+    <string name="RVDescMode">В автоматическом режиме используются показанные предпочтительные настройки с переходом на поддерживаемые устройством значения. Для изменения параметров выберите ручной режим.</string>
     <string name="RVDescRememberCamera">Следующий кружок начнётся с камеры, использованной в прошлый раз.</string>
     <string name="RVDescQuality">Размер видео. Чем выше разрешение, тем больше файл.</string>
     <string name="RVDescFps">Кадров в секунду. Чем выше значение, тем плавнее движение.</string>

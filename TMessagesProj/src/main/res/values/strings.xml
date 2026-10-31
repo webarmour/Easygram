@@ -48,7 +48,7 @@
     <string name="RVAudioBitrate">Audio bitrate</string>
     <string name="RVStartDelay">Recording start delay</string>
     <string name="RVReset">Reset recording settings</string>
-    <string name="RVDescMode">Use automatic settings or adjust the camera manually.</string>
+    <string name="RVDescMode">Automatic mode uses the displayed preferred settings, falling back to supported values on this device. Switch to manual mode to change them.</string>
     <string name="RVDescRememberCamera">Start the next video message with the camera used last.</string>
     <string name="RVDescQuality">Size of the recorded video. Higher resolution uses more space.</string>
     <string name="RVDescFps">Frames recorded per second. Higher values give smoother motion.</string>

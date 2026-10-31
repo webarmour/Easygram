@@ -108,6 +108,10 @@ public final class RoundVideoRecorderSettings {
 
     private RoundVideoRecorderSettings() { }
 
+    public static boolean isAutomatic(Context context) {
+        return !prefs(context).getBoolean(MODE, DEFAULT_MANUAL_MODE);
+    }
+
     public static boolean rememberLastCamera(Context context) {
         return prefs(context).getBoolean(REMEMBER_LAST_CAMERA, false);
     }
@@ -170,6 +174,7 @@ public final class RoundVideoRecorderSettings {
      *  Applies to the next recording; never affects Telegram's Camera2 path.
      */
     public static long recordingStartDelayMs(Context context) {
+        if (isAutomatic(context)) return DEFAULT_RECORDING_START_DELAY_MS;
         int saved = prefs(context).getInt(RECORDING_START_DELAY, DEFAULT_RECORDING_START_DELAY_MS);
         return Math.max(0, Math.min(MAX_RECORDING_START_DELAY_MS, saved));
     }
@@ -178,6 +183,7 @@ public final class RoundVideoRecorderSettings {
      *  This is a product safeguard, not an official Telegram size guarantee.
      */
     public static boolean isThirtySecondProfile(Context context) {
+        if (isAutomatic(context)) return true;
         SharedPreferences p = prefs(context);
         String quality = p.getString(QUALITY, DEFAULT_QUALITY);
         boolean highResolution = "MAX".equals(quality)
@@ -193,6 +199,7 @@ public final class RoundVideoRecorderSettings {
 
     /** Always clamp persisted values: old preferences cannot bypass new limits. */
     public static int maxRecordingDurationSeconds(Context context) {
+        if (isAutomatic(context)) return 30;
         int configured = prefs(context).getInt(MAX_DURATION, DEFAULT_MAX_DURATION_SECONDS);
         return Math.max(1, Math.min(configured, maxAllowedDurationSeconds(context)));
     }
