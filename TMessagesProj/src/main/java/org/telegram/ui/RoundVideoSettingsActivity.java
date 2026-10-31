@@ -34,6 +34,8 @@ import org.telegram.ui.Components.RoundVideoCameraSupport;
 import org.telegram.ui.Components.RoundVideoRecorderSettings;
 import org.telegram.ui.Components.RecyclerListView;
 
+import io.github.webarmour.videomessagerecorder.RecordingMode;
+import io.github.webarmour.videomessagerecorder.camera.RecordingConfig;
 import io.github.webarmour.videomessagerecorder.camera.AePrioritySetting;
 import io.github.webarmour.videomessagerecorder.camera.AntibandingSetting;
 import io.github.webarmour.videomessagerecorder.camera.AwbSetting;
@@ -112,6 +114,11 @@ public class RoundVideoSettingsActivity extends BaseFragment {
     private RecyclerListView listView;
     private ListAdapter adapter;
     private RoundVideoCameraSupport cameraSupport;
+    private final RecordingConfig automaticConfig = RecordingMode.Auto.INSTANCE.getPreferredConfig();
+
+    private boolean automatic() {
+        return RoundVideoRecorderSettings.isAutomatic(getParentActivity());
+    }
 
     private String getString(int resource) {
         return LocaleController.getString(resource);
@@ -263,8 +270,9 @@ public class RoundVideoSettingsActivity extends BaseFragment {
 
     private boolean editable(Row row) {
         if (Build.VERSION.SDK_INT < 28) return false;
-        if (row.type == ACTION || MODE.equals(row.key) || MAX_DURATION.equals(row.key)
-                || REMEMBER_LAST_CAMERA.equals(row.key)) return true;
+        if (row.type == ACTION || MODE.equals(row.key) || REMEMBER_LAST_CAMERA.equals(row.key)) return true;
+        if (automatic()) return false;
+        if (MAX_DURATION.equals(row.key)) return true;
         if (ENABLE_CONCURRENT_PREWARM.equals(row.key)) {
             return cameraSupport != null && cameraSupport.isPrewarmAvailable();
         }
@@ -272,7 +280,6 @@ public class RoundVideoSettingsActivity extends BaseFragment {
             return cameraSupport != null && cameraSupport.isPrewarmAvailable()
                     && prefs().getBoolean(ENABLE_CONCURRENT_PREWARM, false);
         }
-        if (!prefs().getBoolean(MODE, true)) return false;
         boolean manualExposure = "MANUAL".equals(prefs().getString(EXPOSURE_MODE, "AUTO"));
         if (manualExposure && (EXPOSURE_STEPS.equals(row.key) || AE_PRIORITY.equals(row.key)
                 || AE_LOCK.equals(row.key) || LOW_LIGHT_BOOST.equals(row.key))) return false;
@@ -560,7 +567,57 @@ public class RoundVideoSettingsActivity extends BaseFragment {
         }
     }
 
+    /** AUTO shows the shared preferred profile; actual capture may use device fallbacks. */
+    private String automaticValueFor(String key) {
+        switch (key) {
+            case MODE: return getString(R.string.RVAutomatic);
+            case QUALITY: return automaticConfig.getOutputSize().getWidth() + " × " + automaticConfig.getOutputSize().getHeight();
+            case FPS: return automaticConfig.getFrameRate() + " FPS";
+            case CONCURRENT_PREWARM_FPS: return automaticConfig.getConcurrentPrewarmFps() + " FPS";
+            case BITRATE: return bitrateLabel(automaticConfig.getVideoBitrate() / 1_000_000f);
+            case AE_PRIORITY: return readableEnum(automaticConfig.getAePriority().name());
+            case EXPOSURE_MODE: return readableEnum(automaticConfig.getExposureMode().name());
+            case MANUAL_ISO: return "ISO " + automaticConfig.getManualIso();
+            case MANUAL_EXPOSURE_US: return getString(R.string.RVMicroseconds, automaticConfig.getManualExposureTimeUs());
+            case MANUAL_FOCUS_DISTANCE: return dioptersLabel(automaticConfig.getManualFocusDistance());
+            case EXPOSURE_STEPS: return getString(R.string.RVSteps, automaticConfig.getExposureCompensationSteps());
+            case AWB: return readableEnum(automaticConfig.getAwb().name());
+            case FOCUS: return readableEnum(automaticConfig.getFocus().name());
+            case ANTIBANDING: return readableEnum(automaticConfig.getAntibanding().name());
+            case ZOOM: return zoomLabel(automaticConfig.getZoomRatio());
+            case NOISE: return readableEnum(automaticConfig.getNoiseReduction().name());
+            case STABILIZATION: return readableEnum(automaticConfig.getStabilization().name());
+            case OPTICAL_STABILIZATION: return readableEnum(automaticConfig.getOpticalStabilization().name());
+            case EDGE: return readableEnum(automaticConfig.getEdgeEnhancement().name());
+            case COLOR_CORRECTION: return readableEnum(automaticConfig.getColorCorrection().name());
+            case TONEMAP: return readableEnum(automaticConfig.getTonemap().name());
+            case HOT_PIXEL: return readableEnum(automaticConfig.getHotPixelCorrection().name());
+            case SHADING: return readableEnum(automaticConfig.getLensShading().name());
+            case DISTORTION: return readableEnum(automaticConfig.getDistortionCorrection().name());
+            case ABERRATION: return readableEnum(automaticConfig.getAberrationCorrection().name());
+            case COLOR_TEMPERATURE: return automaticConfig.getColorTemperatureKelvin() + " K";
+            case AUDIO_BITRATE: return audioBitrateLabel(automaticConfig.getAudioBitrate() / 1000);
+            case RECORDING_START_DELAY: return getString(R.string.RVMilliseconds, RoundVideoRecorderSettings.recordingStartDelayMs(getParentActivity()));
+            case MAX_DURATION: return getString(R.string.RVSeconds, RoundVideoRecorderSettings.maxRecordingDurationSeconds(getParentActivity()));
+            default: return "";
+        }
+    }
+
+    private boolean checkedFor(String key) {
+        if (!automatic()) return prefs().getBoolean(key, HOLD_FPS.equals(key));
+        switch (key) {
+            case HOLD_FPS: return automaticConfig.getHoldFpsInLowLight();
+            case LOW_LIGHT_BOOST: return automaticConfig.getLowLightBoost();
+            case AE_LOCK: return automaticConfig.getAeLock();
+            case AWB_LOCK: return automaticConfig.getAwbLock();
+            case ENABLE_CONCURRENT_PREWARM: return automaticConfig.getEnableConcurrentPrewarm();
+            case REMEMBER_LAST_CAMERA: return RoundVideoRecorderSettings.rememberLastCamera(getParentActivity());
+            default: return false;
+        }
+    }
+
     private String valueFor(String key, SharedPreferences p) {
+        if (automatic()) return automaticValueFor(key);
         switch (key) {
             case MODE: return p.getBoolean(MODE, true) ? getString(R.string.RVManualSettings) : getString(R.string.RVAutomatic);
             case QUALITY: {
@@ -689,8 +746,7 @@ public class RoundVideoSettingsActivity extends BaseFragment {
                 LinearLayout container = (LinearLayout) holder.itemView;
                 TextCheckCell cell = (TextCheckCell) container.getChildAt(0);
                 cell.setEnabled(editable(row));
-                cell.setTextAndCheck(row.title, prefs().getBoolean(row.key,
-                        HOLD_FPS.equals(row.key)), true);
+                cell.setTextAndCheck(row.title, checkedFor(row.key), true);
                 TextView description = (TextView) container.getChildAt(1);
                 description.setText(getString(descriptionFor(row.key)));
                 description.setAlpha(editable(row) ? 1f : 0.5f);

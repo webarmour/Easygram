@@ -77,9 +77,6 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
     private float lastDispatchedZoomRatio = Float.NaN;
     private boolean zoomDispatchPending;
     private CameraRole zoomCameraRole;
-    private boolean restoreRearCamera;
-    private boolean restoreSwitchRequested;
-    private boolean restoreSwitchObserved;
     private final Runnable dispatchZoom = () -> {
         zoomDispatchPending = false;
         if (recorder == null || completion != Completion.NONE
@@ -157,10 +154,6 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
         maxZoomRatio = 1f;
         lastDispatchedZoomRatio = Float.NaN;
         zoomCameraRole = null;
-        restoreRearCamera = RoundVideoRecorderSettings.rememberLastCamera(applicationContext)
-                && RoundVideoRecorderSettings.lastCameraWasRear(applicationContext);
-        restoreSwitchRequested = false;
-        restoreSwitchObserved = false;
         // Use explicit constructor parameters, matching the actual 0.0.2 AAR API.
         recorder = new VideoMessageRecorder(
                 applicationContext,
@@ -177,6 +170,12 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
                     return Unit.INSTANCE;
                 }
         );
+        // The existing remember-camera setting is the only source of camera restoration.
+        // With it disabled, the recorder starts with its default front camera.
+        if (RoundVideoRecorderSettings.rememberLastCamera(applicationContext)) {
+            recorder.restoreLastCamera(RoundVideoRecorderSettings.lastCameraWasRear(applicationContext)
+                    ? CameraRole.REAR_WIDE : CameraRole.FRONT);
+        }
         preview.setSurfaceTextureListener(this);
         if (preview.isAvailable()) {
             attachPreview(preview.getSurfaceTexture(), preview.getWidth(), preview.getHeight());
@@ -303,20 +302,6 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
                         zoomCameraRole == CameraRole.REAR_WIDE);
             }
             listener.onRecordingStarted();
-        }
-        if (restoreRearCamera) {
-            if (state.isSwitchingCamera()) restoreSwitchObserved = true;
-            if (state.getCameraReady() && !state.isBusy() && !state.isSwitchingCamera()) {
-                if (state.getActiveCameraRole() == CameraRole.REAR_WIDE
-                        || !state.getCameraSwitchAvailable()
-                        || (restoreSwitchRequested && restoreSwitchObserved)) {
-                    restoreRearCamera = false;
-                } else if (!restoreSwitchRequested && state.getActiveCameraRole() == CameraRole.FRONT) {
-                    restoreSwitchRequested = true;
-                    recorder.switchCamera();
-                }
-            }
-            if (restoreRearCamera) return;
         }
         android.util.Range<Float> zoomRange = state.getCapabilities().getZoomRatioRange();
         if (zoomRange != null) {
