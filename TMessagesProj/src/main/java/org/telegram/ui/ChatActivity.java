@@ -33748,6 +33748,46 @@ public class ChatActivity extends BaseFragment implements
                 break;
             }
             case OPTION_COPY: {
+                if (selectedObject != null && (selectedObject.isPhoto() || (selectedObject.messageOwner != null && selectedObject.messageOwner.media instanceof TLRPC.TL_messageMediaPhoto))) {
+                    String path = selectedObject.messageOwner != null ? selectedObject.messageOwner.attachPath : null;
+                    if (path != null && path.length() > 0) {
+                        File temp = new File(path);
+                        if (!temp.exists()) {
+                            path = null;
+                        }
+                    }
+                    if (path == null || path.length() == 0) {
+                        if (selectedObject.messageOwner != null) {
+                            path = getFileLoader().getPathToMessage(selectedObject.messageOwner).toString();
+                        }
+                    }
+                    File f = path != null ? new File(path) : null;
+                    if (f != null && f.exists()) {
+                        Uri uri;
+                        if (Build.VERSION.SDK_INT >= 24) {
+                            try {
+                                uri = FileProvider.getUriForFile(getParentActivity() != null ? getParentActivity() : ApplicationLoader.applicationContext, ApplicationLoader.getApplicationId() + ".provider", f);
+                            } catch (Exception ignore) {
+                                uri = Uri.fromFile(f);
+                            }
+                        } else {
+                            uri = Uri.fromFile(f);
+                        }
+                        String mimeType = selectedObject.getMimeType();
+                        if (mimeType == null) {
+                            mimeType = "image/jpeg";
+                        }
+                        android.content.ClipboardManager clipboard = (android.content.ClipboardManager) ApplicationLoader.applicationContext.getSystemService(Context.CLIPBOARD_SERVICE);
+                        android.content.ClipData clip = new android.content.ClipData(new android.content.ClipDescription("photo", new String[]{mimeType, "image/*"}), new android.content.ClipData.Item(uri));
+                        clipboard.setPrimaryClip(clip);
+
+                        createUndoView();
+                        if (undoView != null) {
+                            undoView.showWithAction(0, UndoView.ACTION_MESSAGE_COPIED, null);
+                        }
+                        break;
+                    }
+                }
                 final TL_iv.RichMessage copyRichMessage = selectedObject.messageOwner != null ? selectedObject.messageOwner.rich_message : null;
                 if (selectedObject.isDice()) {
                     AndroidUtilities.addToClipboard(selectedObject.getDiceEmoji());
@@ -46360,6 +46400,19 @@ public class ChatActivity extends BaseFragment implements
                 }
             }
             if (message.canDeleteMessage(chatMode == MODE_SCHEDULED, currentChat) && (threadMessageObjects == null || !threadMessageObjects.contains(message)) && !(message != null && message.messageOwner != null && message.messageOwner.action instanceof TLRPC.TL_messageActionTopicCreate)) {
+                if (selectedObject != null && (selectedObject.isPhoto() || (selectedObject.messageOwner != null && selectedObject.messageOwner.media instanceof TLRPC.TL_messageMediaPhoto))) {
+                    int copyIdx = options.indexOf(OPTION_COPY);
+                    if (copyIdx >= 0) {
+                        items.remove(copyIdx);
+                        options.remove(copyIdx);
+                        icons.remove(copyIdx);
+                    }
+                    if ((!noforwardsOrPaidMedia || isEphemeral) && !selectedObject.sponsoredCanReport) {
+                        items.add(LocaleController.getString(R.string.Copy));
+                        options.add(OPTION_COPY);
+                        icons.add(R.drawable.msg_copy);
+                    }
+                }
                 items.add(LocaleController.getString(chatMode == MODE_SAVED && threadMessageId != getUserConfig().getClientUserId() ? R.string.Remove : R.string.Delete));
                 options.add(OPTION_DELETE);
                 icons.add(deleteIconRes);
@@ -46696,6 +46749,19 @@ public class ChatActivity extends BaseFragment implements
                         items.add(LocaleController.getString(R.string.ReportChat));
                         options.add(OPTION_REPORT_CHAT);
                         icons.add(R.drawable.msg_report);
+                    }
+                }
+                if (selectedObject != null && (selectedObject.isPhoto() || (selectedObject.messageOwner != null && selectedObject.messageOwner.media instanceof TLRPC.TL_messageMediaPhoto))) {
+                    int copyIdx = options.indexOf(OPTION_COPY);
+                    if (copyIdx >= 0) {
+                        items.remove(copyIdx);
+                        options.remove(copyIdx);
+                        icons.remove(copyIdx);
+                    }
+                    if ((!noforwardsOrPaidMedia || isEphemeral) && !selectedObject.sponsoredCanReport) {
+                        items.add(LocaleController.getString(R.string.Copy));
+                        options.add(OPTION_COPY);
+                        icons.add(R.drawable.msg_copy);
                     }
                 }
                 if (message.canDeleteMessage(chatMode == MODE_SCHEDULED, currentChat) && (threadMessageObjects == null || !threadMessageObjects.contains(message))) {
