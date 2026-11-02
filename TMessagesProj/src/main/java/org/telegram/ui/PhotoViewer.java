@@ -5450,7 +5450,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                         }
                     }
 
-                    final boolean[] deleteForAll = new boolean[1];
+                    final boolean[] deleteForAll = new boolean[]{true};
                     if (currentMessageObject != null && !currentMessageObject.scheduled) {
                         long dialogId = currentMessageObject.getDialogId();
                         if (!DialogObject.isEncryptedDialog(dialogId)) {
@@ -5481,12 +5481,13 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                                         CheckBoxCell cell = new CheckBoxCell(parentActivity, 1, resourcesProvider);
                                         cell.setBackgroundDrawable(Theme.getSelectorDrawable(false));
                                         if (currentChat != null) {
-                                            cell.setText(getString("DeleteForAll", R.string.DeleteForAll), "", false, false);
+                                            cell.setText(getString("DeleteForAll", R.string.DeleteForAll), "", deleteForAll[0], false);
                                         } else {
-                                            cell.setText(LocaleController.formatString("DeleteForUser", R.string.DeleteForUser, UserObject.getFirstName(currentUser)), "", false, false);
+                                            cell.setText(LocaleController.formatString("DeleteForUser", R.string.DeleteForUser, UserObject.getFirstName(currentUser)), "", deleteForAll[0], false);
                                         }
                                         cell.setPadding(LocaleController.isRTL ? dp(16) : dp(8), 0, LocaleController.isRTL ? dp(8) : dp(16), 0);
                                         frameLayout.addView(cell, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 48, Gravity.TOP | Gravity.LEFT, 0, 0, 0, 0));
+                                        cell.setChecked(deleteForAll[0], false);
                                         cell.setOnClickListener(v -> {
                                             CheckBoxCell cell1 = (CheckBoxCell) v;
                                             deleteForAll[0] = !deleteForAll[0];

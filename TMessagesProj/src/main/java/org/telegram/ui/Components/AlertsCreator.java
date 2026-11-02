@@ -2691,7 +2691,7 @@ public class AlertsCreator {
             revokeTimeLimit = MessagesController.getInstance(account).revokeTimeLimit;
         }
         boolean canDeleteInbox = !secret && user != null && canRevokeInbox && revokeTimeLimit == 0x7fffffff;
-        final boolean[] deleteForAll = new boolean[1];
+        final boolean[] deleteForAll = new boolean[]{true};
         boolean deleteChatForAll = false;
 
         boolean lastMessageIsJoined = false;
@@ -3012,7 +3012,7 @@ public class AlertsCreator {
         long selfUserId = UserConfig.getInstance(account).getClientUserId();
 
         CheckBoxCell[] cell = new CheckBoxCell[1];
-        boolean[] deleteForAll = new boolean[1];
+        boolean[] deleteForAll = new boolean[]{true};
         TextView messageTextView = new TextView(context);
         messageTextView.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
         messageTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
@@ -3042,7 +3042,7 @@ public class AlertsCreator {
             if (hasDialogsToRevoke) {
                 cell[0] = new CheckBoxCell(context, 1, resourcesProvider);
                 cell[0].setBackgroundDrawable(Theme.getSelectorDrawable(false));
-                cell[0].setText(LocaleController.getString(R.string.DeleteMessagesForBothSidesWherePossible), "", false, false);
+                cell[0].setText(LocaleController.getString(R.string.DeleteMessagesForBothSidesWherePossible), "", deleteForAll[0], false);
                 cell[0].setPadding(LocaleController.isRTL ? dp(16) : dp(8), 0, LocaleController.isRTL ? dp(8) : dp(16), 0);
                 frameLayout.addView(cell[0], LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 48, Gravity.BOTTOM | Gravity.LEFT, 0, 0, 0, 0));
                 cell[0].setOnClickListener(v -> {
@@ -3153,7 +3153,7 @@ public class AlertsCreator {
             textView.setText(LocaleController.formatPluralString("DeleteDays", days));
             messageTextView.setText(LocaleController.getString(R.string.DeleteHistoryByDaysMessage));
         }
-        final boolean[] deleteForAll = new boolean[]{false};
+        final boolean[] deleteForAll = new boolean[]{true};
 
         if (chat != null && canDeleteHistory && ChatObject.isPublic(chat)) {
             deleteForAll[0] = true;
@@ -3162,15 +3162,15 @@ public class AlertsCreator {
             cell[0] = new CheckBoxCell(context, 1, resourcesProvider);
             cell[0].setBackgroundDrawable(Theme.getSelectorDrawable(false));
             if (chat != null) {
-                cell[0].setText(LocaleController.getString(R.string.DeleteMessagesOptionAlsoChat), "", false, false);
+                cell[0].setText(LocaleController.getString(R.string.DeleteMessagesOptionAlsoChat), "", deleteForAll[0], false);
             } else {
-                cell[0].setText(LocaleController.formatString("DeleteMessagesOptionAlso", R.string.DeleteMessagesOptionAlso, UserObject.getFirstName(user)), "", false, false);
+                cell[0].setText(LocaleController.formatString("DeleteMessagesOptionAlso", R.string.DeleteMessagesOptionAlso, UserObject.getFirstName(user)), "", deleteForAll[0], false);
             }
 
             cell[0].setPadding(LocaleController.isRTL ? dp(16) : dp(8), 0, LocaleController.isRTL ? dp(8) : dp(16), 0);
             frameLayout.addView(cell[0], LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 48, Gravity.BOTTOM | Gravity.LEFT, 0, 0, 0, 0));
 
-            cell[0].setChecked(false, false);
+            cell[0].setChecked(deleteForAll[0], false);
             cell[0].setOnClickListener(v -> {
                 CheckBoxCell cell1 = (CheckBoxCell) v;
                 deleteForAll[0] = !deleteForAll[0];
@@ -7907,7 +7907,7 @@ public class AlertsCreator {
             }
         }
 
-        final boolean[] deleteForAll = new boolean[1];
+        final boolean[] deleteForAll = new boolean[]{true};
         boolean canRevokeInbox = user != null && MessagesController.getInstance(currentAccount).canRevokePmInbox;
         int revokeTimeLimit;
         if (user != null) {
@@ -8045,12 +8045,13 @@ public class AlertsCreator {
                 CheckBoxCell cell = new CheckBoxCell(activity, 1, resourcesProvider);
                 cell.setBackgroundDrawable(Theme.getSelectorDrawable(false));
                 if (chat != null && hasNotOut) {
-                    cell.setText(LocaleController.getString(R.string.DeleteForAll), "", false, false);
+                    cell.setText(LocaleController.getString(R.string.DeleteForAll), "", deleteForAll[0], false);
                 } else {
-                    cell.setText(LocaleController.getString(R.string.DeleteMessagesOption), "", false, false);
+                    cell.setText(LocaleController.getString(R.string.DeleteMessagesOption), "", deleteForAll[0], false);
                 }
                 cell.setPadding(LocaleController.isRTL ? dp(16) : dp(8), 0, LocaleController.isRTL ? dp(8) : dp(16), 0);
                 frameLayout.addView(cell, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 48, Gravity.TOP | Gravity.LEFT, 0, 0, 0, 0));
+                cell.setChecked(deleteForAll[0], false);
                 cell.setOnClickListener(v -> {
                     CheckBoxCell cell12 = (CheckBoxCell) v;
                     deleteForAll[0] = !deleteForAll[0];
@@ -8102,14 +8103,15 @@ public class AlertsCreator {
                 CheckBoxCell cell = new CheckBoxCell(activity, 1, resourcesProvider);
                 cell.setBackgroundDrawable(Theme.getSelectorDrawable(false));
                 if (canDeleteInbox) {
-                    cell.setText(LocaleController.formatString("DeleteMessagesOptionAlso", R.string.DeleteMessagesOptionAlso, UserObject.getFirstName(user)), "", false, false);
+                    cell.setText(LocaleController.formatString("DeleteMessagesOptionAlso", R.string.DeleteMessagesOptionAlso, UserObject.getFirstName(user)), "", deleteForAll[0], false);
                 } else if (chat != null && (hasNotOut || myMessagesCount == count)) {
-                    cell.setText(LocaleController.getString(R.string.DeleteForAll), "", false, false);
+                    cell.setText(LocaleController.getString(R.string.DeleteForAll), "", deleteForAll[0], false);
                 } else {
-                    cell.setText(LocaleController.getString(R.string.DeleteMessagesOption), "", false, false);
+                    cell.setText(LocaleController.getString(R.string.DeleteMessagesOption), "", deleteForAll[0], false);
                 }
                 cell.setPadding(LocaleController.isRTL ? dp(16) : dp(8), 0, LocaleController.isRTL ? dp(8) : dp(16), 0);
                 frameLayout.addView(cell, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 48, Gravity.TOP | Gravity.LEFT, 0, 0, 0, 0));
+                cell.setChecked(deleteForAll[0], false);
                 cell.setOnClickListener(v -> {
                     CheckBoxCell cell1 = (CheckBoxCell) v;
                     deleteForAll[0] = !deleteForAll[0];
