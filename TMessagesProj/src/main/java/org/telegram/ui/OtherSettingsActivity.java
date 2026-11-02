@@ -55,8 +55,6 @@ public class OtherSettingsActivity extends BaseFragment {
     public static final String DEFAULT_GALLERY_PACKAGE = "easygram_default_gallery_package";
     public static final String EMBEDDED_PHOTO_PICKER = "__embedded_photo_picker__";
 
-    public static final String KEY_PREMIUM_ACCESS = "easygram_premium_access";
-
     public static final String KEY_TAB_CHATS = "easygram_tab_chats";
     public static final String KEY_TAB_CONTACTS = "easygram_tab_contacts";
     public static final String KEY_TAB_CALLS = "easygram_tab_calls";
@@ -64,7 +62,6 @@ public class OtherSettingsActivity extends BaseFragment {
     public static final String KEY_TAB_PROFILE = "easygram_tab_profile";
 
     public static final String KEY_TAB_ORDER = "easygram_tab_order";
-    public static final String KEY_HIDE_NAV_LABELS = "easygram_hide_nav_labels";
     public static final String DEFAULT_TAB_ORDER = "0,1,2,3,4";
 
     public static final int INDEX_CHATS = 0;
@@ -91,8 +88,6 @@ public class OtherSettingsActivity extends BaseFragment {
     private ItemTouchHelper itemTouchHelper;
 
     private int headerRow;
-    private int premiumAccessRow;
-    private int premiumAccessInfoRow;
     private int galleryRow;
     private int galleryInfoRow;
     private int sendMediaHdRow;
@@ -102,7 +97,6 @@ public class OtherSettingsActivity extends BaseFragment {
     private int disableAdsRow;
     private int adsInfoRow;
     private int navHeaderRow;
-    private int navLabelsRow;
     private int navStartRow;
     private int navEndRow;
     private int navInfoRow;
@@ -128,7 +122,7 @@ public class OtherSettingsActivity extends BaseFragment {
             case INDEX_CALLS:
                 return prefs.getBoolean(KEY_TAB_CALLS, UserConfig.getInstance(currentAccount).showCallsTab);
             case INDEX_SETTINGS:
-                return true;
+                return prefs.getBoolean(KEY_TAB_SETTINGS, true);
             case INDEX_PROFILE:
                 return prefs.getBoolean(KEY_TAB_PROFILE, true);
             default:
@@ -280,8 +274,6 @@ public class OtherSettingsActivity extends BaseFragment {
     private void updateRows() {
         rowCount = 0;
         headerRow = rowCount++;
-        premiumAccessRow = rowCount++;
-        premiumAccessInfoRow = rowCount++;
         galleryRow = rowCount++;
         galleryInfoRow = rowCount++;
         sendMediaHdRow = rowCount++;
@@ -291,7 +283,6 @@ public class OtherSettingsActivity extends BaseFragment {
         disableAdsRow = rowCount++;
         adsInfoRow = rowCount++;
         navHeaderRow = rowCount++;
-        navLabelsRow = rowCount++;
         navStartRow = rowCount;
         rowCount += navItems.size();
         navEndRow = rowCount;
@@ -338,29 +329,7 @@ public class OtherSettingsActivity extends BaseFragment {
         itemTouchHelper.attachToRecyclerView(listView);
 
         listView.setOnItemClickListener((view, position) -> {
-            if (position == premiumAccessRow) {
-                boolean current = preferences().getBoolean(KEY_PREMIUM_ACCESS, false);
-                boolean next = !current;
-                preferences().edit().putBoolean(KEY_PREMIUM_ACCESS, next).apply();
-                if (view instanceof TextCheckCell) {
-                    ((TextCheckCell) view).setChecked(next);
-                }
-                for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
-                    if (UserConfig.getInstance(a).isClientActivated()) {
-                        boolean isPrem = UserConfig.getInstance(a).isPremium();
-                        org.telegram.messenger.MessagesController.getInstance(a).updatePremium(isPrem);
-                        org.telegram.messenger.MediaDataController.getInstance(a).loadPremiumPromo(false);
-                        org.telegram.messenger.MediaDataController.getInstance(a).loadReactions(false, null);
-                        org.telegram.messenger.MessagesController.getInstance(a).getStoriesController().invalidateStoryLimit();
-                        NotificationCenter.getInstance(a).postNotificationName(NotificationCenter.currentUserPremiumStatusChanged);
-                        NotificationCenter.getInstance(a).postNotificationName(NotificationCenter.updateInterfaces, org.telegram.messenger.MessagesController.UPDATE_MASK_ALL);
-                        NotificationCenter.getInstance(a).postNotificationName(NotificationCenter.storiesUpdated);
-                        NotificationCenter.getInstance(a).postNotificationName(NotificationCenter.storiesEnabledUpdate);
-                        NotificationCenter.getInstance(a).postNotificationName(NotificationCenter.mainTabsLayoutChanged);
-                    }
-                }
-                NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.premiumStatusChangedGlobal);
-            } else if (position == galleryRow) {
+            if (position == galleryRow) {
                 showGalleryChooser(view);
             } else if (position == sendMediaHdRow) {
                 boolean current = preferences().getBoolean("easygram_send_media_hd", SharedConfig.photoHighQualityDefault);
@@ -392,13 +361,6 @@ public class OtherSettingsActivity extends BaseFragment {
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.updateInterfaces, org.telegram.messenger.MessagesController.UPDATE_MASK_ALL);
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.storiesUpdated);
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.mainTabsLayoutChanged);
-            } else if (position == navLabelsRow) {
-                boolean next = !preferences().getBoolean(KEY_HIDE_NAV_LABELS, false);
-                preferences().edit().putBoolean(KEY_HIDE_NAV_LABELS, next).apply();
-                if (view instanceof TextCheckCell) {
-                    ((TextCheckCell) view).setChecked(next);
-                }
-                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.mainTabsLayoutChanged);
             } else if (position >= navStartRow && position < navEndRow) {
                 int index = navItems.get(position - navStartRow);
                 if (view instanceof ReorderCheckCell) {
@@ -420,9 +382,6 @@ public class OtherSettingsActivity extends BaseFragment {
     }
 
     private void toggleTab(int index, ReorderCheckCell cell) {
-        if (index == INDEX_SETTINGS) {
-            return;
-        }
         boolean current = isTabEnabled(index, preferences(), currentAccount);
         if (current && getEnabledTabsCount(preferences(), currentAccount) <= 1) {
             BulletinFactory.of(this).createSimpleBulletin(
@@ -443,6 +402,9 @@ public class OtherSettingsActivity extends BaseFragment {
             case INDEX_CALLS:
                 editor.putBoolean(KEY_TAB_CALLS, next);
                 UserConfig.getInstance(currentAccount).setShowCallsTab(next);
+                break;
+            case INDEX_SETTINGS:
+                editor.putBoolean(KEY_TAB_SETTINGS, next);
                 break;
             case INDEX_PROFILE:
                 editor.putBoolean(KEY_TAB_PROFILE, next);
@@ -541,11 +503,6 @@ public class OtherSettingsActivity extends BaseFragment {
             switchView.setChecked(checked, true);
         }
 
-        public void setCheckEnabled(boolean enabled) {
-            switchView.setEnabled(enabled);
-            switchView.setAlpha(enabled ? 1f : 0.5f);
-        }
-
         public ImageView getMoveImageView() {
             return moveImageView;
         }
@@ -585,8 +542,8 @@ public class OtherSettingsActivity extends BaseFragment {
         public int getItemViewType(int position) {
             if (position == headerRow || position == navHeaderRow || position == photoMenuHeaderRow) return 0;
             if (position == galleryRow) return 1;
-            if (position == premiumAccessInfoRow || position == galleryInfoRow || position == sendMediaHdInfoRow || position == storiesInfoRow || position == adsInfoRow || position == navInfoRow || position == photoMenuInfoRow) return 2;
-            if (position == premiumAccessRow || position == sendMediaHdRow || position == disableStoriesRow || position == disableAdsRow || position == navLabelsRow) return 3;
+            if (position == galleryInfoRow || position == sendMediaHdInfoRow || position == storiesInfoRow || position == adsInfoRow || position == navInfoRow || position == photoMenuInfoRow) return 2;
+            if (position == sendMediaHdRow || position == disableStoriesRow || position == disableAdsRow) return 3;
             if (position >= navStartRow && position < navEndRow) return 4;
             if (position >= photoMenuStartRow && position < photoMenuEndRow) return 5;
             return 0;
@@ -645,9 +602,7 @@ public class OtherSettingsActivity extends BaseFragment {
                     break;
                 case 2:
                     TextInfoPrivacyCell infoCell = (TextInfoPrivacyCell) holder.itemView;
-                    if (position == premiumAccessInfoRow) {
-                        infoCell.setText(AndroidUtilities.replaceTags(LocaleController.getString(R.string.EasygramPremiumAccessInfo)));
-                    } else if (position == galleryInfoRow) {
+                    if (position == galleryInfoRow) {
                         infoCell.setText(LocaleController.getString(R.string.EasygramDefaultGalleryInfo));
                     } else if (position == sendMediaHdInfoRow) {
                         infoCell.setText(LocaleController.getString(R.string.EasygramSendMediaHdInfo));
@@ -663,14 +618,7 @@ public class OtherSettingsActivity extends BaseFragment {
                     break;
                 case 3:
                     TextCheckCell checkCell = (TextCheckCell) holder.itemView;
-                    if (position == premiumAccessRow) {
-                        boolean premiumAccess = preferences().getBoolean(KEY_PREMIUM_ACCESS, false);
-                        checkCell.setTextAndCheck(
-                                LocaleController.getString(R.string.EasygramPremiumAccess),
-                                premiumAccess,
-                                true
-                        );
-                    } else if (position == sendMediaHdRow) {
+                    if (position == sendMediaHdRow) {
                         boolean sendMediaHd = preferences().getBoolean("easygram_send_media_hd", SharedConfig.photoHighQualityDefault);
                         checkCell.setTextAndCheck(
                                 LocaleController.getString(R.string.EasygramSendMediaHd),
@@ -690,12 +638,6 @@ public class OtherSettingsActivity extends BaseFragment {
                                 LocaleController.getString(R.string.EasygramDisableAds),
                                 disabledAds,
                                 false
-                        );
-                    } else if (position == navLabelsRow) {
-                        checkCell.setTextAndCheck(
-                                LocaleController.getString(R.string.EasygramHideNavLabels),
-                                preferences().getBoolean(KEY_HIDE_NAV_LABELS, false),
-                                true
                         );
                     }
                     break;
@@ -723,7 +665,6 @@ public class OtherSettingsActivity extends BaseFragment {
                     }
                     boolean checked = isTabEnabled(index, preferences(), currentAccount);
                     checkCell2.setItem(title, checked, position != navEndRow - 1);
-                    checkCell2.setCheckEnabled(index != INDEX_SETTINGS);
                     checkCell2.getMoveImageView().setOnTouchListener((v, event) -> {
                         if (event.getAction() == MotionEvent.ACTION_DOWN) {
                             itemTouchHelper.startDrag(holder);
@@ -737,7 +678,6 @@ public class OtherSettingsActivity extends BaseFragment {
                     String photoTitle = getPhotoMenuItemTitle(photoIndex);
                     boolean photoChecked = isPhotoMenuItemEnabled(photoIndex, preferences());
                     checkCell3.setItem(photoTitle, photoChecked, position != photoMenuEndRow - 1);
-                    checkCell3.setCheckEnabled(true);
                     checkCell3.getMoveImageView().setOnTouchListener((v, event) -> {
                         if (event.getAction() == MotionEvent.ACTION_DOWN) {
                             itemTouchHelper.startDrag(holder);
