@@ -50,7 +50,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Easygram settings for optional app integrations, stories, ads, and navigation. */
+/** Easygram settings for optional app integrations, stories, ads, navigation, and photo viewer menu. */
 public class OtherSettingsActivity extends BaseFragment {
     public static final String DEFAULT_GALLERY_PACKAGE = "easygram_default_gallery_package";
     public static final String EMBEDDED_PHOTO_PICKER = "__embedded_photo_picker__";
@@ -70,6 +70,19 @@ public class OtherSettingsActivity extends BaseFragment {
     public static final int INDEX_SETTINGS = 3;
     public static final int INDEX_PROFILE = 4;
 
+    public static final String KEY_PHOTO_MENU_ORDER = "easygram_photo_menu_order";
+    public static final String DEFAULT_PHOTO_MENU_ORDER = "0,1,2,3,4,5,6,7";
+    public static final String KEY_PHOTO_MENU_ENABLED_PREFIX = "easygram_photo_menu_enabled_";
+
+    public static final int INDEX_PHOTO_MENU_SAVE = 0;
+    public static final int INDEX_PHOTO_MENU_SHOWALL = 1;
+    public static final int INDEX_PHOTO_MENU_SHOWINCHAT = 2;
+    public static final int INDEX_PHOTO_MENU_CREATE_STICKER = 3;
+    public static final int INDEX_PHOTO_MENU_REPLY = 4;
+    public static final int INDEX_PHOTO_MENU_COPY = 5;
+    public static final int INDEX_PHOTO_MENU_SHARE = 6;
+    public static final int INDEX_PHOTO_MENU_DELETE = 7;
+
     private RecyclerListView listView;
     private ListAdapter adapter;
     private ItemTouchHelper itemTouchHelper;
@@ -87,9 +100,14 @@ public class OtherSettingsActivity extends BaseFragment {
     private int navStartRow;
     private int navEndRow;
     private int navInfoRow;
+    private int photoMenuHeaderRow;
+    private int photoMenuStartRow;
+    private int photoMenuEndRow;
+    private int photoMenuInfoRow;
     private int rowCount;
 
     private final ArrayList<Integer> navItems = new ArrayList<>();
+    private final ArrayList<Integer> photoMenuItems = new ArrayList<>();
 
     private SharedPreferences preferences() {
         return ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
@@ -151,6 +169,91 @@ public class OtherSettingsActivity extends BaseFragment {
         prefs.edit().putString(KEY_TAB_ORDER, sb.toString()).apply();
     }
 
+    public static boolean isPhotoMenuItemEnabled(int index, SharedPreferences prefs) {
+        return prefs.getBoolean(KEY_PHOTO_MENU_ENABLED_PREFIX + index, true);
+    }
+
+    public static void setPhotoMenuItemEnabled(int index, boolean enabled, SharedPreferences prefs) {
+        prefs.edit().putBoolean(KEY_PHOTO_MENU_ENABLED_PREFIX + index, enabled).apply();
+    }
+
+    public static List<Integer> getPhotoMenuOrder(SharedPreferences prefs) {
+        String orderStr = prefs.getString(KEY_PHOTO_MENU_ORDER, DEFAULT_PHOTO_MENU_ORDER);
+        List<Integer> order = new ArrayList<>();
+        if (orderStr != null && !orderStr.isEmpty()) {
+            String[] parts = orderStr.split(",");
+            for (String part : parts) {
+                try {
+                    int idx = Integer.parseInt(part.trim());
+                    if (idx >= 0 && idx <= INDEX_PHOTO_MENU_DELETE && !order.contains(idx)) {
+                        order.add(idx);
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+        for (int i = 0; i <= INDEX_PHOTO_MENU_DELETE; i++) {
+            if (!order.contains(i)) {
+                order.add(i);
+            }
+        }
+        return order;
+    }
+
+    public static void savePhotoMenuOrder(SharedPreferences prefs, List<Integer> order) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < order.size(); i++) {
+            if (i > 0) sb.append(",");
+            sb.append(order.get(i));
+        }
+        prefs.edit().putString(KEY_PHOTO_MENU_ORDER, sb.toString()).apply();
+    }
+
+    public static String getPhotoMenuItemTitle(int index) {
+        switch (index) {
+            case INDEX_PHOTO_MENU_SAVE:
+                return LocaleController.getString(R.string.SaveToGallery);
+            case INDEX_PHOTO_MENU_SHOWALL:
+                return LocaleController.getString(R.string.ShowAllMedia);
+            case INDEX_PHOTO_MENU_SHOWINCHAT:
+                return LocaleController.getString(R.string.ShowInChat);
+            case INDEX_PHOTO_MENU_CREATE_STICKER:
+                return LocaleController.getString(R.string.CreateSticker);
+            case INDEX_PHOTO_MENU_REPLY:
+                return LocaleController.getString(R.string.Reply);
+            case INDEX_PHOTO_MENU_COPY:
+                return LocaleController.getString(R.string.Copy);
+            case INDEX_PHOTO_MENU_SHARE:
+                return LocaleController.getString(R.string.ShareFile);
+            case INDEX_PHOTO_MENU_DELETE:
+                return LocaleController.getString(R.string.Delete);
+            default:
+                return "";
+        }
+    }
+
+    public static int getMenuIdForPhotoIndex(int index) {
+        switch (index) {
+            case INDEX_PHOTO_MENU_SAVE:
+                return 2; // gallery_menu_save
+            case INDEX_PHOTO_MENU_SHOWALL:
+                return 3; // gallery_menu_showall
+            case INDEX_PHOTO_MENU_SHOWINCHAT:
+                return 5; // gallery_menu_showinchat
+            case INDEX_PHOTO_MENU_CREATE_STICKER:
+                return 25; // gallery_menu_create_sticker
+            case INDEX_PHOTO_MENU_REPLY:
+                return 21; // gallery_menu_reply
+            case INDEX_PHOTO_MENU_COPY:
+                return 27; // gallery_menu_copy
+            case INDEX_PHOTO_MENU_SHARE:
+                return 9; // gallery_menu_share
+            case INDEX_PHOTO_MENU_DELETE:
+                return 7; // gallery_menu_delete
+            default:
+                return -1;
+        }
+    }
+
     private String getSelectedGalleryLabel() {
         String packageName = preferences().getString(DEFAULT_GALLERY_PACKAGE, null);
         if (packageName == null) {
@@ -184,12 +287,19 @@ public class OtherSettingsActivity extends BaseFragment {
         rowCount += navItems.size();
         navEndRow = rowCount;
         navInfoRow = rowCount++;
+        photoMenuHeaderRow = rowCount++;
+        photoMenuStartRow = rowCount;
+        rowCount += photoMenuItems.size();
+        photoMenuEndRow = rowCount;
+        photoMenuInfoRow = rowCount++;
     }
 
     @Override
     public boolean onFragmentCreate() {
         navItems.clear();
         navItems.addAll(getTabOrder(preferences()));
+        photoMenuItems.clear();
+        photoMenuItems.addAll(getPhotoMenuOrder(preferences()));
         updateRows();
         return super.onFragmentCreate();
     }
@@ -255,6 +365,14 @@ public class OtherSettingsActivity extends BaseFragment {
                 int index = navItems.get(position - navStartRow);
                 if (view instanceof ReorderCheckCell) {
                     toggleTab(index, (ReorderCheckCell) view);
+                }
+            } else if (position >= photoMenuStartRow && position < photoMenuEndRow) {
+                int index = photoMenuItems.get(position - photoMenuStartRow);
+                if (view instanceof ReorderCheckCell) {
+                    boolean current = isPhotoMenuItemEnabled(index, preferences());
+                    boolean next = !current;
+                    setPhotoMenuItemEnabled(index, next, preferences());
+                    ((ReorderCheckCell) view).setChecked(next);
                 }
             }
         });
@@ -412,7 +530,7 @@ public class OtherSettingsActivity extends BaseFragment {
         @Override
         public boolean isEnabled(RecyclerView.ViewHolder holder) {
             int type = holder.getItemViewType();
-            return type == 1 || type == 3 || type == 4;
+            return type == 1 || type == 3 || type == 4 || type == 5;
         }
 
         @Override
@@ -422,11 +540,12 @@ public class OtherSettingsActivity extends BaseFragment {
 
         @Override
         public int getItemViewType(int position) {
-            if (position == headerRow || position == navHeaderRow) return 0;
+            if (position == headerRow || position == navHeaderRow || position == photoMenuHeaderRow) return 0;
             if (position == galleryRow) return 1;
-            if (position == galleryInfoRow || position == sendMediaHdInfoRow || position == storiesInfoRow || position == adsInfoRow || position == navInfoRow) return 2;
+            if (position == galleryInfoRow || position == sendMediaHdInfoRow || position == storiesInfoRow || position == adsInfoRow || position == navInfoRow || position == photoMenuInfoRow) return 2;
             if (position == sendMediaHdRow || position == disableStoriesRow || position == disableAdsRow) return 3;
             if (position >= navStartRow && position < navEndRow) return 4;
+            if (position >= photoMenuStartRow && position < photoMenuEndRow) return 5;
             return 0;
         }
 
@@ -451,6 +570,7 @@ public class OtherSettingsActivity extends BaseFragment {
                     view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                     break;
                 case 4:
+                case 5:
                 default:
                     view = new ReorderCheckCell(mContext);
                     view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
@@ -468,6 +588,8 @@ public class OtherSettingsActivity extends BaseFragment {
                         headerCell.setText(LocaleController.getString(R.string.EasygramOther));
                     } else if (position == navHeaderRow) {
                         headerCell.setText(LocaleController.getString(R.string.EasygramNavigationBar));
+                    } else if (position == photoMenuHeaderRow) {
+                        headerCell.setText(LocaleController.getString(R.string.EasygramPhotoMenu));
                     }
                     break;
                 case 1:
@@ -490,6 +612,8 @@ public class OtherSettingsActivity extends BaseFragment {
                         infoCell.setText(LocaleController.getString(R.string.EasygramDisableAdsInfo));
                     } else if (position == navInfoRow) {
                         infoCell.setText(LocaleController.getString(R.string.EasygramNavigationBarInfo));
+                    } else if (position == photoMenuInfoRow) {
+                        infoCell.setText(LocaleController.getString(R.string.EasygramPhotoMenuInfo));
                     }
                     break;
                 case 3:
@@ -548,6 +672,19 @@ public class OtherSettingsActivity extends BaseFragment {
                         return false;
                     });
                     break;
+                case 5:
+                    ReorderCheckCell checkCell3 = (ReorderCheckCell) holder.itemView;
+                    int photoIndex = photoMenuItems.get(position - photoMenuStartRow);
+                    String photoTitle = getPhotoMenuItemTitle(photoIndex);
+                    boolean photoChecked = isPhotoMenuItemEnabled(photoIndex, preferences());
+                    checkCell3.setItem(photoTitle, photoChecked, position != photoMenuEndRow - 1);
+                    checkCell3.getMoveImageView().setOnTouchListener((v, event) -> {
+                        if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                            itemTouchHelper.startDrag(holder);
+                        }
+                        return false;
+                    });
+                    break;
             }
         }
     }
@@ -561,7 +698,7 @@ public class OtherSettingsActivity extends BaseFragment {
 
         @Override
         public int getMovementFlags(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder) {
-            if (viewHolder.getItemViewType() != 4) {
+            if (viewHolder.getItemViewType() != 4 && viewHolder.getItemViewType() != 5) {
                 return makeMovementFlags(0, 0);
             }
             return makeMovementFlags(ItemTouchHelper.UP | ItemTouchHelper.DOWN, 0);
@@ -574,13 +711,20 @@ public class OtherSettingsActivity extends BaseFragment {
             }
             int fromPos = source.getAdapterPosition();
             int toPos = target.getAdapterPosition();
-            if (fromPos >= navStartRow && fromPos < navEndRow && toPos >= navStartRow && toPos < navEndRow) {
+            if (source.getItemViewType() == 4 && fromPos >= navStartRow && fromPos < navEndRow && toPos >= navStartRow && toPos < navEndRow) {
                 int fromIdx = fromPos - navStartRow;
                 int toIdx = toPos - navStartRow;
                 Collections.swap(navItems, fromIdx, toIdx);
                 saveTabOrder(preferences(), navItems);
                 adapter.notifyItemMoved(fromPos, toPos);
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.mainTabsLayoutChanged);
+                return true;
+            } else if (source.getItemViewType() == 5 && fromPos >= photoMenuStartRow && fromPos < photoMenuEndRow && toPos >= photoMenuStartRow && toPos < photoMenuEndRow) {
+                int fromIdx = fromPos - photoMenuStartRow;
+                int toIdx = toPos - photoMenuStartRow;
+                Collections.swap(photoMenuItems, fromIdx, toIdx);
+                savePhotoMenuOrder(preferences(), photoMenuItems);
+                adapter.notifyItemMoved(fromPos, toPos);
                 return true;
             }
             return false;

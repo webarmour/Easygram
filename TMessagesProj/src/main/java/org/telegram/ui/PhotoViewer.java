@@ -2196,6 +2196,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     private final static int gallery_menu_chromecast = 24;
     private final static int gallery_menu_create_sticker = 25;
     private final static int gallery_menu_delete2 = 26;
+    private final static int gallery_menu_copy = 27;
 
     private final static int ads_sponsor_info = 101;
     private final static int ads_about = 102;
@@ -4722,6 +4723,85 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
 
     private WindowVisibilityManager.Controller activityVisibilityController;
 
+    private void updatePhotoMenuOrderAndVisibility() {
+        if (menuItem == null) return;
+        ActionBarPopupWindow.ActionBarPopupWindowLayout popupLayout = menuItem.getPopupLayout();
+        if (popupLayout == null) return;
+
+        SharedPreferences prefs = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
+        List<Integer> order = OtherSettingsActivity.getPhotoMenuOrder(prefs);
+
+        for (int i = 0; i <= 7; i++) {
+            boolean enabled = OtherSettingsActivity.isPhotoMenuItemEnabled(i, prefs);
+            int menuId = OtherSettingsActivity.getMenuIdForPhotoIndex(i);
+            if (!enabled) {
+                if (menuId == gallery_menu_save) {
+                    if (galleryButton != null) galleryButton.setVisibility(View.GONE);
+                    if (galleryGap != null) galleryGap.setVisibility(View.GONE);
+                } else {
+                    menuItem.hideSubItem(menuId);
+                }
+            }
+        }
+
+        try {
+            LinearLayout linearLayout = popupLayout.linearLayout;
+            if (linearLayout != null) {
+                Map<Integer, View> viewMap = new HashMap<>();
+                for (int i = 0; i <= 7; i++) {
+                    int menuId = OtherSettingsActivity.getMenuIdForPhotoIndex(i);
+                    View v;
+                    if (menuId == gallery_menu_save) {
+                        v = galleryButton;
+                    } else {
+                        v = popupLayout.findViewWithTag(menuId);
+                    }
+                    if (v != null) {
+                        viewMap.put(menuId, v);
+                    }
+                }
+
+                int firstIndex = -1;
+                for (int i = 0; i < linearLayout.getChildCount(); i++) {
+                    View child = linearLayout.getChildAt(i);
+                    for (View customView : viewMap.values()) {
+                        if (child == customView) {
+                            if (firstIndex == -1 || i < firstIndex) {
+                                firstIndex = i;
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                if (firstIndex != -1) {
+                    for (View customView : viewMap.values()) {
+                        linearLayout.removeView(customView);
+                    }
+                    if (galleryGap != null) {
+                        linearLayout.removeView(galleryGap);
+                    }
+
+                    int insertPos = firstIndex;
+                    for (int idx : order) {
+                        int menuId = OtherSettingsActivity.getMenuIdForPhotoIndex(idx);
+                        View v = viewMap.get(menuId);
+                        if (v != null) {
+                            linearLayout.addView(v, insertPos++);
+                            if (menuId == gallery_menu_save && galleryGap != null) {
+                                linearLayout.addView(galleryGap, insertPos++);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+
+        menuItem.checkHideMenuItem();
+    }
+
     public Activity getParentActivity() {
         return parentActivity;
     }
@@ -5528,6 +5608,61 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     }
                 } else if (id == gallery_menu_share || id == gallery_menu_share2) {
                     onSharePressed();
+                } else if (id == gallery_menu_copy) {
+                    if (parentActivity == null || !allowShare) {
+                        return;
+                    }
+                    try {
+                        File f = null;
+                        if (currentMessageObject != null) {
+                            if (!TextUtils.isEmpty(currentMessageObject.messageOwner.attachPath)) {
+                                f = new File(currentMessageObject.messageOwner.attachPath);
+                                if (!f.exists()) {
+                                    f = null;
+                                }
+                            }
+                            if (f == null) {
+                                f = FileLoader.getInstance(currentAccount).getPathToMessage(currentMessageObject.messageOwner);
+                            }
+                        } else if (currentFileLocationVideo != null) {
+                            f = FileLoader.getInstance(currentAccount).getPathToAttach(getFileLocation(currentFileLocationVideo), getFileLocationExt(currentFileLocationVideo), avatarsDialogId != 0 || isEvent);
+                            if (f == null || !f.exists()) {
+                                f = FileLoader.getInstance(currentAccount).getPathToAttach(getFileLocation(currentFileLocationVideo), getFileLocationExt(currentFileLocationVideo), false);
+                            }
+                        } else if (pageBlocksAdapter != null) {
+                            f = pageBlocksAdapter.getFile(currentIndex);
+                        }
+                        if (f != null && !f.exists()) {
+                            f = new File(FileLoader.getDirectory(FileLoader.MEDIA_DIR_CACHE), f.getName());
+                        }
+
+                        if (f != null && f.exists()) {
+                            Uri uri;
+                            if (Build.VERSION.SDK_INT >= 24) {
+                                try {
+                                    uri = FileProvider.getUriForFile(parentActivity, ApplicationLoader.getApplicationId() + ".provider", f);
+                                } catch (Exception ignore) {
+                                    uri = Uri.fromFile(f);
+                                }
+                            } else {
+                                uri = Uri.fromFile(f);
+                            }
+                            String mimeType = "image/jpeg";
+                            if (currentMessageObject != null && currentMessageObject.getMimeType() != null) {
+                                mimeType = currentMessageObject.getMimeType();
+                            }
+
+                            android.content.ClipboardManager clipboard = (android.content.ClipboardManager) ApplicationLoader.applicationContext.getSystemService(Context.CLIPBOARD_SERVICE);
+                            android.content.ClipData clip = new android.content.ClipData(new android.content.ClipDescription("photo", new String[]{mimeType, "image/*"}), new android.content.ClipData.Item(uri));
+                            clipboard.setPrimaryClip(clip);
+
+                            BulletinFactory.of(containerView, null).createCopyBulletin(LocaleController.getString(R.string.PhotoCopiedToClipboard)).show();
+                        } else {
+                            showDownloadAlert();
+                        }
+                    } catch (Exception e) {
+                        FileLog.e(e);
+                    }
                 } else if (id == gallery_menu_openin) {
                     try {
                         if (isEmbedVideo) {
@@ -5897,6 +6032,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         });
 
         galleryButton = menuItem.addSwipeBackItem(R.drawable.msg_gallery, null, getString(R.string.SaveToGallery), chooseDownloadQualityLayout.layout).setColors(0xfffafafa, 0xfffafafa);
+        galleryButton.setTag(gallery_menu_save);
         galleryButton.setOnClickListener(v -> {
             if (currentMessageObject != null && currentMessageObject.hasVideoQualities() && chooseDownloadQualityLayout.update(currentMessageObject)) {
                 galleryButton.openSwipeBack();
@@ -5919,6 +6055,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         menuItem.addSubItem(gallery_menu_reply, R.drawable.menu_reply, getString(R.string.Reply)).setColors(0xfffafafa, 0xfffafafa);
         menuItem.addSubItem(gallery_menu_report, R.drawable.msg_report, getString(R.string.ReportProfilePhoto)).setColors(0xfffafafa, 0xfffafafa);
         menuItem.addSubItem(gallery_menu_share, R.drawable.msg_shareout, getString(R.string.ShareFile)).setColors(0xfffafafa, 0xfffafafa);
+        menuItem.addSubItem(gallery_menu_copy, R.drawable.msg_copy, getString(R.string.Copy)).setColors(0xfffafafa, 0xfffafafa);
         menuItem.addSubItem(gallery_menu_masks2, R.drawable.msg_sticker, getString(R.string.ShowStickers)).setColors(0xfffafafa, 0xfffafafa);
         //menuItem.addSubItem(gallery_menu_edit_avatar, R.drawable.photo_paint, LocaleController.getString(R.string.EditPhoto)).setColors(0xfffafafa, 0xfffafafa);
         menuItem.addSubItem(gallery_menu_set_as_main, R.drawable.msg_openprofile, getString(R.string.SetAsMain)).setColors(0xfffafafa, 0xfffafafa);
@@ -5935,6 +6072,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         menuItem.setSubMenuDelegate(new ActionBarMenuItem.ActionBarSubMenuItemDelegate() {
             @Override
             public void onShowSubMenu() {
+                updatePhotoMenuOrderAndVisibility();
                 if (videoPlayerControlVisible && isPlaying) {
                     AndroidUtilities.cancelRunOnUIThread(hideActionBarRunnable);
                 }
@@ -11111,8 +11249,10 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             if (allowShare && pageBlocksAdapter == null) {
                 if (visible) {
                     menuItem.showSubItem(gallery_menu_share);
+                    menuItem.showSubItem(gallery_menu_copy);
                 } else {
                     menuItem.hideSubItem(gallery_menu_share);
+                    menuItem.hideSubItem(gallery_menu_copy);
                 }
             }
         }
@@ -14031,6 +14171,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         menuItem.hideSubItem(gallery_menu_reply);
         menuItem.hideSubItem(gallery_menu_report);
         menuItem.hideSubItem(gallery_menu_share);
+        menuItem.hideSubItem(gallery_menu_copy);
         menuItem.hideSubItem(gallery_menu_openin);
         menuItem.hideSubItem(gallery_menu_savegif);
         menuItem.hideSubItem(gallery_menu_masks2);
@@ -14235,6 +14376,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             allowShare = true;
             menuItem.hideSubItem(gallery_menu_showall);
             menuItem.showSubItem(gallery_menu_share);
+            menuItem.showSubItem(gallery_menu_copy);
             setImageIndex(0);
 
             if (sendPhotoType == SELECT_TYPE_AVATAR) {
@@ -14703,6 +14845,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                 galleryButton.setVisibility(View.GONE);
                 galleryGap.setVisibility(View.GONE);
                 menuItem.hideSubItem(gallery_menu_share);
+                menuItem.hideSubItem(gallery_menu_copy);
                 setItemVisible(editItem, false, animated);
                 if (!newMessageObject.canDeleteMessage(parentChatActivity != null && parentChatActivity.isInScheduleMode(), null)) {
                     menuItem.hideSubItem(gallery_menu_delete);
@@ -14817,12 +14960,14 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                 galleryButton.setVisibility(View.GONE);
                 galleryGap.setVisibility(View.GONE);
                 menuItem.hideSubItem(gallery_menu_share);
+                menuItem.hideSubItem(gallery_menu_copy);
                 setItemVisible(editItem, false, animated);
             } else {
                 allowShare = true;
                 galleryButton.setVisibility(View.VISIBLE);
                 galleryGap.setVisibility(View.VISIBLE);
                 menuItem.showSubItem(gallery_menu_share);
+                menuItem.showSubItem(gallery_menu_copy);
             }
             groupedPhotosListView.fillList();
         } else if (!secureDocuments.isEmpty()) {
@@ -14903,6 +15048,11 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             }
             allowShare = !noforwards;
             menuItem.showSubItem(gallery_menu_share);
+            if (allowShare) {
+                menuItem.showSubItem(gallery_menu_copy);
+            } else {
+                menuItem.hideSubItem(gallery_menu_copy);
+            }
             menuItem.checkHideMenuItem();
             groupedPhotosListView.fillList();
             editing = needCaptionLayout && (sendPhotoType == 0 || sendPhotoType == 2 || sendPhotoType == SELECT_TYPE_NO_SELECT);
