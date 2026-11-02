@@ -332,6 +332,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         tabs[INDEX_CHATS].setOnLongClickListener(this::openFoldersSelector);
         tabs[INDEX_CONTACTS].setOnLongClickListener(this::openContactsSelector);
         tabs[INDEX_CALLS].setOnLongClickListener(this::openCallsSelector);
+        tabs[INDEX_SETTINGS].setOnLongClickListener(this::openAccountSelector);
         tabs[INDEX_PROFILE].setOnLongClickListener(this::openAccountSelector);
 
         for (int index = 0; index < tabs.length; index++) {
@@ -539,27 +540,6 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
     private boolean openAccountSelector(View anchor) {
         if (getContext() == null || getParentActivity() == null) return false;
         final ItemOptions o = ItemOptions.makeOptions(this, anchor);
-        for (int accountIndex = 0; accountIndex < UserConfig.MAX_ACCOUNT_COUNT; accountIndex++) {
-            if (!UserConfig.getInstance(accountIndex).isClientActivated()) continue;
-            final int acc = accountIndex;
-            final ActionBarMenuSubItem accountItem = new ActionBarMenuSubItem(getParentActivity(), 2, false, false, getResourceProvider());
-            accountItem.setPadding(dp(18), 0, dp(18), 0);
-            TLRPC.User u = UserConfig.getInstance(acc).getCurrentUser();
-            accountItem.setText(UserObject.getUserName(u));
-            AvatarDrawable avatarDrawable = new AvatarDrawable(u);
-            avatarDrawable.setInfo(acc, u);
-            accountItem.setIcon(avatarDrawable);
-            if (acc == currentAccount) {
-                accountItem.setSubtext(getString(R.string.Account));
-            }
-            accountItem.setOnClickListener(v -> {
-                if (acc != currentAccount) {
-                    LaunchActivity.instance.switchToAccount(acc, true);
-                }
-                o.dismiss();
-            });
-            o.addView(accountItem);
-        }
 
         if (UserConfig.getActivatedAccountsCount() < UserConfig.MAX_ACCOUNT_COUNT) {
             o.add(R.drawable.msg_add, getString(R.string.AddAccount), () -> {
@@ -575,6 +555,17 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
                 }
             });
         }
+
+        for (int accountIndex = 0; accountIndex < UserConfig.MAX_ACCOUNT_COUNT; accountIndex++) {
+            if (!UserConfig.getInstance(accountIndex).isClientActivated()) continue;
+            final int acc = accountIndex;
+            o.addAccount(acc, acc == currentAccount, () -> {
+                if (acc != currentAccount) {
+                    LaunchActivity.instance.switchToAccount(acc, true);
+                }
+            });
+        }
+
         o.setBlur(true);
         o.translate(0, -dp(4));
         o.setGravity(Gravity.RIGHT);
