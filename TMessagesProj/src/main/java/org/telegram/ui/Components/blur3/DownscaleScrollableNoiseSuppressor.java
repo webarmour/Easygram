@@ -26,6 +26,10 @@ import java.util.List;
 
 @RequiresApi(api = Build.VERSION_CODES.S)
 public class DownscaleScrollableNoiseSuppressor {
+    // Shared blur radii for glass surfaces, including the top and bottom bars.
+    public static final float GLASS_BLUR_RADIUS_DP = 12f;
+    public static final float LIQUID_GLASS_BLUR_RADIUS_DP = 4f;
+
     public final boolean isLiquidGlassEnabled;
     public final boolean allowNoiseSuppress;
     private final boolean simpleMode;
@@ -410,19 +414,19 @@ public class DownscaleScrollableNoiseSuppressor {
             if (isLiquidGlassEnabled) {
                 renderNodesForGlass = new DownscaledRenderNode("glass", 0, true);
                 renderNodesForGlass.setScale(4, 4);
-                renderNodesForGlass.setPrimaryEffectBlur(dpf2(6f), RenderNodeEffects.getSaturationX3RenderEffect());
+                renderNodesForGlass.setPrimaryEffectBlur(dpf2(LIQUID_GLASS_BLUR_RADIUS_DP), RenderNodeEffects.getSaturationX3RenderEffect());
                 renderNodesForBlur = new DownscaledRenderNode("blur", 0);
                 renderNodesForBlur.setScale(8, 8);
-                renderNodesForBlur.setPrimaryEffectBlur(dpf2(40 - 1.66f));
+                renderNodesForBlur.setPrimaryEffectBlur(dpf2(GLASS_BLUR_RADIUS_DP - LIQUID_GLASS_BLUR_RADIUS_DP));
             } else if (simpleMode) {
                 renderNodesForBlur = new DownscaledRenderNode("blur", 0);
                 renderNodesForBlur.setScale(allowNoiseSuppress ? 16 : 8, allowNoiseSuppress ? 16 : 8);
-                renderNodesForBlur.setPrimaryEffectBlur(dpf2(40), RenderNodeEffects.getSaturationX3RenderEffect());
+                renderNodesForBlur.setPrimaryEffectBlur(dpf2(GLASS_BLUR_RADIUS_DP), RenderNodeEffects.getSaturationX3RenderEffect());
                 renderNodesForGlass = null;
             } else {
                 renderNodesForBlur = new DownscaledRenderNode("blur", 1);
                 renderNodesForBlur.setScale(8, 8);
-                renderNodesForBlur.setPrimaryEffectBlur(dpf2(40));
+                renderNodesForBlur.setPrimaryEffectBlur(dpf2(GLASS_BLUR_RADIUS_DP));
                 renderNodesForBlur.setSecondaryEffect(0, RenderNodeEffects.getSaturationX3RenderEffect());
                 renderNodesForGlass = null;
             }

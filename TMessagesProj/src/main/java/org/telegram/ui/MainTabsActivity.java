@@ -75,6 +75,7 @@ import org.telegram.ui.Components.blur3.BlurredBackgroundWithFadeDrawable;
 import org.telegram.ui.Components.blur3.RenderNodeWithHash;
 import org.telegram.ui.Components.blur3.capture.IBlur3Hash;
 import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
+import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawableRenderNode;
 import org.telegram.ui.Components.blur3.drawable.color.impl.BlurredBackgroundProviderImpl;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceColor;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceRenderNode;
@@ -143,7 +144,11 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
                 @Override
                 public void renderNodeCalculateHash(IBlur3Hash hash) {
                     hash.add(getThemedColor(Theme.key_windowBackgroundWhite));
-                    hash.add(SharedConfig.chatBlurEnabled());
+                    hash.add(BlurredBackgroundProviderImpl.checkBlurEnabled(currentAccount, resourceProvider));
+
+                    if (!BlurredBackgroundProviderImpl.checkBlurEnabled(currentAccount, resourceProvider)) {
+                        return;
+                    }
 
                     for (int a = 0, N = fragmentsArr.size(); a < N; a++) {
                         final FragmentState state = fragmentsArr.valueAt(a);
@@ -176,6 +181,10 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
                     final int height = fragmentView.getMeasuredHeight();
 
                     canvas.drawColor(getThemedColor(Theme.key_windowBackgroundWhite));
+
+                    if (!BlurredBackgroundProviderImpl.checkBlurEnabled(currentAccount, resourceProvider)) {
+                        return;
+                    }
 
                     for (int a = 0, N = fragmentsArr.size(); a < N; a++) {
                         final FragmentState state = fragmentsArr.valueAt(a);
@@ -212,7 +221,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         Bulletin.Delegate delegate = new Bulletin.Delegate() {
             @Override
             public int getBottomOffset(int tag) {
-                return navigationBarHeight + dp(DialogsActivity.MAIN_TABS_HEIGHT + DialogsActivity.MAIN_TABS_MARGIN);
+                return navigationBarHeight + dp(DialogsActivity.getMainTabsHeight() + DialogsActivity.MAIN_TABS_BOTTOM_MARGIN);
             }
         };
 
@@ -308,6 +317,37 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
                 boolean visible = activeTabs.contains(index);
                 tabsView.setViewVisible(tabs[index], visible, animated);
             }
+            updateTabsCompactMode();
+        }
+    }
+
+    private void updateTabsCompactMode() {
+        if (tabsView == null || tabs == null) {
+            return;
+        }
+        boolean hideLabels = ApplicationLoader.applicationContext
+                .getSharedPreferences("mainconfig", Context.MODE_PRIVATE)
+                .getBoolean(OtherSettingsActivity.KEY_HIDE_NAV_LABELS, false);
+        tabsView.setCompactMode(hideLabels);
+        for (GlassTabView tab : tabs) {
+            tab.setLabelsVisible(!hideLabels);
+        }
+        if (tabsViewBackground != null) {
+            tabsViewBackground.setRadius(dp(DialogsActivity.getMainTabsHeight() / 2f));
+        }
+        ViewGroup.LayoutParams tabsParams = tabsView.getLayoutParams();
+        if (tabsParams != null) {
+            int height = dp(DialogsActivity.getMainTabsHeight() + DialogsActivity.MAIN_TABS_MARGIN * 2);
+            if (tabsParams.height != height) {
+                tabsParams.height = height;
+                tabsView.setLayoutParams(tabsParams);
+            }
+        }
+        if (tabsViewWrapper != null) {
+            tabsViewWrapper.requestLayout();
+            if (updateLayoutWrapper != null) {
+                contentView.requestApplyInsets();
+            }
         }
     }
 
@@ -373,7 +413,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         iBlur3FactoryGlass.setLiquidGlassEffectAllowed(LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS));
 
         tabsViewBackground = iBlur3FactoryGlass.create(tabsView, BlurredBackgroundProviderImpl.mainTabs(resourceProvider));
-        tabsViewBackground.setRadius(dp(DialogsActivity.MAIN_TABS_HEIGHT / 2f));
+        tabsViewBackground.setRadius(dp(DialogsActivity.getMainTabsHeight() / 2f));
         tabsViewBackground.setPadding(dp(DialogsActivity.MAIN_TABS_MARGIN - 0.334f));
         tabsView.setBackground(tabsViewBackground);
 
@@ -389,9 +429,10 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
         tabsViewWrapper = new FrameLayout(context);
         tabsViewWrapper.setOnClickListener(v -> {});
-        tabsViewWrapper.addView(tabsView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, DialogsActivity.MAIN_TABS_HEIGHT_WITH_MARGINS, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL));
+        tabsViewWrapper.addView(tabsView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, DialogsActivity.getMainTabsHeight() + DialogsActivity.MAIN_TABS_MARGIN * 2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL));
         tabsViewWrapper.setClipToPadding(false);
         contentView.addView(tabsViewWrapper, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM));
+        updateTabsCompactMode();
 
         updateLayoutWrapper = new UpdateLayoutWrapper(context);
         contentView.addView(updateLayoutWrapper, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM));
@@ -806,7 +847,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
         ViewGroup.MarginLayoutParams lp;
         {
-            final int height = navigationBarHeight + updateLayoutHeight + dp(DialogsActivity.MAIN_TABS_HEIGHT_WITH_MARGINS);
+            final int height = navigationBarHeight + updateLayoutHeight + dp(DialogsActivity.getMainTabsHeightWithMargins());
             lp = (ViewGroup.MarginLayoutParams) fadeView.getLayoutParams();
             if (lp.height != height) {
                 lp.height = height;
@@ -816,7 +857,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         {
             int bottomMargin = isUpdateLayoutVisible ? (navigationBarHeight + updateLayoutHeight) : 0;
             if (tabletLayout) {
-                bottomMargin = Math.max(bottomMargin, navigationBarHeight + dp(DialogsActivity.MAIN_TABS_HEIGHT_WITH_MARGINS));
+                bottomMargin = Math.max(bottomMargin, navigationBarHeight + dp(DialogsActivity.getMainTabsHeightWithMargins()));
             }
             lp = (ViewGroup.MarginLayoutParams) viewPager.getLayoutParams();
             if (lp.bottomMargin != bottomMargin || lp.leftMargin != systemInsets.left || lp.rightMargin != systemInsets.right) {
@@ -827,7 +868,8 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             }
         }
 
-        tabsViewWrapper.setPadding(systemInsets.left, 0, systemInsets.right, navigationBarHeight);
+        tabsViewWrapper.setPadding(systemInsets.left, 0, systemInsets.right,
+                navigationBarHeight + dp(DialogsActivity.MAIN_TABS_BOTTOM_MARGIN - DialogsActivity.MAIN_TABS_MARGIN));
 
         final WindowInsetsCompat consumed = isUpdateLayoutVisible ?
             insets.inset(0, 0, 0, navigationBarHeight) : insets;
@@ -873,6 +915,9 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             }
         } else if (id == NotificationCenter.needSetDayNightTheme) {
             clearAllHiddenFragments();
+            blur3_updateColors();
+        } else if (id == NotificationCenter.mainTabsGlassModeChanged) {
+            blur3_updateColors();
         } else if (id == NotificationCenter.mainTabsLayoutChanged || id == NotificationCenter.callTabsVisibleToggled) {
             updateTabsVisibility(true);
             if (viewPager != null) {
@@ -911,7 +956,8 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             .add(NotificationCenter.contactsPermissionBadgeCheck)
             .addGlobal(NotificationCenter.appUpdateAvailable)
             .addGlobal(NotificationCenter.appUpdateLoading)
-            .addGlobal(NotificationCenter.needSetDayNightTheme);
+            .addGlobal(NotificationCenter.needSetDayNightTheme)
+            .addGlobal(NotificationCenter.mainTabsGlassModeChanged);
 
         return super.onFragmentCreate();
     }
@@ -1047,7 +1093,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
                 accountSwitchHint.setCloseButton(true);
                 accountSwitchHint.setText(getString(R.string.SwitchAccountHint));
                 accountSwitchHint.setJoint(1, -translate + 7.33f);
-                contentView.addView(accountSwitchHint, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 100, Gravity.BOTTOM | Gravity.FILL_HORIZONTAL, 0, 0, 0, DialogsActivity.MAIN_TABS_HEIGHT_WITH_MARGINS));
+                contentView.addView(accountSwitchHint, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 100, Gravity.BOTTOM | Gravity.FILL_HORIZONTAL, 0, 0, 0, DialogsActivity.getMainTabsHeightWithMargins()));
                 accountSwitchHint.setOnHiddenListener(() -> AndroidUtilities.removeFromParent(accountSwitchHint));
                 accountSwitchHint.setDuration(8000);
                 accountSwitchHint.show();
@@ -1085,6 +1131,11 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
     private void blur3_updateColors() {
         blur3_updateFadeColors();
         if (tabsViewBackground != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                    && tabsViewBackground instanceof BlurredBackgroundDrawableRenderNode) {
+                ((BlurredBackgroundDrawableRenderNode) tabsViewBackground)
+                        .setLiquidGlassEffectAllowed(LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS));
+            }
             tabsViewBackground.updateColors();
         }
         blur3_invalidateBlur();

@@ -76,6 +76,20 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
     private TLRPC.TL_attachMenuBot tabAnimationBot;
 
     private final TextPaint defaultTextPaint;
+    private boolean labelsVisible = true;
+
+    public void setLabelsVisible(boolean visible) {
+        if (labelsVisible == visible) {
+            return;
+        }
+        labelsVisible = visible;
+        textView.setVisibility(visible ? VISIBLE : GONE);
+        imageView.setTranslationY(visible ? 0 : dp(4));
+        if (backupImageView != null) {
+            backupImageView.setTranslationY(visible ? 0 : dp(4));
+        }
+        requestLayout();
+    }
 
     public GlassTabView(@NonNull Context context) {
         super(context);
@@ -514,6 +528,7 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
 
     @Override
     public float measureTextWidth() {
+        if (!labelsVisible) return 0;
         return defaultTextPaint.measureText(textView.getText().toString());
     }
 
@@ -521,6 +536,7 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
 
     @Override
     public float measureTextWidth(float textSizeDp) {
+        if (!labelsVisible) return 0;
         if (scaledTextPaint == null) {
             scaledTextPaint = new TextPaint(defaultTextPaint);
         }

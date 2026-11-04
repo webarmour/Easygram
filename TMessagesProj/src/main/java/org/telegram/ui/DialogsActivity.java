@@ -290,7 +290,17 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     public static final int MAIN_TABS_HEIGHT = 56;
     public static final int MAIN_TABS_MARGIN = 8;
-    public static final int MAIN_TABS_HEIGHT_WITH_MARGINS = MAIN_TABS_HEIGHT + MAIN_TABS_MARGIN * 2;
+    public static final int MAIN_TABS_BOTTOM_MARGIN = MAIN_TABS_MARGIN + 8;
+    public static final int MAIN_TABS_HEIGHT_WITH_MARGINS = MAIN_TABS_HEIGHT + MAIN_TABS_MARGIN + MAIN_TABS_BOTTOM_MARGIN;
+
+    public static int getMainTabsHeight() {
+        return ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Context.MODE_PRIVATE)
+                .getBoolean(OtherSettingsActivity.KEY_HIDE_NAV_LABELS, false) ? 48 : MAIN_TABS_HEIGHT;
+    }
+
+    public static int getMainTabsHeightWithMargins() {
+        return getMainTabsHeight() + MAIN_TABS_MARGIN + MAIN_TABS_BOTTOM_MARGIN;
+    }
     public static final int FILTER_TABS_HEIGHT = 36;
     public static final int SEARCH_TABS_HEIGHT = 36 + 7 + 7;
     public static final int SEARCH_FIELD_HEIGHT = 48;
@@ -2980,8 +2990,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
 
         BirthdayController.getInstance(currentAccount).check();
-        additionNavigationBarHeight = hasMainTabs ? dp(MAIN_TABS_HEIGHT_WITH_MARGINS) : 0;
-        additionFloatingButtonOffset = hasMainTabs ? dp(DialogsActivity.MAIN_TABS_HEIGHT + DialogsActivity.MAIN_TABS_MARGIN) : 0;
+        additionNavigationBarHeight = hasMainTabs ? dp(getMainTabsHeightWithMargins()) : 0;
+        additionFloatingButtonOffset = hasMainTabs ? dp(getMainTabsHeight() + MAIN_TABS_BOTTOM_MARGIN) : 0;
 
         return true;
     }
@@ -14229,8 +14239,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
 
         final int additionalList = dp(48);
-        final int mainTabBottom = fragmentView.getMeasuredHeight() - navigationBarHeight - dp(DialogsActivity.MAIN_TABS_MARGIN);
-        final int mainTabTop = mainTabBottom - dp(DialogsActivity.MAIN_TABS_HEIGHT);
+        final int mainTabBottom = fragmentView.getMeasuredHeight() - navigationBarHeight - dp(DialogsActivity.MAIN_TABS_BOTTOM_MARGIN);
+        final int mainTabTop = mainTabBottom - dp(DialogsActivity.getMainTabsHeight());
 
         final int actionBarHeight = actionBar.getMeasuredHeight()
             + dp(DialogsActivity.SEARCH_FIELD_HEIGHT)

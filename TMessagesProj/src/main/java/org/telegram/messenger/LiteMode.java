@@ -169,8 +169,10 @@ public class LiteMode {
     public static void setAllFlags(int flags) {
         // in settings it is already handled. would you handle it? 🫵
         // onFlagsUpdate(value, flags);
+        int oldValue = value;
         value = flags;
         savePreference();
+        notifyMainTabsGlassModeChanged(oldValue, flags);
     }
 
     public static void updatePresets(TLRPC.TL_jsonObject json) {
@@ -329,6 +331,7 @@ public class LiteMode {
     }
 
     private static void onFlagsUpdate(int oldValue, int newValue) {
+        notifyMainTabsGlassModeChanged(oldValue, newValue);
         int changedFlags = ~oldValue & newValue;
         if ((changedFlags & FLAGS_ANIMATED_EMOJI) > 0) {
             AnimatedEmojiDrawable.updateAll();
@@ -338,6 +341,13 @@ public class LiteMode {
         }
         if ((changedFlags & FLAG_CHAT_BACKGROUND) > 0) {
             Theme.reloadWallpaper(true);
+        }
+    }
+
+    private static void notifyMainTabsGlassModeChanged(int oldValue, int newValue) {
+        if (((oldValue ^ newValue) & (FLAG_CHAT_BLUR | FLAG_LIQUID_GLASS)) != 0) {
+            AndroidUtilities.runOnUIThread(() -> NotificationCenter.getGlobalInstance()
+                    .postNotificationName(NotificationCenter.mainTabsGlassModeChanged));
         }
     }
 

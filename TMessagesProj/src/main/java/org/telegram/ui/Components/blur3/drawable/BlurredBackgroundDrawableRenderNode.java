@@ -56,7 +56,16 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
 
     @RequiresApi(api = Build.VERSION_CODES.TIRAMISU)
     public void setLiquidGlassEffectAllowed() {
-        liquidGlassEffect = new LiquidGlassEffect(renderNodeFill);
+        setLiquidGlassEffectAllowed(true);
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.TIRAMISU)
+    public void setLiquidGlassEffectAllowed(boolean allowed) {
+        if ((liquidGlassEffect != null) == allowed) {
+            return;
+        }
+        liquidGlassEffect = allowed ? new LiquidGlassEffect(renderNodeFill) : null;
+        renderNodeInvalidated = true;
     }
 
 

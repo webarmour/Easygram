@@ -47,6 +47,14 @@ public class MainTabsLayout extends AnimatedLinearLayout {
     private static final int[] PASS_PADDINGS_DP = {16, 8, 4};
 
     private int maxWidthPx;
+    private boolean compactMode;
+
+    public void setCompactMode(boolean compactMode) {
+        if (this.compactMode != compactMode) {
+            this.compactMode = compactMode;
+            requestLayout();
+        }
+    }
 
     public void setMaxWidth(int maxWidthPx) {
         if (this.maxWidthPx != maxWidthPx) {
@@ -66,7 +74,6 @@ public class MainTabsLayout extends AnimatedLinearLayout {
         }
 
         final int maxTotalWidthForTabs = width - getPaddingLeft() - getPaddingRight();
-        final int minTotalWidthForTabs = Math.min(dp(320), maxTotalWidthForTabs);
 
         int chosenPass = PASS_TEXT_SIZES_DP.length - 1;
         float lastMeasuredTextSize = -1;
@@ -90,6 +97,8 @@ public class MainTabsLayout extends AnimatedLinearLayout {
         }
 
         applyPassTextSize(chosenPass);
+
+        final int minTotalWidthForTabs = Math.min(dp((compactMode ? 56 : 80) * visibleChildCount), maxTotalWidthForTabs);
 
         final int tabPadding = dp(PASS_PADDINGS_DP[chosenPass]);
         final int maxTabTextWidthIfEq = (maxTotalWidthForTabs / Math.max(1, visibleChildCount)) - tabPadding * 2;

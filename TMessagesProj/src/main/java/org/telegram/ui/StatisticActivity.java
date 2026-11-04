@@ -3640,7 +3640,7 @@ public class StatisticActivity extends BaseFragment implements NotificationCente
         }
 
         final int additionalList = dp(48);
-        final int mainTabBottom = fragmentView.getMeasuredHeight() - AndroidUtilities.navigationBarHeight - dp(DialogsActivity.MAIN_TABS_MARGIN);
+        final int mainTabBottom = fragmentView.getMeasuredHeight() - AndroidUtilities.navigationBarHeight - dp(DialogsActivity.MAIN_TABS_BOTTOM_MARGIN);
         final int mainTabTop = mainTabBottom - dp(DialogsActivity.MAIN_TABS_HEIGHT);
 
         iBlur3PositionActionBar.set(0, -additionalList, fragmentView.getMeasuredWidth(), actionBar.getMeasuredHeight() + additionalList);
