@@ -5,12 +5,12 @@
  *
  * Copyright Nikolai Kudashov, 2013-2018.
  */
-
 package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.dpf2;
 
+import android.Manifest;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
@@ -18,7 +18,12 @@ import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipDescription;
+import android.content.ClipboardManager;
+import android.content.ContentValues;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -31,14 +36,12 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.GradientDrawable;
+import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.os.Build;
-import androidx.annotation.Keep;
-import androidx.annotation.NonNull;
-import androidx.dynamicanimation.animation.FloatValueHolder;
-import androidx.dynamicanimation.animation.SpringAnimation;
-import androidx.dynamicanimation.animation.SpringForce;
-
+import android.os.Environment;
+import android.provider.MediaStore;
 import android.text.Layout;
 import android.text.Spannable;
 import android.text.SpannableString;
@@ -56,10 +59,12 @@ import android.util.Property;
 import android.util.SparseArray;
 import android.view.GestureDetector;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.TextureView;
 import android.view.VelocityTracker;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowInsets;
@@ -67,34 +72,49 @@ import android.view.WindowManager;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.PopupWindow;
 import android.widget.TextView;
 
+import androidx.annotation.Keep;
+import androidx.annotation.NonNull;
+import androidx.core.content.FileProvider;
+import androidx.dynamicanimation.animation.FloatValueHolder;
+import androidx.dynamicanimation.animation.SpringAnimation;
+import androidx.dynamicanimation.animation.SpringForce;
 import androidx.media3.common.C;
 import androidx.media3.exoplayer.ExoPlayer;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.Emoji;
+import org.telegram.messenger.FileLoader;
+import org.telegram.messenger.FileLog;
 import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.ImageReceiver;
 import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.MediaController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
-import org.telegram.messenger.FileLoader;
-import org.telegram.messenger.FileLog;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
+import org.telegram.messenger.Utilities;
+import org.telegram.messenger.secretmedia.EncryptedFileInputStream;
 import org.telegram.messenger.utils.WindowVisibilityManager;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.ActionBar;
+import org.telegram.ui.ActionBar.ActionBarMenuSubItem;
+import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.SimpleTextView;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.TextSelectionHelper;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
 import org.telegram.ui.Components.AnimatedEmojiSpan;
 import org.telegram.ui.Components.AnimationProperties;
+import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.PlayPauseDrawable;
@@ -108,11 +128,20 @@ import org.telegram.ui.Stories.DarkThemeResourceProvider;
 import org.telegram.ui.Stories.recorder.HintView2;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Locale;
 
 public class SecretMediaViewer implements NotificationCenter.NotificationCenterDelegate, GestureDetector.OnGestureListener, GestureDetector.OnDoubleTapListener {
+
+    private static final long MEDIA_MENU_HOLD_MS = 200L;
+    private static final String EXPORTED_MEDIA_PREFIX = "secret_media_export_";
+    private static final long EXPORTED_MEDIA_MAX_AGE_MS = 24 * 60 * 60 * 1000L;
 
     private class FrameLayoutDrawer extends FrameLayout {
         public FrameLayoutDrawer(Context context) {
@@ -161,6 +190,9 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
         private long destroyTime;
         private long destroyTtl;
         private boolean useVideoProgress;
+        // Latch the end of the countdown while the viewer stays open.
+        // Telegram may remove or clear the source MessageObject after expiry.
+        private boolean expired;
 
         private RLottieDrawable drawable;
 
@@ -195,11 +227,44 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
 
         private void setDestroyTime(long time, long ttl, boolean videoProgress) {
             once = false;
+            expired = false;
             destroyTime = time;
             destroyTtl = ttl;
             useVideoProgress = videoProgress;
             drawable.start();
             invalidate();
+        }
+
+        private void markExpired() {
+            expired = true;
+            invalidate();
+        }
+
+        private boolean isExpired() {
+            if (expired) {
+                return true;
+            }
+            if (useVideoProgress && videoPlayer != null) {
+                long duration = videoPlayer.getDuration();
+                long position = videoPlayer.getCurrentPosition();
+                if (duration > 0 && duration != C.TIME_UNSET && position >= duration) {
+                    expired = true;
+                }
+            } else {
+                long deadline = destroyTime;
+                if (deadline <= 0 && currentMessageObject != null) {
+                    deadline = currentMessageObject.messageOwner.destroyTimeMillis;
+                    if (deadline <= 0 && currentMessageObject.messageOwner.destroyTime > 0) {
+                        deadline = currentMessageObject.messageOwner.destroyTime * 1000L;
+                    }
+                }
+                if (deadline > 0) {
+                    long now = System.currentTimeMillis()
+                            + ConnectionsManager.getInstance(currentAccount).getTimeDifference() * 1000L;
+                    expired = now >= deadline;
+                }
+            }
+            return expired;
         }
 
         private void setOnce() {
@@ -227,7 +292,10 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
         @SuppressLint("DrawAllocation")
         @Override
         protected void onDraw(Canvas canvas) {
-            if (currentMessageObject == null || currentMessageObject.messageOwner.destroyTime == 0 && currentMessageObject.messageOwner.ttl != 0x7FFFFFFF) {
+            if (currentMessageObject == null
+                    || (currentMessageObject.messageOwner.destroyTime == 0
+                    && destroyTime == 0
+                    && currentMessageObject.messageOwner.ttl != 0x7FFFFFFF)) {
                 return;
             }
 
@@ -249,10 +317,16 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
                 if (destroyTime == 0) {
                     progress = 1f;
                 } else {
-                    long msTime = System.currentTimeMillis() + ConnectionsManager.getInstance(currentAccount).getTimeDifference() * 1000;
-                    progress = Math.max(0, destroyTime - msTime) / (destroyTtl * 1000.0f);
+                    long msTime = System.currentTimeMillis() + ConnectionsManager.getInstance(currentAccount).getTimeDifference() * 1000L;
+                    progress = destroyTtl > 0
+                            ? Math.max(0, destroyTime - msTime) / (destroyTtl * 1000.0f)
+                            : (msTime >= destroyTime ? 0f : 1f);
                 }
-
+            }
+            // Match the state shown by the flame indicator, including if the
+            // message gets deleted and the viewer deliberately remains open.
+            if (progress <= 0f) {
+                expired = true;
             }
 
             if (once) {
@@ -339,6 +413,9 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
     private View navigationBar;
     private ImageReceiver centerImage = new ImageReceiver();
     private SecretDeleteTimer secretDeleteTimer;
+    private Runnable pendingMediaMenuHold;
+    private float mediaMenuDownX, mediaMenuDownY;
+    private PopupWindow mediaActionsPopup;
     private HintView2 secretHint;
     private boolean isVisible;
     private long currentDialogId;
@@ -348,8 +425,6 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
     private boolean isPlaying;
     private ActionBar actionBar;
     private AnimatorSet currentActionBarAnimation;
-    private boolean videoWatchedOneTime;
-    private boolean closeVideoAfterWatch;
     private boolean isVideo;
     private long openTime;
     private long closeTime;
@@ -385,6 +460,7 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
     private int[] coords = new int[2];
 
     private boolean isPhotoVisible;
+    private Bitmap screenshotVideoFrame;
 
     private boolean isActionBarVisible = true;
 
@@ -445,7 +521,6 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
     private VelocityTracker velocityTracker;
     private Scroller scroller;
 
-    private boolean closeAfterAnimation;
 
     @SuppressLint("StaticFieldLeak")
     private static volatile SecretMediaViewer Instance = null;
@@ -469,58 +544,51 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
     @SuppressWarnings("unchecked")
     @Override
     public void didReceivedNotification(int id, int account, Object... args) {
+        // Keep the viewer open. Message deletion only changes the available
+        // menu actions, never closes the currently displayed media.
+        if (currentMessageObject == null || secretDeleteTimer == null) {
+            return;
+        }
+
         if (id == NotificationCenter.messagesDeleted) {
             boolean scheduled = (Boolean) args[2];
-            if (scheduled) {
-                return;
-            }
-            if (currentMessageObject == null) {
-                return;
-            }
             long channelId = (Long) args[1];
-            if (channelId != 0) {
-                return;
-            }
-            ArrayList<Integer> markAsDeletedMessages = (ArrayList<Integer>) args[0];
-            if (markAsDeletedMessages.contains(currentMessageObject.getId())) {
-                if (isVideo && !videoWatchedOneTime) {
-                    closeVideoAfterWatch = true;
-                } else {
-                    if (!closePhoto(true, true)) {
-                        closeAfterAnimation = true;
-                    }
+            if (!scheduled && channelId == 0) {
+                ArrayList<Integer> deleted = (ArrayList<Integer>) args[0];
+                if (deleted.contains(currentMessageObject.getId())) {
+                    secretDeleteTimer.markExpired();
                 }
             }
-        } else if (id == NotificationCenter.didCreatedNewDeleteTask) {
-            if (currentMessageObject == null || secretDeleteTimer == null) {
-                return;
+            return;
+        }
+
+        if (id == NotificationCenter.updateMessageMedia) {
+            TLRPC.Message updated = (TLRPC.Message) args[0];
+            if (updated != null && currentMessageObject.getId() == updated.id) {
+                secretDeleteTimer.markExpired();
             }
-            long dialogId = (long) args[0];
-            if (dialogId != currentDialogId) {
-                return;
-            }
-            SparseArray<ArrayList<Integer>> mids = (SparseArray<ArrayList<Integer>>) args[1];
-            for (int i = 0; i < mids.size(); i++) {
-                int key = mids.keyAt(i);
-                ArrayList<Integer> arr = mids.get(key);
-                for (int a = 0; a < arr.size(); a++) {
-                    long mid = arr.get(a);
-                    if (currentMessageObject.getId() == mid) {
-                        currentMessageObject.messageOwner.destroyTime = key;
-                        secretDeleteTimer.invalidate();
-                        return;
-                    }
-                }
-            }
-        } else if (id == NotificationCenter.updateMessageMedia) {
-            TLRPC.Message message = (TLRPC.Message) args[0];
-            if (currentMessageObject.getId() == message.id) {
-                if (isVideo && !videoWatchedOneTime) {
-                    closeVideoAfterWatch = true;
-                } else {
-                    if (!closePhoto(true, true)) {
-                        closeAfterAnimation = true;
-                    }
+            return;
+        }
+
+        if (id != NotificationCenter.didCreatedNewDeleteTask) {
+            return;
+        }
+        long dialogId = (long) args[0];
+        if (dialogId != currentDialogId) {
+            return;
+        }
+        SparseArray<ArrayList<Integer>> mids = (SparseArray<ArrayList<Integer>>) args[1];
+        for (int i = 0; i < mids.size(); i++) {
+            int key = mids.keyAt(i);
+            ArrayList<Integer> arr = mids.get(key);
+            for (int a = 0; a < arr.size(); a++) {
+                if (currentMessageObject.getId() == arr.get(a)) {
+                    currentMessageObject.messageOwner.destroyTime = key;
+                    // The old code invalidated the view without updating the
+                    // actual timer deadline. Keep both in sync.
+                    secretDeleteTimer.setDestroyTime(key * 1000L,
+                            currentMessageObject.messageOwner.ttl, false);
+                    return;
                 }
             }
         }
@@ -596,13 +664,9 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
                     } else if (isPlaying) {
                         isPlaying = false;
                         if (playbackState == ExoPlayer.STATE_ENDED) {
-                            videoWatchedOneTime = true;
-                            if (closeVideoAfterWatch) {
-                                closePhoto(true, !ignoreDelete);
-                            } else {
-                                videoPlayer.seekTo(0);
-                                videoPlayer.play();
-                            }
+                            // Repeat playback instead of automatically closing the viewer.
+                            videoPlayer.seekTo(0);
+                            videoPlayer.play();
                         }
                     }
                 }
@@ -725,6 +789,8 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
         if (parentActivity == activity) {
             return;
         }
+        cancelMediaMenuHold();
+        dismissMediaActionsMenu();
         parentActivity = activity;
 
         scroller = new Scroller(activity);
@@ -863,6 +929,7 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
         actionBar.setItemsBackgroundColor(Theme.ACTION_BAR_WHITE_SELECTOR_COLOR, false);
         actionBar.setItemsColor(Color.WHITE, false);
         actionBar.setBackButtonImage(R.drawable.ic_ab_back);
+        // The overflow icon is hidden, so retain the original title spacing.
         actionBar.setTitleRightMargin(dp(70));
         containerView.addView(actionBar, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
         actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
@@ -881,6 +948,66 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
 
         secretDeleteTimer = new SecretDeleteTimer(activity);
         containerView.addView(secretDeleteTimer, LayoutHelper.createFrame(119, 48, Gravity.TOP | Gravity.RIGHT, 0, 0, 0, 0));
+
+        // Fire / view-once indicator: open the media menu only after a continuous
+        // two-second press. Short taps keep the existing view-once hint behavior.
+        final int touchSlop = ViewConfiguration.get(activity).getScaledTouchSlop();
+        secretDeleteTimer.setClickable(true);
+        secretDeleteTimer.setOnTouchListener((view, event) -> {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    final float fireX = view.getWidth() - dp(35);
+                    final float fireY = view.getHeight() / 2f;
+                    if (!isPhotoVisible || !isActionBarVisible
+                            || Math.abs(event.getX() - fireX) > dp(24)
+                            || Math.abs(event.getY() - fireY) > dp(24)) {
+                        return false;
+                    }
+                    cancelMediaMenuHold();
+                    mediaMenuDownX = event.getX();
+                    mediaMenuDownY = event.getY();
+                    AndroidUtilities.cancelRunOnUIThread(hideActionBarRunnable);
+                    pendingMediaMenuHold = () -> {
+                        pendingMediaMenuHold = null;
+                        if (isPhotoVisible && isVisible && isActionBarVisible
+                                && currentMessageObject != null && !isMediaActionsMenuShowing()) {
+                            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                            showMediaActionsMenu();
+                        }
+                    };
+                    AndroidUtilities.runOnUIThread(pendingMediaMenuHold, MEDIA_MENU_HOLD_MS);
+                    return true;
+
+                case MotionEvent.ACTION_MOVE:
+                    if (pendingMediaMenuHold != null
+                            && (Math.abs(event.getX() - mediaMenuDownX) > touchSlop
+                            || Math.abs(event.getY() - mediaMenuDownY) > touchSlop)) {
+                        cancelMediaMenuHold();
+                    }
+                    return true;
+
+                case MotionEvent.ACTION_UP:
+                    // A pending task means the two-second threshold was not reached.
+                    boolean shortTap = pendingMediaMenuHold != null;
+                    cancelMediaMenuHold();
+                    if (shortTap) {
+                        view.performClick();
+                    }
+                    if (isVideo && isActionBarVisible && !isMediaActionsMenuShowing()) {
+                        AndroidUtilities.runOnUIThread(hideActionBarRunnable, 3000);
+                    }
+                    return true;
+
+                case MotionEvent.ACTION_POINTER_DOWN:
+                case MotionEvent.ACTION_CANCEL:
+                    cancelMediaMenuHold();
+                    if (isVideo && isActionBarVisible && !isMediaActionsMenuShowing()) {
+                        AndroidUtilities.runOnUIThread(hideActionBarRunnable, 3000);
+                    }
+                    return true;
+            }
+            return false;
+        });
 
         final VideoPlayerSeekBar.SeekBarDelegate seekBarDelegate = new VideoPlayerSeekBar.SeekBarDelegate() {
             @Override
@@ -977,6 +1104,345 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
         }
         textSelectionHelper.setParentView(containerView);
         textSelectionHelper.setInvalidateParent();
+    }
+
+    /**
+     * Read expiry from the same timer that draws the flame indicator.
+     * Never infer expiry from viewer closing: this fork keeps it open.
+     */
+    private boolean isCurrentMediaExpired() {
+        return isPhotoVisible && currentMessageObject != null
+                && secretDeleteTimer != null && secretDeleteTimer.isExpired();
+    }
+
+    /**
+     * The decrypted source file may have been deleted already. Capture the pixels
+     * still on screen instead. A window snapshot via PixelCopy(Window, ...) would
+     * capture the Activity underneath this separate WindowManager overlay, so the
+     * viewer is rendered directly and the TextureView video frame is supplied
+     * through TextureView.getBitmap().
+     */
+    private void takeMediaScreenshot() {
+        final Activity activity = parentActivity;
+        if (!isPhotoVisible || activity == null
+                || windowView == null || windowView.getParent() == null) {
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= 23 && Build.VERSION.SDK_INT < 29
+                && activity.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED) {
+            activity.requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 4);
+            return;
+        }
+
+        // The ActionBar popup dismisses itself on click. Give its animation time
+        // to finish before rendering the viewer, so it cannot appear in the shot.
+        AndroidUtilities.runOnUIThread(() -> {
+            if (activity != parentActivity || !isPhotoVisible
+                    || windowView == null || windowView.getParent() == null) {
+                return;
+            }
+            Bitmap screenshot = null;
+            Bitmap videoFrame = null;
+            WindowManager manager = (WindowManager) activity.getSystemService(Context.WINDOW_SERVICE);
+            boolean wasSecure = (windowLayoutParams.flags & WindowManager.LayoutParams.FLAG_SECURE) != 0;
+            try {
+                if (manager == null || windowView.getWidth() == 0 || windowView.getHeight() == 0) {
+                    throw new IOException("Viewer window is not available");
+                }
+                if (wasSecure) {
+                    windowLayoutParams.flags &= ~WindowManager.LayoutParams.FLAG_SECURE;
+                    manager.updateViewLayout(windowView, windowLayoutParams);
+                }
+
+                if (isVideo && videoTextureView != null && videoTextureView.isAvailable()) {
+                    videoFrame = videoTextureView.getBitmap();
+                    if (videoFrame == null) {
+                        throw new IOException("Video frame is unavailable");
+                    }
+                    screenshotVideoFrame = videoFrame;
+                }
+
+                screenshot = Bitmap.createBitmap(windowView.getWidth(), windowView.getHeight(),
+                        Bitmap.Config.ARGB_8888);
+                windowView.draw(new Canvas(screenshot));
+            } catch (Exception error) {
+                if (screenshot != null) {
+                    screenshot.recycle();
+                }
+                screenshot = null;
+                showMediaExportError(activity, error);
+            } finally {
+                screenshotVideoFrame = null;
+                if (videoFrame != null) {
+                    videoFrame.recycle();
+                }
+                // Never leave screenshot protection disabled after capturing.
+                if (wasSecure) {
+                    windowLayoutParams.flags |= WindowManager.LayoutParams.FLAG_SECURE;
+                    try {
+                        if (windowView.getParent() != null) {
+                            manager.updateViewLayout(windowView, windowLayoutParams);
+                        }
+                    } catch (Exception restoreError) {
+                        FileLog.e(restoreError);
+                    }
+                }
+            }
+            if (screenshot != null) {
+                saveScreenshotToGallery(activity, screenshot);
+            }
+        }, 300);
+    }
+
+    private void saveScreenshotToGallery(Activity activity, Bitmap screenshot) {
+        Utilities.globalQueue.postRunnable(() -> {
+            Uri savedUri = null;
+            File savedFile = null;
+            try {
+                String filename = "Easygram_Screenshot_" + System.currentTimeMillis() + ".png";
+                if (Build.VERSION.SDK_INT >= 29) {
+                    ContentValues values = new ContentValues();
+                    values.put(MediaStore.MediaColumns.DISPLAY_NAME, filename);
+                    values.put(MediaStore.MediaColumns.MIME_TYPE, "image/png");
+                    values.put(MediaStore.MediaColumns.RELATIVE_PATH,
+                            Environment.DIRECTORY_PICTURES + "/Easygram");
+                    values.put(MediaStore.MediaColumns.IS_PENDING, 1);
+                    savedUri = activity.getContentResolver().insert(
+                            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values);
+                    if (savedUri == null) {
+                        throw new IOException("Could not insert screenshot into MediaStore");
+                    }
+                    try (OutputStream output = activity.getContentResolver().openOutputStream(savedUri)) {
+                        if (output == null || !screenshot.compress(Bitmap.CompressFormat.PNG, 100, output)) {
+                            throw new IOException("Could not write screenshot");
+                        }
+                    }
+                    values.clear();
+                    values.put(MediaStore.MediaColumns.IS_PENDING, 0);
+                    if (activity.getContentResolver().update(savedUri, values, null, null) == 0) {
+                        throw new IOException("Could not publish screenshot");
+                    }
+                } else {
+                    File directory = new File(
+                            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+                            "Easygram");
+                    if (!directory.isDirectory() && !directory.mkdirs()) {
+                        throw new IOException("Could not create screenshot directory");
+                    }
+                    savedFile = new File(directory, filename);
+                    try (OutputStream output = new FileOutputStream(savedFile)) {
+                        if (!screenshot.compress(Bitmap.CompressFormat.PNG, 100, output)) {
+                            throw new IOException("Could not write screenshot");
+                        }
+                    }
+                    MediaScannerConnection.scanFile(activity,
+                            new String[]{savedFile.getAbsolutePath()},
+                            new String[]{"image/png"}, null);
+                }
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (isPhotoVisible && containerView != null && parentActivity == activity) {
+                        BulletinFactory.createSaveToGalleryBulletin(
+                                containerView, false, 0xf9222222, 0xffffffff).show();
+                    }
+                });
+            } catch (Exception error) {
+                try {
+                    if (savedUri != null) {
+                        activity.getContentResolver().delete(savedUri, null, null);
+                    }
+                } catch (Exception cleanupError) {
+                    FileLog.e(cleanupError);
+                }
+                if (savedFile != null) {
+                    savedFile.delete();
+                }
+                showMediaExportError(activity, error);
+            } finally {
+                screenshot.recycle();
+            }
+        });
+    }
+
+    /**
+     * Export the currently viewed media. The temporary copy is also required for
+     * plaintext files: disappearing media can be removed before another app
+     * finishes reading the clipboard, or before MediaController saves the file.
+     */
+    private void exportMedia(boolean copyToClipboard) {
+        final Activity activity = parentActivity;
+        final MessageObject message = currentMessageObject;
+        if (activity == null || message == null || !isPhotoVisible) {
+            return;
+        }
+
+        // MediaStore handles saving on Android 10+ without legacy storage permission.
+        if (!copyToClipboard && Build.VERSION.SDK_INT >= 23 && Build.VERSION.SDK_INT <= 28
+                && activity.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            activity.requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 4);
+            return;
+        }
+
+        File source = findMediaFile(message);
+        if (source == null) {
+            new AlertDialog.Builder(activity)
+                    .setTitle(LocaleController.getString(R.string.AppName))
+                    .setMessage(LocaleController.getString(R.string.PleaseDownload))
+                    .setPositiveButton(LocaleController.getString(R.string.OK), null)
+                    .show();
+            return;
+        }
+
+        final boolean exportIsVideo = message.getDocument() != null
+                && !MessageObject.isGifDocument(message.getDocument());
+        String mimeType = message.getMimeType();
+        if (TextUtils.isEmpty(mimeType)) {
+            mimeType = exportIsVideo ? "video/mp4"
+                    : message.getDocument() != null ? "image/gif" : "image/jpeg";
+        }
+        final String exportMimeType = mimeType;
+
+        Utilities.globalQueue.postRunnable(() -> {
+            File temporaryFile = null;
+            try {
+                // MediaController.saveFile() refuses paths inside the app's private
+                // storage (AndroidUtilities.isInternalUri). Keep clipboard exports
+                // private, but stage gallery exports in app-specific external cache.
+                File directory;
+                if (copyToClipboard) {
+                    directory = new File(activity.getFilesDir(), "cache");
+                } else {
+                    File externalCache = activity.getExternalCacheDir();
+                    if (externalCache == null) {
+                        throw new IOException("External cache is unavailable");
+                    }
+                    directory = new File(externalCache, "secret_media_exports");
+                }
+                if (!directory.isDirectory() && !directory.mkdirs()) {
+                    throw new IOException("Could not create export directory");
+                }
+                removeExpiredMediaExports(directory);
+
+                String extension = android.webkit.MimeTypeMap.getSingleton()
+                        .getExtensionFromMimeType(exportMimeType);
+                if (TextUtils.isEmpty(extension) || !extension.matches("[A-Za-z0-9]{1,10}")) {
+                    extension = exportIsVideo ? "mp4" : "jpg";
+                }
+                temporaryFile = File.createTempFile(EXPORTED_MEDIA_PREFIX, "." + extension, directory);
+
+                File keyFile = new File(FileLoader.getInternalCacheDir(), source.getName() + ".key");
+                try (InputStream input = source.getName().endsWith(".enc")
+                            ? new EncryptedFileInputStream(source, keyFile)
+                            : new FileInputStream(source);
+                     FileOutputStream output = new FileOutputStream(temporaryFile)) {
+                    byte[] buffer = new byte[64 * 1024];
+                    int bytesRead;
+                    while ((bytesRead = input.read(buffer)) != -1) {
+                        output.write(buffer, 0, bytesRead);
+                    }
+                }
+
+                final File exportedFile = temporaryFile;
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (copyToClipboard) {
+                        try {
+                            Uri uri = FileProvider.getUriForFile(
+                                    activity,
+                                    ApplicationLoader.getApplicationId() + ".provider",
+                                    exportedFile
+                            );
+                            ClipData clip = new ClipData(
+                                    new ClipDescription("media", new String[]{
+                                            exportMimeType, exportIsVideo ? "video/*" : "image/*"
+                                    }),
+                                    new ClipData.Item(uri)
+                            );
+                            ClipboardManager clipboard = (ClipboardManager)
+                                    activity.getSystemService(Context.CLIPBOARD_SERVICE);
+                            if (clipboard == null) {
+                                throw new IllegalStateException("Clipboard is not available");
+                            }
+                            clipboard.setPrimaryClip(clip);
+                            if (isPhotoVisible && containerView != null) {
+                                BulletinFactory.of(containerView, null)
+                                        .createCopyBulletin(LocaleController.getString(R.string.PhotoCopiedToClipboard))
+                                        .show();
+                            }
+                            // Keep the file for the clipboard. Stale exports are
+                            // cleaned up the next time an export is requested.
+                        } catch (Exception e) {
+                            exportedFile.delete();
+                            showMediaExportError(activity, e);
+                        }
+                    } else {
+                        try {
+                            MediaController.saveFile(exportedFile.getAbsolutePath(), activity,
+                                    exportIsVideo ? 1 : 0, null, null, uri -> {
+                                        Utilities.globalQueue.postRunnable(() -> exportedFile.delete());
+                                        if (uri != null && isPhotoVisible && containerView != null) {
+                                            BulletinFactory.createSaveToGalleryBulletin(
+                                                    containerView, exportIsVideo,
+                                                    0xf9222222, 0xffffffff
+                                            ).show();
+                                        }
+                                    });
+                        } catch (Exception e) {
+                            exportedFile.delete();
+                            showMediaExportError(activity, e);
+                        }
+                    }
+                });
+            } catch (Exception e) {
+                if (temporaryFile != null) {
+                    temporaryFile.delete();
+                }
+                showMediaExportError(activity, e);
+            }
+        });
+    }
+
+    private File findMediaFile(MessageObject message) {
+        if (!TextUtils.isEmpty(message.messageOwner.attachPath)) {
+            File attached = new File(message.messageOwner.attachPath);
+            if (attached.isFile()) {
+                return attached;
+            }
+        }
+
+        File file = FileLoader.getInstance(message.currentAccount)
+                .getPathToMessage(message.messageOwner);
+        if (file != null && file.isFile()) {
+            return file;
+        }
+        if (file != null) {
+            File encrypted = new File(file.getAbsolutePath() + ".enc");
+            if (encrypted.isFile()) {
+                return encrypted;
+            }
+        }
+        return null;
+    }
+
+    private void removeExpiredMediaExports(File directory) {
+        File[] files = directory.listFiles((dir, name) -> name.startsWith(EXPORTED_MEDIA_PREFIX));
+        if (files == null) {
+            return;
+        }
+        long expiration = System.currentTimeMillis() - EXPORTED_MEDIA_MAX_AGE_MS;
+        for (File file : files) {
+            if (file.isFile() && file.lastModified() < expiration) {
+                file.delete();
+            }
+        }
+    }
+
+    private void showMediaExportError(Activity activity, Exception error) {
+        FileLog.e(error);
+        AndroidUtilities.runOnUIThread(() -> {
+            if (!activity.isFinishing()) {
+                android.widget.Toast.makeText(activity, "Unable to export media", android.widget.Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 
     private void setCurrentCaption(MessageObject messageObject, final CharSequence _caption, boolean translating, boolean animated) {
@@ -1327,6 +1793,85 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
 //        bottomSheet.scrollNavBar = true;
     }
 
+    private boolean isMediaActionsMenuShowing() {
+        return mediaActionsPopup != null && mediaActionsPopup.isShowing();
+    }
+
+    private void showMediaActionsMenu() {
+        if (parentActivity == null || secretDeleteTimer == null
+                || !isPhotoVisible || isMediaActionsMenuShowing()) {
+            return;
+        }
+
+        // Build a fully visible three-row menu rather than mutating a hidden
+        // ActionBar submenu. Its explicit height avoids stale popup measurements.
+        LinearLayout content = new LinearLayout(parentActivity);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(6), dp(6), dp(6), dp(6));
+        GradientDrawable background = new GradientDrawable();
+        background.setColor(0xff20252b);
+        background.setCornerRadius(dp(12));
+        content.setBackground(background);
+
+        addMediaActionItem(content, LocaleController.getString(R.string.SaveToGallery),
+                R.drawable.msg_gallery, () -> exportMedia(false));
+        addMediaActionItem(content, LocaleController.getString(R.string.Copy),
+                R.drawable.msg_copy, () -> exportMedia(true));
+        addMediaActionItem(content, "Сделать скриншот",
+                R.drawable.msg_gallery, this::takeMediaScreenshot);
+
+        final PopupWindow popup = new PopupWindow(content, dp(260), dp(3 * 48 + 12), true);
+        popup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        popup.setOutsideTouchable(true);
+        popup.setElevation(dp(8));
+        popup.setOnDismissListener(() -> {
+            if (mediaActionsPopup == popup) {
+                mediaActionsPopup = null;
+            }
+            if (isVideo && isPhotoVisible && isActionBarVisible) {
+                AndroidUtilities.runOnUIThread(hideActionBarRunnable, 3000);
+            }
+        });
+        mediaActionsPopup = popup;
+        try {
+            popup.showAsDropDown(secretDeleteTimer, 0, dp(8), Gravity.END);
+        } catch (RuntimeException e) {
+            mediaActionsPopup = null;
+            FileLog.e(e);
+        }
+    }
+
+    private void addMediaActionItem(LinearLayout content, CharSequence title,
+                                    int icon, Runnable action) {
+        ActionBarMenuSubItem item = new ActionBarMenuSubItem(parentActivity,
+                false, false, false, null);
+        item.setTextAndIcon(title, icon);
+        item.setColors(0xfffafafa, 0xfffafafa);
+        content.addView(item, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
+        item.setOnClickListener(view -> {
+            dismissMediaActionsMenu();
+            action.run();
+        });
+    }
+
+    private void dismissMediaActionsMenu() {
+        if (mediaActionsPopup != null) {
+            PopupWindow popup = mediaActionsPopup;
+            mediaActionsPopup = null;
+            if (popup.isShowing()) {
+                popup.dismiss();
+            }
+        }
+    }
+
+    private void cancelMediaMenuHold() {
+        if (pendingMediaMenuHold != null) {
+            AndroidUtilities.cancelRunOnUIThread(pendingMediaMenuHold);
+            pendingMediaMenuHold = null;
+        }
+    }
+
     private boolean playButtonShown;
     private void showPlayButton(boolean show, boolean animated) {
         show = isVideo && show;
@@ -1382,6 +1927,9 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
         //messageObject.messageOwner.destroyTime = (int) (System.currentTimeMillis() / 1000 + ConnectionsManager.getInstance().getTimeDifference()) + 4;
 
         ignoreDelete = messageObject.messageOwner.ttl == 0x7FFFFFFF;
+        if (secretDeleteTimer != null) {
+            secretDeleteTimer.expired = false;
+        }
         this.onClose = onClose;
 
         currentProvider = provider;
@@ -1414,8 +1962,6 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
         containerView.setVisibility(View.VISIBLE);
         secretDeleteTimer.setAlpha(1.0f);
         isVideo = false;
-        videoWatchedOneTime = false;
-        closeVideoAfterWatch = false;
         disableShowCheck = true;
         centerImage.setManualAlphaAnimator(false);
         videoWidth = 0;
@@ -1476,9 +2022,9 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
         }
         activityVisibilityController = LaunchActivity.obtainActivityVisibilityController();
 
+        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.didCreatedNewDeleteTask);
         NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.messagesDeleted);
         NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.updateMessageMedia);
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.didCreatedNewDeleteTask);
         currentDialogId = MessageObject.getPeerId(messageObject.messageOwner.peer_id);
         currentMessageObject = messageObject;
         TLRPC.Document document = messageObject.getDocument();
@@ -1605,13 +2151,13 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
             }
             containerView.setLayerType(View.LAYER_TYPE_NONE, null);
             containerView.invalidate();
-            secretDeleteTimer.setDestroyTime(messageObject.messageOwner.destroyTimeMillis, messageObject.messageOwner.ttl, false);
-            if (closeAfterAnimation) {
-                closePhoto(true, true);
-            } else {
-                if (ignoreDelete && MessagesController.getGlobalMainSettings().getInt("viewoncehint", 0) < 3) {
-                    showSecretHint();
-                }
+            long destroyTime = messageObject.messageOwner.destroyTimeMillis;
+            if (destroyTime <= 0 && messageObject.messageOwner.destroyTime > 0) {
+                destroyTime = messageObject.messageOwner.destroyTime * 1000L;
+            }
+            secretDeleteTimer.setDestroyTime(destroyTime, messageObject.messageOwner.ttl, false);
+            if (ignoreDelete && MessagesController.getGlobalMainSettings().getInt("viewoncehint", 0) < 3) {
+                showSecretHint();
             }
         };
         imageMoveAnimation.setDuration(250);
@@ -1702,6 +2248,8 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
     }
 
     public void destroyPhotoViewer() {
+        cancelMediaMenuHold();
+        dismissMediaActionsMenu();
         if (onClose != null) {
             onClose.run();
             onClose = null;
@@ -1710,9 +2258,9 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
             activityVisibilityController.destroy();
             activityVisibilityController = null;
         }
+        NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.didCreatedNewDeleteTask);
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.messagesDeleted);
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.updateMessageMedia);
-        NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.didCreatedNewDeleteTask);
         isVisible = false;
         currentProvider = null;
         if (currentThumb != null) {
@@ -1910,7 +2458,16 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
             }
             canvas.translate(-width / 2, -height / 2);
             videoTextureView.setAlpha(alpha * videoCrossfadeAlpha);
-            aspectRatioFrameLayout.draw(canvas);
+            if (screenshotVideoFrame != null) {
+                // TextureView cannot be reliably drawn onto a software Bitmap
+                // canvas. Draw the already captured video frame at the same size.
+                Paint framePaint = new Paint(Paint.FILTER_BITMAP_FLAG);
+                canvas.drawBitmap(screenshotVideoFrame, null,
+                        new Rect(0, 0, videoTextureView.getWidth(), videoTextureView.getHeight()),
+                        framePaint);
+            } else {
+                aspectRatioFrameLayout.draw(canvas);
+            }
             if (videoCrossfadeStarted && videoCrossfadeAlpha < 1.0f) {
                 long newUpdateTime = System.currentTimeMillis();
                 long dt = newUpdateTime - videoCrossfadeAlphaLastTime;
@@ -1982,6 +2539,8 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
             return false;
         }
 
+        cancelMediaMenuHold();
+        dismissMediaActionsMenu();
         if (parentActivity != null) {
             AndroidUtilities.setLightNavigationBar(parentActivity, wasLightNavigationBar);
             AndroidUtilities.setNavigationBarColor(parentActivity, wasNavigationBarColor);
@@ -1996,9 +2555,9 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
             activityVisibilityController.destroy();
             activityVisibilityController = null;
         }
+        NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.didCreatedNewDeleteTask);
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.messagesDeleted);
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.updateMessageMedia);
-        NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.didCreatedNewDeleteTask);
 
         isActionBarVisible = false;
 

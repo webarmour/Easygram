@@ -2265,6 +2265,9 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
             @Override
             public void onItemClick(int id) {
                 if (id == -1) {
+                    if (photoLayout != null && photoLayout.isStandaloneCamera && photoLayout.onBackPressed()) {
+                        return;
+                    }
                     if (currentAttachLayout.onBackPressed()) {
                         return;
                     }
@@ -4422,7 +4425,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
 
     @Override
     protected boolean shouldOverlayCameraViewOverNavBar() {
-        return currentAttachLayout == photoLayout && photoLayout.cameraExpanded;
+        return photoLayout != null && photoLayout.cameraExpanded;
     }
 
     @Override
@@ -7055,6 +7058,9 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
         }
         if (actionBar.isSearchFieldVisible()) {
             actionBar.closeSearchField();
+            return;
+        }
+        if (photoLayout != null && photoLayout.isStandaloneCamera && photoLayout.onBackPressed()) {
             return;
         }
         if (currentAttachLayout.onBackPressed()) {
