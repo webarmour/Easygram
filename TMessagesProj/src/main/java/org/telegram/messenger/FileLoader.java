@@ -1012,6 +1012,7 @@ public class FileLoader extends BaseController {
                 }
                 if (parentObject instanceof MessageObject) {
                     MessageObject messageObject = (MessageObject) parentObject;
+                    getMessagesStorage().archiveDownloadedMedia(messageObject.getDialogId(), messageObject.getId(), finalFile);
                     if (document != null && messageObject.putInDownloadsStore) {
                         getDownloadController().onDownloadComplete(messageObject);
                     }

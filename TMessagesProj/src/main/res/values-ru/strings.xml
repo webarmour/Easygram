@@ -419,4 +419,8 @@
     <string name="RVConcurrentPrewarmFps">FPS неактивной камеры</string>
     <string name="RVDescEnableConcurrentPrewarm">Параллельное удержание фронтальной и основной камер в активном состоянии для мгновенного переключения.</string>
     <string name="RVDescConcurrentPrewarmFps">Кадровая частота фоновой камеры при включенном прогреве.</string>
+    <string name="MessageArchiveHistory">История сообщения</string>
+    <string name="MessageArchiveDeleted">Удалено</string>
+    <string name="MessageArchiveEditedAndDeleted">Изменено и удалено</string>
+    <string name="MessageArchiveEmpty">Сохранённых версий нет</string>
 </resources>

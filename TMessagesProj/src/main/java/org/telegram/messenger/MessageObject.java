@@ -129,6 +129,13 @@ import java.util.regex.Pattern;
 import me.vkryl.core.BitwiseUtils;
 
 public class MessageObject {
+    public static void markAsArchivedDeleted(TLRPC.Message message) {
+        if (message == null || message.localArchiveDeleted) {
+            return;
+        }
+        message.localArchiveDeleted = true;
+    }
+
     private static final int MESSAGE_ID_RESERVED_BITS_MASK = 0x70000000;
     private static final int MESSAGE_ID_EPHEMERAL_BITS_MASK = 0x60000000;
 

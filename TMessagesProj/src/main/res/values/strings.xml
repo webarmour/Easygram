@@ -11788,4 +11788,8 @@
     <string name="NoPaidMessagesTokenUsed">un1 used your QR code and can message you for free</string>
     <string name="NoPaidMessagesTokenUsedOut">You used the QR code of un1 and can message them for free</string>
     <string name="NoPaidMessagesTokenImported">You can now message **%1$s** for free.</string>
+    <string name="MessageArchiveHistory">Message history</string>
+    <string name="MessageArchiveDeleted">Deleted</string>
+    <string name="MessageArchiveEditedAndDeleted">Edited and deleted</string>
+    <string name="MessageArchiveEmpty">No saved versions</string>
 </resources>

@@ -1255,6 +1255,7 @@ public class ChatActivity extends BaseFragment implements
     public final static int OPTION_GIFT = 108;
     public final static int OPTION_EDIT_TODO = 109;
     public final static int OPTION_ADD_TO_TODO = 110;
+    public final static int OPTION_MESSAGE_HISTORY = 118;
 
     public final static int OPTION_SUGGESTION_EDIT_PRICE = 111;
     public final static int OPTION_SUGGESTION_EDIT_TIME = 112;
@@ -26729,6 +26730,14 @@ public class ChatActivity extends BaseFragment implements
                         }
                     }
                 }
+                if (chatMode == MODE_DEFAULT && thanos && obj.getId() > 0 && !obj.isEphemeral()) {
+                    MessageObject.markAsArchivedDeleted(obj.messageOwner);
+                    if (editingMessageObject == obj) {
+                        hideFieldPanel(true);
+                    }
+                    updated = true;
+                    continue;
+                }
                 obj.deleted = true;
                 if (obj.scheduled && sent) {
                     obj.scheduledSent = true;
@@ -33686,6 +33695,53 @@ public class ChatActivity extends BaseFragment implements
         }
         boolean preserveDim = false;
         switch (option) {
+            case OPTION_MESSAGE_HISTORY: {
+                long archiveDialogId = selectedObject.getDialogId();
+                int archiveMessageId = selectedObject.getId();
+                getMessagesStorage().getMessageVersions(archiveDialogId, archiveMessageId, versions -> {
+                    if (getParentActivity() == null) {
+                        return;
+                    }
+                    if (versions.isEmpty()) {
+                        new AlertDialog.Builder(getParentActivity(), themeDelegate)
+                                .setTitle(getString(R.string.MessageArchiveHistory))
+                                .setMessage(getString(R.string.MessageArchiveEmpty))
+                                .setPositiveButton(getString(R.string.OK), null)
+                                .show();
+                        return;
+                    }
+                    CharSequence[] labels = new CharSequence[versions.size()];
+                    for (int i = 0; i < versions.size(); i++) {
+                        TLRPC.Message version = versions.get(i);
+                        StringBuilder label = new StringBuilder(LocaleController.formatDateTime(version.edit_date != 0 ? version.edit_date : version.date, false));
+                        if (version.localArchiveDeleted) {
+                            label.append(" · ").append(getString(R.string.MessageArchiveDeleted));
+                        }
+                        label.append("\n").append(TextUtils.isEmpty(version.message) ? "—" : version.message);
+                        labels[i] = label;
+                    }
+                    new AlertDialog.Builder(getParentActivity(), themeDelegate)
+                            .setTitle(getString(R.string.MessageArchiveHistory))
+                            .setItems(labels, (dialog, which) -> {
+                                TLRPC.Message version = versions.get(which);
+                                if (version.media instanceof TLRPC.TL_messageMediaPhoto || version.media instanceof TLRPC.TL_messageMediaDocument) {
+                                    MessageObject archivedMessage = new MessageObject(currentAccount, version, false, false);
+                                    PhotoViewer.getInstance().setParentActivity(ChatActivity.this, themeDelegate);
+                                    if (PhotoViewer.getInstance().openPhoto(archivedMessage, archiveDialogId, 0, 0, photoViewerProvider, false)) {
+                                        PhotoViewer.getInstance().setParentChatActivity(ChatActivity.this);
+                                        return;
+                                    }
+                                }
+                                new AlertDialog.Builder(getParentActivity(), themeDelegate)
+                                        .setTitle(getString(R.string.MessageArchiveHistory))
+                                        .setMessage(TextUtils.isEmpty(version.message) ? "—" : version.message)
+                                        .setPositiveButton(getString(R.string.OK), null)
+                                        .show();
+                            })
+                            .show();
+                });
+                break;
+            }
             case OPTION_RETRY: {
                 final MessageObject object = selectedObject;
                 final MessageObject.GroupedMessages group = selectedObjectGroup;
@@ -46217,6 +46273,14 @@ public class ChatActivity extends BaseFragment implements
         final int type = getMessageType(message);
         final boolean isEphemeral = message.isEphemeral();
         final boolean isEphemeralFromBot = isEphemeral && !message.isOut();
+        boolean hasMessageHistory = message.messageOwner.localArchiveDeleted
+                || (message.messageOwner.flags & TLRPC.MESSAGE_FLAG_EDITED) != 0
+                || message.messageOwner.edit_date != 0;
+        if (chatMode == MODE_DEFAULT && message.getId() > 0 && !isEphemeral && hasMessageHistory) {
+            items.add(getString(R.string.MessageArchiveHistory));
+            options.add(OPTION_MESSAGE_HISTORY);
+            icons.add(R.drawable.msg_edit);
+        }
 
 
         boolean allowChatActions = true;

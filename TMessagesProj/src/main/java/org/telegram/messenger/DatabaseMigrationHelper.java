@@ -1698,6 +1698,14 @@ public class DatabaseMigrationHelper {
             database.executeFast("PRAGMA user_version = 179").stepThis().dispose();
             version = 179;
         }
+        if (version == 179) {
+            MessagesStorage.createMessageArchive(database);
+            database.executeFast("INSERT INTO message_archive(uid, mid, topic_id, date, data) SELECT uid, mid, COALESCE(thread_reply_id, 0), COALESCE(date, 0), data FROM messages_v2 WHERE mid > 0 AND uid != 0 AND data IS NOT NULL").stepThis().dispose();
+            database.executeFast("UPDATE message_archive SET topic_id = (SELECT topic_id FROM messages_topics WHERE uid = message_archive.uid AND mid = message_archive.mid LIMIT 1) WHERE EXISTS (SELECT 1 FROM messages_topics WHERE uid = message_archive.uid AND mid = message_archive.mid)").stepThis().dispose();
+            database.executeFast("INSERT INTO message_archive(uid, mid, topic_id, date, data) SELECT t.uid, t.mid, t.topic_id, COALESCE(t.date, 0), t.data FROM messages_topics t WHERE t.mid > 0 AND t.uid != 0 AND t.data IS NOT NULL AND NOT EXISTS (SELECT 1 FROM message_archive a WHERE a.uid = t.uid AND a.mid = t.mid AND a.data = t.data)").stepThis().dispose();
+            database.executeFast("PRAGMA user_version = 180").stepThis().dispose();
+            version = 180;
+        }
 
         return version;
     }

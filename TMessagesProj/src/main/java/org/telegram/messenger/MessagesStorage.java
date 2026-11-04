@@ -118,7 +118,7 @@ public class MessagesStorage extends BaseController {
         }
     }
 
-    public final static int LAST_DB_VERSION = 179;
+    public final static int LAST_DB_VERSION = 180;
     private boolean databaseMigrationInProgress;
     public boolean showClearDatabaseAlert;
 
@@ -464,6 +464,8 @@ public class MessagesStorage extends BaseController {
             "scheduled_messages_v2",
             "quick_replies",
             "messages_v2",
+            "message_archive",
+            "message_archive_media",
             "download_queue",
             "user_contacts_v7",
             "user_phones_v7",
@@ -702,6 +704,7 @@ public class MessagesStorage extends BaseController {
         database.executeFast("CREATE INDEX IF NOT EXISTS uid_topic_id_messages_topics ON messages_topics(uid, topic_id);").stepThis().dispose();
         database.executeFast("CREATE INDEX IF NOT EXISTS uid_topic_id_date_mid_messages_topics ON messages_topics(uid, topic_id, date, mid);").stepThis().dispose();
         database.executeFast("CREATE INDEX IF NOT EXISTS uid_topic_id_mid_messages_topics ON messages_topics(uid, topic_id, mid);").stepThis().dispose();
+        createMessageArchive(database);
 
         database.executeFast("CREATE TABLE media_topics(mid INTEGER, uid INTEGER, topic_id INTEGER, date INTEGER, type INTEGER, data BLOB, PRIMARY KEY(mid, uid, topic_id, type))").stepThis().dispose();
         database.executeFast("CREATE INDEX IF NOT EXISTS uid_mid_type_date_idx_media_topics ON media_topics(uid, topic_id, mid, type, date);").stepThis().dispose();
@@ -777,6 +780,85 @@ public class MessagesStorage extends BaseController {
 
     }
 
+    static void createMessageArchive(SQLiteDatabase database) throws SQLiteException {
+        database.executeFast("CREATE TABLE IF NOT EXISTS message_archive(id INTEGER PRIMARY KEY AUTOINCREMENT, uid INTEGER NOT NULL, mid INTEGER NOT NULL, topic_id INTEGER NOT NULL DEFAULT 0, date INTEGER NOT NULL, data BLOB NOT NULL, deleted INTEGER NOT NULL DEFAULT 0)").stepThis().dispose();
+        database.executeFast("CREATE INDEX IF NOT EXISTS message_archive_uid_mid ON message_archive(uid, mid, id)").stepThis().dispose();
+        database.executeFast("CREATE INDEX IF NOT EXISTS message_archive_deleted_date ON message_archive(uid, deleted, date, mid)").stepThis().dispose();
+        database.executeFast("CREATE TABLE IF NOT EXISTS message_archive_media(uid INTEGER NOT NULL, mid INTEGER NOT NULL, original_path TEXT NOT NULL, archive_path TEXT NOT NULL, PRIMARY KEY(uid, mid, original_path))").stepThis().dispose();
+        database.executeFast("CREATE TRIGGER IF NOT EXISTS archive_message_insert AFTER INSERT ON messages_v2 WHEN NEW.mid > 0 AND NEW.uid != 0 AND NOT EXISTS (SELECT 1 FROM message_archive WHERE uid = NEW.uid AND mid = NEW.mid AND data = NEW.data) BEGIN INSERT INTO message_archive(uid, mid, topic_id, date, data) VALUES(NEW.uid, NEW.mid, COALESCE(NEW.thread_reply_id, 0), NEW.date, NEW.data); END").stepThis().dispose();
+        database.executeFast("CREATE TRIGGER IF NOT EXISTS archive_message_update AFTER UPDATE OF data ON messages_v2 WHEN NEW.mid > 0 AND NEW.uid != 0 AND NEW.data != OLD.data AND NOT EXISTS (SELECT 1 FROM message_archive WHERE uid = NEW.uid AND mid = NEW.mid AND data = NEW.data) BEGIN INSERT INTO message_archive(uid, mid, topic_id, date, data) VALUES(NEW.uid, NEW.mid, COALESCE(NEW.thread_reply_id, 0), NEW.date, NEW.data); END").stepThis().dispose();
+        database.executeFast("CREATE TRIGGER IF NOT EXISTS archive_topic_message_insert AFTER INSERT ON messages_topics WHEN NEW.mid > 0 AND NEW.uid != 0 BEGIN UPDATE message_archive SET topic_id = NEW.topic_id WHERE uid = NEW.uid AND mid = NEW.mid AND data = NEW.data; INSERT INTO message_archive(uid, mid, topic_id, date, data) SELECT NEW.uid, NEW.mid, NEW.topic_id, NEW.date, NEW.data WHERE NOT EXISTS (SELECT 1 FROM message_archive WHERE uid = NEW.uid AND mid = NEW.mid AND data = NEW.data); END").stepThis().dispose();
+        database.executeFast("CREATE TRIGGER IF NOT EXISTS archive_topic_message_update AFTER UPDATE OF data ON messages_topics WHEN NEW.mid > 0 AND NEW.uid != 0 AND NEW.data != OLD.data BEGIN UPDATE message_archive SET topic_id = NEW.topic_id WHERE uid = NEW.uid AND mid = NEW.mid AND data = NEW.data; INSERT INTO message_archive(uid, mid, topic_id, date, data) SELECT NEW.uid, NEW.mid, NEW.topic_id, NEW.date, NEW.data WHERE NOT EXISTS (SELECT 1 FROM message_archive WHERE uid = NEW.uid AND mid = NEW.mid AND data = NEW.data); END").stepThis().dispose();
+    }
+
+    public void getMessageVersions(long dialogId, int messageId, Consumer<ArrayList<TLRPC.Message>> callback) {
+        storageQueue.postRunnable(() -> {
+            ArrayList<TLRPC.Message> versions = new ArrayList<>();
+            SQLiteCursor cursor = null;
+            try {
+                restoreArchivedMedia(dialogId, messageId);
+                cursor = database.queryFinalized(String.format(Locale.US,
+                        "SELECT data, deleted FROM message_archive WHERE uid = %d AND mid = %d ORDER BY id DESC LIMIT 50",
+                        dialogId, messageId));
+                while (cursor.next()) {
+                    NativeByteBuffer data = cursor.byteBufferValue(0);
+                    if (data != null) {
+                        TLRPC.Message message = TLRPC.Message.TLdeserialize(data, data.readInt32(false), false);
+                        if (message != null) {
+                            message.localArchiveDeleted = cursor.intValue(1) != 0;
+                            versions.add(message);
+                        }
+                        data.reuse();
+                    }
+                }
+            } catch (Exception e) {
+                checkSQLException(e);
+            } finally {
+                if (cursor != null) {
+                    cursor.dispose();
+                }
+            }
+            AndroidUtilities.runOnUIThread(() -> callback.accept(versions));
+        });
+    }
+
+    public void archiveDownloadedMedia(long dialogId, int messageId, File source) {
+        if (messageId <= 0 || dialogId == 0 || source == null || !source.isFile()) {
+            return;
+        }
+        Utilities.globalQueue.postRunnable(() -> {
+            File directory = new File(ApplicationLoader.getFilesDirFixed(), "message_archive_media/" + currentAccount + "/" + dialogId + "_" + messageId);
+            if (!directory.exists() && !directory.mkdirs()) {
+                return;
+            }
+            File archived = new File(directory, source.getName());
+            try {
+                if (!archived.isFile() || archived.length() != source.length()) {
+                    AndroidUtilities.copyFile(source, archived);
+                }
+                storageQueue.postRunnable(() -> {
+                    SQLitePreparedStatement statement = null;
+                    try {
+                        statement = database.executeFast("REPLACE INTO message_archive_media(uid, mid, original_path, archive_path) VALUES(?, ?, ?, ?)");
+                        statement.bindLong(1, dialogId);
+                        statement.bindInteger(2, messageId);
+                        statement.bindString(3, source.getAbsolutePath());
+                        statement.bindString(4, archived.getAbsolutePath());
+                        statement.step();
+                    } catch (Exception e) {
+                        checkSQLException(e);
+                    } finally {
+                        if (statement != null) {
+                            statement.dispose();
+                        }
+                    }
+                });
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+        });
+    }
+
     public boolean isDatabaseMigrationInProgress() {
         return databaseMigrationInProgress;
     }
@@ -821,8 +903,23 @@ public class MessagesStorage extends BaseController {
                 shmCacheFile.delete();
                 shmCacheFile = null;
             }
+            deleteArchiveMediaDirectory(new File(ApplicationLoader.getFilesDirFixed(), "message_archive_media/" + currentAccount));
 
         }
+    }
+
+    private static void deleteArchiveMediaDirectory(File directory) {
+        File[] children = directory.listFiles();
+        if (children != null) {
+            for (File child : children) {
+                if (child.isDirectory()) {
+                    deleteArchiveMediaDirectory(child);
+                } else {
+                    child.delete();
+                }
+            }
+        }
+        directory.delete();
     }
 
     public void clearDatabaseValues() {
@@ -8893,6 +8990,84 @@ public class MessagesStorage extends BaseController {
         });
     }
 
+    private void appendArchivedDeletedMessages(TLRPC.TL_messages_messages result, long dialogId, long topicId, int maxId, int count,
+                                               ArrayList<Long> usersToLoad, ArrayList<Long> chatsToLoad, ArrayList<Long> animatedEmojiToLoad) throws Exception {
+        int minId = Integer.MAX_VALUE;
+        for (TLRPC.Message message : result.messages) {
+            if (message.id > 0) {
+                minId = Math.min(minId, message.id);
+                File cachedMedia = FileLoader.getInstance(currentAccount).getPathToMessage(message, false);
+                if (cachedMedia != null && cachedMedia.isFile()) {
+                    archiveDownloadedMedia(dialogId, message.id, cachedMedia);
+                }
+            }
+        }
+        int lowerBound = minId == Integer.MAX_VALUE ? 1 : minId;
+        int upperBound = maxId > 0 ? maxId : Integer.MAX_VALUE;
+        String topicFilter = topicId == 0 ? "" : " AND a.topic_id = " + topicId;
+        SQLiteCursor archiveCursor = database.queryFinalized(String.format(Locale.US,
+                "SELECT a.data FROM message_archive a WHERE a.uid = %d AND a.deleted = 1 AND a.mid >= %d AND a.mid < %d%s AND a.id = (SELECT MAX(b.id) FROM message_archive b WHERE b.uid = a.uid AND b.mid = a.mid) ORDER BY a.mid DESC LIMIT %d",
+                dialogId, lowerBound, upperBound, topicFilter, Math.max(1, count)));
+        try {
+            while (archiveCursor.next()) {
+                NativeByteBuffer data = archiveCursor.byteBufferValue(0);
+                if (data == null) {
+                    continue;
+                }
+                TLRPC.Message message = TLRPC.Message.TLdeserialize(data, data.readInt32(false), false);
+                data.reuse();
+                if (message == null || message instanceof TLRPC.TL_messageEmpty) {
+                    continue;
+                }
+                boolean alreadyPresent = false;
+                for (TLRPC.Message existing : result.messages) {
+                    if (existing.id == message.id) {
+                        alreadyPresent = true;
+                        break;
+                    }
+                }
+                if (!alreadyPresent) {
+                    restoreArchivedMedia(dialogId, message.id);
+                    message.dialog_id = dialogId;
+                    message.unread = false;
+                    message.media_unread = false;
+                    MessageObject.markAsArchivedDeleted(message);
+                    result.messages.add(message);
+                    addUsersAndChatsFromMessage(message, usersToLoad, chatsToLoad, animatedEmojiToLoad);
+                }
+            }
+        } finally {
+            archiveCursor.dispose();
+        }
+        result.messages.sort((left, right) -> {
+            int dateOrder = Integer.compare(right.date, left.date);
+            return dateOrder != 0 ? dateOrder : Integer.compare(right.id, left.id);
+        });
+    }
+
+    private void restoreArchivedMedia(long dialogId, int messageId) throws Exception {
+        SQLiteCursor mediaCursor = database.queryFinalized(String.format(Locale.US,
+                "SELECT original_path, archive_path FROM message_archive_media WHERE uid = %d AND mid = %d", dialogId, messageId));
+        try {
+            while (mediaCursor.next()) {
+                File original = new File(mediaCursor.stringValue(0));
+                File archived = new File(mediaCursor.stringValue(1));
+                if (!original.isFile() && archived.isFile()) {
+                    File parent = original.getParentFile();
+                    if (parent != null && (parent.exists() || parent.mkdirs())) {
+                        try {
+                            AndroidUtilities.copyFile(archived, original);
+                        } catch (Exception e) {
+                            FileLog.e(e);
+                        }
+                    }
+                }
+            }
+        } finally {
+            mediaCursor.dispose();
+        }
+    }
+
     public Runnable getMessagesInternal(long dialogId, long mergeDialogId, int count, int max_id, int offset_date, int minDate, int classGuid, int load_type, int mode, long threadMessageId, int loadIndex, boolean processMessages, boolean isTopic, Timer loaderLogger) {
         TLRPC.TL_messages_messages res = new TLRPC.TL_messages_messages();
         long currentUserId = getUserConfig().clientUserId;
@@ -9918,6 +10093,9 @@ public class MessagesStorage extends BaseController {
                 }
             } else {
                 loadReplyMessages(replyMessageOwners, dialogReplyMessagesIds, usersToLoad, chatsToLoad, mode);
+            }
+            if (mode == 0 && (load_type == 0 || load_type == 2)) {
+                appendArchivedDeletedMessages(res, dialogId, threadMessageId, max_id, count, usersToLoad, chatsToLoad, animatedEmojiToLoad);
             }
             if (!usersToLoad.isEmpty()) {
                 getUsersInternal(usersToLoad, res.users);
@@ -14592,6 +14770,11 @@ public class MessagesStorage extends BaseController {
                 HashMap<TopicKey, int[]> topicsMessagesToUpdate = new HashMap<>();
                 LongSparseArray<ArrayList<Integer>> messagesByDialogs = new LongSparseArray<>();
                 String ids = TextUtils.join(",", messages);
+                if (dialogId != 0) {
+                    database.executeFast(String.format(Locale.US, "UPDATE message_archive SET deleted = 1 WHERE uid = %d AND mid IN (%s)", dialogId, ids)).stepThis().dispose();
+                } else {
+                    database.executeFast(String.format(Locale.US, "UPDATE message_archive SET deleted = 1 WHERE mid IN (%s) AND uid IN (SELECT uid FROM messages_v2 WHERE mid IN (%s) AND is_channel = 0)", ids, ids)).stepThis().dispose();
+                }
                 ArrayList<File> filesToDelete = new ArrayList<>();
                 ArrayList<String> namesToDelete = new ArrayList<>();
                 ArrayList<Pair<Long, Integer>> idsToDelete = new ArrayList<>();
@@ -15336,6 +15519,7 @@ public class MessagesStorage extends BaseController {
             ArrayList<Pair<Long, Integer>> idsToDelete = new ArrayList<>();
             long currentUser = getUserConfig().getClientUserId();
 
+            database.executeFast(String.format(Locale.US, "UPDATE message_archive SET deleted = 1 WHERE uid = %d AND mid <= %d", -channelId, mid)).stepThis().dispose();
             cursor = database.queryFinalized(String.format(Locale.US, "SELECT uid, data, read_state, out, mention FROM messages_v2 WHERE uid = %d AND mid <= %d", -channelId, mid));
 
             try {

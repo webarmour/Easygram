@@ -18517,6 +18517,14 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         } else {
             timeString = LocaleController.getInstance().getFormatterDay().format((long) (messageObject.messageOwner.date) * 1000);
         }
+        if (currentMessageObject.messageOwner.localArchiveDeleted) {
+            boolean wasEdited = (currentMessageObject.messageOwner.flags & TLRPC.MESSAGE_FLAG_EDITED) != 0
+                    || currentMessageObject.messageOwner.edit_date != 0;
+            String label = getString(wasEdited ? R.string.MessageArchiveEditedAndDeleted : R.string.MessageArchiveDeleted);
+            timeString = label + " " + LocaleController.getInstance().getFormatterDay().format(
+                    (long) (wasEdited && currentMessageObject.messageOwner.edit_date != 0
+                            ? currentMessageObject.messageOwner.edit_date : currentMessageObject.messageOwner.date) * 1000);
+        }
         if (currentMessageObject.messageOwner.video_processing_pending) {
             timeString = formatString(R.string.ScheduledTimeApprox, timeString);
         }
