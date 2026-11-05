@@ -169,7 +169,7 @@
         <activity
             android:enabled="false"
             android:name="org.telegram.messenger.BloomMonoIcon"
-            android:theme="@style/Theme.TMessages.Start"
+            android:theme="@style/Theme.TMessages.Start.BloomMono"
             android:icon="@mipmap/ic_easygram_bloom_mono"
             android:roundIcon="@mipmap/ic_easygram_bloom_mono_round"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|uiMode|smallestScreenSize|screenLayout"

@@ -18,6 +18,11 @@
         <item name="android:windowBackground">@color/easygram_bloom_blue_dark_background</item>
     </style>
 
+    <style name="Theme.TMessages.Start.BloomMono" parent="Theme.TMessages.Start">
+        <item name="android:colorBackground">@color/easygram_bloom_mono_background</item>
+        <item name="android:windowBackground">@color/easygram_bloom_mono_background</item>
+    </style>
+
     <style name="Theme.TMessages" parent="Theme.AppCompat.Light">
         <item name="android:windowActionBar">false</item>
         <item name="android:windowNoTitle">true</item>
