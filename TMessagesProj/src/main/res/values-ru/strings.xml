@@ -414,6 +414,7 @@
     <string name="PhotoCopiedToClipboard">Фотография скопирована в буфер обмена</string>
     <string name="AppIconDefault">Easygram Dark</string>
     <string name="AppIconBloomLight">Easygram Light</string>
+    <string name="AppIconBloomMono">Easygram Моно</string>
 
     <string name="RVHeaderPrewarm">Прогрев камер</string>
     <string name="RVEnableConcurrentPrewarm">Прогрев фоновой камеры</string>

@@ -5931,6 +5931,7 @@
     <string name="AppIcon">App Icon</string>
     <string name="AppIconDefault">Easygram Dark</string>
     <string name="AppIconBloomLight">Easygram Light</string>
+    <string name="AppIconBloomMono">Easygram Mono</string>
     <string name="AppIconVintage">Vintage</string>
     <string name="AppIconAqua">Aqua</string>
     <string name="AppIconPremium">Premium</string>

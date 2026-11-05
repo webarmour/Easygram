@@ -168,6 +168,27 @@
 
         <activity
             android:enabled="false"
+            android:name="org.telegram.messenger.BloomMonoIcon"
+            android:theme="@style/Theme.TMessages.Start"
+            android:icon="@mipmap/ic_easygram_bloom_mono"
+            android:roundIcon="@mipmap/ic_easygram_bloom_mono_round"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|uiMode|smallestScreenSize|screenLayout"
+            android:supportsPictureInPicture="true"
+            android:hardwareAccelerated="true"
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.MULTIWINDOW_LAUNCHER" />
+            </intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
+        </activity>
+
+        <activity
+            android:enabled="false"
             android:name="org.telegram.messenger.VintageIcon"
             android:theme="@style/Theme.TMessages.Start"
             android:icon="@mipmap/icon_6_launcher"
