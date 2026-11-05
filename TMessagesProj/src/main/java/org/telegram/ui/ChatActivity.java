@@ -61,6 +61,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.provider.ContactsContract;
 import android.provider.MediaStore;
@@ -98,6 +99,7 @@ import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.animation.DecelerateInterpolator;
+import android.view.animation.OvershootInterpolator;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -1078,6 +1080,8 @@ public class ChatActivity extends BaseFragment implements
     private boolean postponedScrollIsCanceled;
     private ChatActivityTextSelectionHelper textSelectionHelper;
     private View slidingView;
+    private ArrayList<Integer> pendingSwipeDeleteIds;
+    private Object[] pendingSwipeDeleteNotification;
 
     private final float[] tmpOverlayPos = new float[2];
     private float[] computeArticleOverlayPos(View overlay) {
@@ -1108,6 +1112,76 @@ public class ChatActivity extends BaseFragment implements
         if (slidingView instanceof ChatMessageCell) return ((ChatMessageCell) slidingView).getMessageObject();
         if (slidingView instanceof ChatActionCell) return ((ChatActionCell) slidingView).getMessageObject();
         return null;
+    }
+
+    private boolean canSwipeDeleteForAll(MessageObject message) {
+        if (chatMode != 0 || message == null || message.messageOwner == null ||
+                !message.isOut() || message.getId() <= 0 || message.isSendError() ||
+                message.isEphemeral() || message.isDice() || message.isGiveaway() ||
+                message.isPaidSuggestedPostProtected() ||
+                !(message.messageOwner.action == null || message.messageOwner.action instanceof TLRPC.TL_messageActionEmpty) ||
+                !message.canDeleteMessage(false, currentChat) ||
+                currentUser != null && currentUser.id == getUserConfig().getClientUserId() ||
+                currentUser != null && currentUser.bot && !currentUser.support ||
+                currentUser != null && UserObject.isDeleted(currentUser)) {
+            return false;
+        }
+        if (currentEncryptedChat != null || currentChat != null && ChatObject.isChannel(currentChat) && !currentChat.megagroup) {
+            return true;
+        }
+        int revokeTimeLimit = currentUser != null ? getMessagesController().revokeTimePmLimit : getMessagesController().revokeTimeLimit;
+        return getConnectionsManager().getCurrentTime() - message.messageOwner.date <= revokeTimeLimit;
+    }
+
+    private ArrayList<MessageObject> getSwipeDeleteMessages(MessageObject message) {
+        if (!canSwipeDeleteForAll(message)) {
+            return null;
+        }
+        ArrayList<MessageObject> result = new ArrayList<>();
+        if (message.getGroupId() != 0) {
+            MessageObject.GroupedMessages group = getGroup(message.getGroupId());
+            if (group != null) {
+                for (MessageObject item : group.messages) {
+                    if (!canSwipeDeleteForAll(item)) {
+                        return null;
+                    }
+                    result.add(item);
+                }
+            }
+        }
+        if (result.isEmpty()) {
+            result.add(message);
+        }
+        return result;
+    }
+
+    private void deleteSwipedMessagesForAll(ArrayList<MessageObject> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return;
+        }
+        ArrayList<Integer> ids = new ArrayList<>(messages.size());
+        ArrayList<Long> randomIds = currentEncryptedChat == null ? null : new ArrayList<>();
+        for (MessageObject message : messages) {
+            if (!canSwipeDeleteForAll(message)) {
+                return;
+            }
+            ids.add(message.getId());
+            if (randomIds != null && message.messageOwner.random_id != 0 && message.type != 10) {
+                randomIds.add(message.messageOwner.random_id);
+            }
+        }
+        pendingSwipeDeleteIds = new ArrayList<>(ids);
+        pendingSwipeDeleteNotification = null;
+        getMessagesController().deleteMessages(ids, randomIds, currentEncryptedChat, dialog_id, (int) getTopicId(), true, chatMode);
+    }
+
+    private void finishSwipeDeleteVisual() {
+        Object[] notification = pendingSwipeDeleteNotification;
+        pendingSwipeDeleteIds = null;
+        pendingSwipeDeleteNotification = null;
+        if (notification != null) {
+            didReceivedNotification(NotificationCenter.messagesDeleted, currentAccount, notification);
+        }
     }
 
     private float getSlidingNonAnimationTranslationX(boolean update) {
@@ -4689,11 +4763,18 @@ public class ChatActivity extends BaseFragment implements
             private float trackAnimationProgress;
             private float endTrackingX;
             private boolean wasTrackingVibrate;
+            private boolean swipeDeleteArmed;
+            private boolean swipeDeleteReady;
+            private float lastDeleteHapticDistance;
+            private long lastDeleteHapticTime;
+            private Drawable swipeDeleteDrawable;
+            private ValueAnimator swipeDeleteReturnAnimator;
 
             private float springMultiplier = 2000f;
 
             private Paint outlineActionBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
             private Paint outlineActionBackgroundDarkenPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            private Paint swipeDeleteRingPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
             private FloatValueHolder slidingDrawableVisibilityProgress = new FloatValueHolder(0);
             private SpringAnimation slidingDrawableVisibilitySpring = new SpringAnimation(slidingDrawableVisibilityProgress)
@@ -4717,6 +4798,20 @@ public class ChatActivity extends BaseFragment implements
                             .setStiffness(200f)
                             .setDampingRatio(SpringForce.DAMPING_RATIO_NO_BOUNCY))
                     .addUpdateListener((animation, value, velocity) -> invalidate());
+            private FloatValueHolder swipeDeleteRingProgress = new FloatValueHolder(0);
+            private SpringAnimation swipeDeleteRingSpring = new SpringAnimation(swipeDeleteRingProgress)
+                    .setMinValue(0f)
+                    .setMaxValue(springMultiplier)
+                    .setSpring(new SpringForce(0)
+                            .setStiffness(200f)
+                            .setDampingRatio(SpringForce.DAMPING_RATIO_NO_BOUNCY))
+                    .addUpdateListener((animation, value, velocity) -> invalidate());
+            private FloatValueHolder swipeDeleteIconBounce = new FloatValueHolder(0);
+            private SpringAnimation swipeDeleteIconBounceSpring = new SpringAnimation(swipeDeleteIconBounce)
+                    .setSpring(new SpringForce(0)
+                            .setStiffness(400f)
+                            .setDampingRatio(SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY))
+                    .addUpdateListener((animation, value, velocity) -> invalidate());
             private boolean slidingBeyondMax;
             private Path path = new Path();
 
@@ -4732,6 +4827,9 @@ public class ChatActivity extends BaseFragment implements
                 outlineActionBackgroundDarkenPaint.setStyle(Paint.Style.STROKE);
                 outlineActionBackgroundDarkenPaint.setStrokeCap(Paint.Cap.ROUND);
                 outlineActionBackgroundDarkenPaint.setStrokeWidth(AndroidUtilities.dp(2));
+                swipeDeleteRingPaint.setStyle(Paint.Style.STROKE);
+                swipeDeleteRingPaint.setStrokeCap(Paint.Cap.ROUND);
+                swipeDeleteRingPaint.setStrokeWidth(AndroidUtilities.dpf2(1));
             }
 
             @Override
@@ -5021,7 +5119,36 @@ public class ChatActivity extends BaseFragment implements
                 }
 
                 int alpha = (int) (iconProgress * 0xFF);
-                Drawable replyIconDrawable = getThemedDrawable(Theme.key_drawable_replyIcon);
+                if (swipeDeleteReady) {
+                    float radius = AndroidUtilities.dp(16) * scale;
+                    AndroidUtilities.rectTmp.set(x - radius, y - radius, x + radius, y + radius);
+                    swipeDeleteRingPaint.setColor(Color.GRAY);
+                    swipeDeleteRingPaint.setAlpha(alpha);
+                    canvas.drawRoundRect(AndroidUtilities.rectTmp, radius, radius, swipeDeleteRingPaint);
+                    float ringProgress = swipeDeleteRingProgress.getValue() / springMultiplier;
+                    if (ringProgress > 0f && ringProgress < 1f) {
+                        float outerRadius = radius * (1f + ringProgress);
+                        AndroidUtilities.rectTmp.set(x - outerRadius, y - outerRadius, x + outerRadius, y + outerRadius);
+                        swipeDeleteRingPaint.setStrokeWidth(AndroidUtilities.dpf2(1) * (1f - ringProgress));
+                        swipeDeleteRingPaint.setAlpha((int) (alpha * (1f - ringProgress)));
+                        canvas.drawRoundRect(AndroidUtilities.rectTmp, outerRadius, outerRadius, swipeDeleteRingPaint);
+                        swipeDeleteRingPaint.setStrokeWidth(AndroidUtilities.dpf2(1));
+                    }
+                }
+                Drawable replyIconDrawable;
+                if (swipeDeleteArmed) {
+                    if (swipeDeleteDrawable == null) {
+                        swipeDeleteDrawable = getContext().getDrawable(R.drawable.msg_delete).mutate();
+                    }
+                    replyIconDrawable = swipeDeleteDrawable;
+                    float deleteProgress = Math.max(0f, Math.min(1f,
+                            (-translationX - AndroidUtilities.dp(115)) / AndroidUtilities.dp(60)));
+                    scale *= 1f + swipeDeleteIconBounce.getValue();
+                    int deleteColor = ColorUtils.blendARGB(Color.GRAY, getThemedColor(Theme.key_text_RedRegular), deleteProgress);
+                    replyIconDrawable.setColorFilter(new PorterDuffColorFilter(deleteColor, PorterDuff.Mode.SRC_IN));
+                } else {
+                    replyIconDrawable = getThemedDrawable(Theme.key_drawable_replyIcon);
+                }
                 replyIconDrawable.setAlpha(alpha);
                 replyIconDrawable.setBounds((int) (x - replyIconDrawable.getIntrinsicWidth() / 2 * scale), (int) (y - replyIconDrawable.getIntrinsicHeight() / 2 * scale), (int) (x + replyIconDrawable.getIntrinsicWidth() / 2 * scale), (int) (y + replyIconDrawable.getIntrinsicHeight() / 2 * scale));
                 replyIconDrawable.draw(canvas);
@@ -5032,6 +5159,9 @@ public class ChatActivity extends BaseFragment implements
             }
 
             private void processTouchEvent(MotionEvent e) {
+                if (swipeDeleteReturnAnimator != null) {
+                    return;
+                }
                 if (e != null) {
                     wasManualScroll = true;
                 }
@@ -5064,7 +5194,9 @@ public class ChatActivity extends BaseFragment implements
                         startedTrackingY = (int) e.getY();
                     }
                 } else if (slidingView != null && e != null && e.getAction() == MotionEvent.ACTION_MOVE && e.getPointerId(0) == startedTrackingPointerId) {
-                    int dx = Math.max(AndroidUtilities.dp(-80), Math.min(0, (int) (e.getX() - startedTrackingX)));
+                    int rawDx = Math.min(0, (int) (e.getX() - startedTrackingX));
+                    boolean canDeleteForAll = slidingView instanceof ChatMessageCell && getSwipeDeleteMessages(getSlidingMessageObject()) != null;
+                    int dx = Math.max(AndroidUtilities.dp(canDeleteForAll ? -180 : -80), rawDx);
                     int dy = Math.abs((int) e.getY() - startedTrackingY);
                     if (getScrollState() == SCROLL_STATE_IDLE && maybeStartTrackingSlidingView && !startedTrackingSlidingView && dx <= -AndroidUtilities.getPixelsInCM(0.4f, true) && Math.abs(dx) / 3 > dy) {
                         MotionEvent event = MotionEvent.obtain(0, 0, MotionEvent.ACTION_CANCEL, 0, 0, 0);
@@ -5079,6 +5211,57 @@ public class ChatActivity extends BaseFragment implements
                             getParent().requestDisallowInterceptTouchEvent(true);
                         }
                     } else if (startedTrackingSlidingView) {
+                        boolean deleteArmed = canDeleteForAll && dx <= -AndroidUtilities.dp(115);
+                        if (deleteArmed != swipeDeleteArmed) {
+                            swipeDeleteArmed = deleteArmed;
+                            lastDeleteHapticDistance = AndroidUtilities.dp(115);
+                            lastDeleteHapticTime = 0;
+                            if (deleteArmed) {
+                                performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+                            }
+                        }
+                        boolean deleteReady = deleteArmed && dx <= -AndroidUtilities.dp(175);
+                        if (deleteReady && !swipeDeleteReady) {
+                            swipeDeleteRingSpring.cancel();
+                            swipeDeleteRingProgress.setValue(0f);
+                            swipeDeleteRingSpring.getSpring().setFinalPosition(springMultiplier);
+                            swipeDeleteRingSpring.start();
+                            swipeDeleteIconBounceSpring.cancel();
+                            swipeDeleteIconBounce.setValue(0f);
+                            swipeDeleteIconBounceSpring.setStartVelocity(3.5f);
+                            swipeDeleteIconBounceSpring.start();
+                            try {
+                                Vibrator vibrator = (Vibrator) getContext().getSystemService(Context.VIBRATOR_SERVICE);
+                                if (vibrator != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                    vibrator.vibrate(VibrationEffect.createOneShot(25, 255));
+                                } else {
+                                    performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+                                }
+                            } catch (Exception ignore) {}
+                        } else if (!deleteReady && swipeDeleteReady) {
+                            swipeDeleteRingSpring.cancel();
+                            swipeDeleteRingProgress.setValue(0f);
+                            swipeDeleteIconBounceSpring.cancel();
+                            swipeDeleteIconBounce.setValue(0f);
+                        }
+                        swipeDeleteReady = deleteReady;
+                        if (swipeDeleteArmed && !swipeDeleteReady) {
+                            float distance = -dx;
+                            long now = SystemClock.uptimeMillis();
+                            if (distance - lastDeleteHapticDistance >= AndroidUtilities.dp(8) && now - lastDeleteHapticTime >= 55) {
+                                float progress = Math.min(1f, (distance - AndroidUtilities.dp(115)) / AndroidUtilities.dp(60));
+                                try {
+                                    Vibrator vibrator = (Vibrator) getContext().getSystemService(Context.VIBRATOR_SERVICE);
+                                    if (vibrator != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && vibrator.hasAmplitudeControl()) {
+                                        vibrator.vibrate(VibrationEffect.createOneShot(14, (int) (60 + 180 * progress)));
+                                    } else {
+                                        performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+                                    }
+                                } catch (Exception ignore) {}
+                                lastDeleteHapticDistance = distance;
+                                lastDeleteHapticTime = now;
+                            }
+                        }
                         if (Math.abs(dx) >= AndroidUtilities.dp(50)) {
                             if (!wasTrackingVibrate) {
                                 try {
@@ -5100,7 +5283,9 @@ public class ChatActivity extends BaseFragment implements
                         invalidate();
                     }
                 } else if (slidingView != null && (e == null || e.getPointerId(0) == startedTrackingPointerId && (e.getAction() == MotionEvent.ACTION_CANCEL || e.getAction() == MotionEvent.ACTION_UP || e.getAction() == MotionEvent.ACTION_POINTER_UP))) {
-                    if (e != null && e.getAction() != MotionEvent.ACTION_CANCEL && Math.abs(getSlidingNonAnimationTranslationX(false)) >= AndroidUtilities.dp(50)) {
+                    ArrayList<MessageObject> messagesToDelete = e != null && e.getAction() != MotionEvent.ACTION_CANCEL && swipeDeleteReady && getSlidingNonAnimationTranslationX(false) <= -AndroidUtilities.dp(175)
+                            ? getSwipeDeleteMessages(getSlidingMessageObject()) : null;
+                    if (!swipeDeleteArmed && messagesToDelete == null && e != null && e.getAction() != MotionEvent.ACTION_CANCEL && Math.abs(getSlidingNonAnimationTranslationX(false)) >= AndroidUtilities.dp(50)) {
                         MessageObject message = getSlidingMessageObject();
                         final boolean allowReplyOnOpenTopic = canSendMessageToTopic(message);
                         if (
@@ -5136,17 +5321,74 @@ public class ChatActivity extends BaseFragment implements
                             showFieldPanelForReply(getSlidingMessageObject());
                         }
                     }
-                    endTrackingX = slidingViewGetOffsetX();
-                    if (endTrackingX == 0) {
+                    endTrackingX = messagesToDelete == null ? slidingViewGetOffsetX() : 0;
+                    if (endTrackingX == 0 && messagesToDelete == null) {
                         slidingView = null;
+                        swipeDeleteArmed = false;
                     }
                     lastTrackingAnimationTime = System.currentTimeMillis();
                     trackAnimationProgress = 0.0f;
                     invalidate();
                     maybeStartTrackingSlidingView = false;
                     startedTrackingSlidingView = false;
+                    swipeDeleteReady = false;
+                    swipeDeleteRingSpring.cancel();
+                    swipeDeleteRingProgress.setValue(0f);
+                    swipeDeleteIconBounceSpring.cancel();
+                    swipeDeleteIconBounce.setValue(0f);
+                    wasTrackingVibrate = false;
                     chatLayoutManager.setCanScrollVertically(true);
+                    if (messagesToDelete != null) {
+                        animateSwipeDeleteReturn(messagesToDelete);
+                        deleteSwipedMessagesForAll(messagesToDelete);
+                    }
                 }
+            }
+
+            private void animateSwipeDeleteReturn(ArrayList<MessageObject> messagesToDelete) {
+                final View swipedView = slidingView;
+                final MessageObject swipedMessage = getSlidingMessageObject();
+                ValueAnimator animator = ValueAnimator.ofFloat(slidingViewGetOffsetX(), 0f);
+                swipeDeleteReturnAnimator = animator;
+                animator.setDuration(320);
+                animator.setInterpolator(new OvershootInterpolator(1.1f));
+                animator.addUpdateListener(animation -> {
+                    if (slidingView != swipedView || getSlidingMessageObject() != swipedMessage) {
+                        animator.cancel();
+                        return;
+                    }
+                    float offset = (float) animation.getAnimatedValue();
+                    slidingViewSetOffset(offset);
+                    if (swipedView instanceof ChatMessageCell) {
+                        setGroupTranslationX((ChatMessageCell) swipedView, offset);
+                    }
+                    if (swipedMessage != null && (swipedMessage.isRoundVideo() || swipedMessage.isVideo())) {
+                        updateTextureViewPosition(false, false);
+                    }
+                    invalidate();
+                });
+                animator.addListener(new AnimatorListenerAdapter() {
+                    @Override
+                    public void onAnimationEnd(Animator animation) {
+                        if (swipeDeleteReturnAnimator != animator) {
+                            return;
+                        }
+                        swipeDeleteReturnAnimator = null;
+                        if (slidingView == swipedView) {
+                            if (getSlidingMessageObject() == swipedMessage) {
+                                if (swipedView instanceof ChatMessageCell) {
+                                    setGroupTranslationX((ChatMessageCell) swipedView, 0);
+                                }
+                                slidingViewSetOffset(0);
+                            }
+                            slidingView = null;
+                        }
+                        swipeDeleteArmed = false;
+                        invalidate();
+                        finishSwipeDeleteVisual();
+                    }
+                });
+                animator.start();
             }
 
             @Override
@@ -5290,6 +5532,7 @@ public class ChatActivity extends BaseFragment implements
                         if (trackAnimationProgress == 1f || trackAnimationProgress == 0f) {
                             slidingViewSetOffset(0);
                             slidingView = null;
+                            swipeDeleteArmed = false;
                         }
                         invalidate();
                     }
@@ -22647,6 +22890,13 @@ public class ChatActivity extends BaseFragment implements
             int scheduledMessageId = args.length > 5 ? (int) args[5] : 0;
             ArrayList<Integer> sentMessages = null;
             if (args.length > 6) sentMessages = (ArrayList<Integer>) args[6];
+            boolean locallyDeleted = args.length > 7 && Boolean.TRUE.equals(args[7]);
+            if (pendingSwipeDeleteIds != null && !markAsDeletedMessages.isEmpty() && pendingSwipeDeleteIds.containsAll(markAsDeletedMessages)) {
+                if (locallyDeleted && pendingSwipeDeleteNotification == null) {
+                    pendingSwipeDeleteNotification = args.clone();
+                }
+                return;
+            }
             boolean movedToScheduled = args.length > 4 && (boolean) args[4] || sentMessages != null && !sentMessages.isEmpty();
             final ArrayList<MessageObject> messages = new ArrayList<>();
             MessageObject conversionMessage = null;
@@ -22669,7 +22919,7 @@ public class ChatActivity extends BaseFragment implements
                 scheduleNowDialog.dismiss();
                 scheduleNowDialog = null;
             }
-            processDeletedMessages(markAsDeletedMessages, channelId, sent, !movedToScheduled);
+            processDeletedMessages(markAsDeletedMessages, channelId, sent, !movedToScheduled, locallyDeleted);
             if (movedToScheduled && chatMode != ChatActivity.MODE_SCHEDULED) {
                 getMessagesController().forceNoReload(dialog_id, ChatActivity.MODE_SCHEDULED);
                 openScheduledMessages(scheduledMessageId, true);
@@ -26639,6 +26889,9 @@ public class ChatActivity extends BaseFragment implements
         processDeletedMessages(markAsDeletedMessages, channelId, sent, true);
     }
     private void processDeletedMessages(ArrayList<Integer> markAsDeletedMessages, long channelId, boolean sent, boolean thanos) {
+        processDeletedMessages(markAsDeletedMessages, channelId, sent, thanos, false);
+    }
+    private void processDeletedMessages(ArrayList<Integer> markAsDeletedMessages, long channelId, boolean sent, boolean thanos, boolean locallyDeleted) {
         ArrayList<Integer> removedIndexes = new ArrayList<>();
         ArrayList<Integer> thanosMessagesIndexes = new ArrayList<>();
         final int currentTime = getConnectionsManager().getCurrentTime();
@@ -26730,8 +26983,9 @@ public class ChatActivity extends BaseFragment implements
                         }
                     }
                 }
-                if (chatMode == MODE_DEFAULT && thanos && obj.getId() > 0 && !obj.isEphemeral()) {
+                if (chatMode == MODE_DEFAULT && thanos && !locallyDeleted && obj.getId() > 0 && !obj.isEphemeral() && !obj.isOutOwner()) {
                     MessageObject.markAsArchivedDeleted(obj.messageOwner);
+                    obj.forceUpdate = true;
                     if (editingMessageObject == obj) {
                         hideFieldPanel(true);
                     }

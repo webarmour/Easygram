@@ -822,6 +822,27 @@ public class MessagesStorage extends BaseController {
         });
     }
 
+    public void markLocallyDeletedMessages(long dialogId, ArrayList<Integer> messageIds) {
+        if (messageIds == null || messageIds.isEmpty()) {
+            return;
+        }
+        ArrayList<Integer> ids = new ArrayList<>(messageIds);
+        storageQueue.postRunnable(() -> {
+            try {
+                String mids = TextUtils.join(",", ids);
+                if (dialogId != 0) {
+                    database.executeFast(String.format(Locale.US,
+                            "UPDATE message_archive SET deleted = 2 WHERE uid = %d AND mid IN (%s)", dialogId, mids)).stepThis().dispose();
+                } else {
+                    database.executeFast(String.format(Locale.US,
+                            "UPDATE message_archive SET deleted = 2 WHERE mid IN (%s) AND uid IN (SELECT uid FROM messages_v2 WHERE mid IN (%s) AND is_channel = 0)", mids, mids)).stepThis().dispose();
+                }
+            } catch (Exception e) {
+                checkSQLException(e);
+            }
+        });
+    }
+
     public void archiveDownloadedMedia(long dialogId, int messageId, File source) {
         if (messageId <= 0 || dialogId == 0 || source == null || !source.isFile()) {
             return;
@@ -9016,7 +9037,7 @@ public class MessagesStorage extends BaseController {
                 }
                 TLRPC.Message message = TLRPC.Message.TLdeserialize(data, data.readInt32(false), false);
                 data.reuse();
-                if (message == null || message instanceof TLRPC.TL_messageEmpty) {
+                if (message == null || message instanceof TLRPC.TL_messageEmpty || message.out) {
                     continue;
                 }
                 boolean alreadyPresent = false;
@@ -14771,9 +14792,9 @@ public class MessagesStorage extends BaseController {
                 LongSparseArray<ArrayList<Integer>> messagesByDialogs = new LongSparseArray<>();
                 String ids = TextUtils.join(",", messages);
                 if (dialogId != 0) {
-                    database.executeFast(String.format(Locale.US, "UPDATE message_archive SET deleted = 1 WHERE uid = %d AND mid IN (%s)", dialogId, ids)).stepThis().dispose();
+                    database.executeFast(String.format(Locale.US, "UPDATE message_archive SET deleted = CASE WHEN deleted = 2 THEN 2 ELSE 1 END WHERE uid = %d AND mid IN (%s)", dialogId, ids)).stepThis().dispose();
                 } else {
-                    database.executeFast(String.format(Locale.US, "UPDATE message_archive SET deleted = 1 WHERE mid IN (%s) AND uid IN (SELECT uid FROM messages_v2 WHERE mid IN (%s) AND is_channel = 0)", ids, ids)).stepThis().dispose();
+                    database.executeFast(String.format(Locale.US, "UPDATE message_archive SET deleted = CASE WHEN deleted = 2 THEN 2 ELSE 1 END WHERE mid IN (%s) AND uid IN (SELECT uid FROM messages_v2 WHERE mid IN (%s) AND is_channel = 0)", ids, ids)).stepThis().dispose();
                 }
                 ArrayList<File> filesToDelete = new ArrayList<>();
                 ArrayList<String> namesToDelete = new ArrayList<>();
@@ -15519,7 +15540,7 @@ public class MessagesStorage extends BaseController {
             ArrayList<Pair<Long, Integer>> idsToDelete = new ArrayList<>();
             long currentUser = getUserConfig().getClientUserId();
 
-            database.executeFast(String.format(Locale.US, "UPDATE message_archive SET deleted = 1 WHERE uid = %d AND mid <= %d", -channelId, mid)).stepThis().dispose();
+            database.executeFast(String.format(Locale.US, "UPDATE message_archive SET deleted = CASE WHEN deleted = 2 THEN 2 ELSE 1 END WHERE uid = %d AND mid <= %d", -channelId, mid)).stepThis().dispose();
             cursor = database.queryFinalized(String.format(Locale.US, "SELECT uid, data, read_state, out, mention FROM messages_v2 WHERE uid = %d AND mid <= %d", -channelId, mid));
 
             try {
