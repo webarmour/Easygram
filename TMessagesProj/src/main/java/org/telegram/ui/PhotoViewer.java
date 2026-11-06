@@ -11209,6 +11209,15 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     }
 
     private void setVideoPlayerControlVisible(boolean visible, boolean animated) {
+        if (!visible && !animated && !videoPlayerControlVisible) {
+            if (videoPlayerControlAnimator != null) {
+                videoPlayerControlAnimator.cancel();
+                videoPlayerControlAnimator = null;
+            }
+            videoPlayerControlFrameLayout.setVisibility(View.GONE);
+            videoPlayerControlFrameLayout.setAlpha(0f);
+            return;
+        }
         if (videoPlayerControlVisible != visible) {
 
             if (visible) {
@@ -16104,6 +16113,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             }
             updateMinMax(scale);
             releasePlayer(false);
+        }
+        if (!isVideo && !isEmbedVideo) {
+            setVideoPlayerControlVisible(false, false);
         }
         if (isLivePhoto && sendPhotoType == SELECT_TYPE_STICKER) {
             isLivePhoto = false;

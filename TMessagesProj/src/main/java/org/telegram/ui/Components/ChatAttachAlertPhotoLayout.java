@@ -2592,7 +2592,10 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         if (isStandaloneCamera) {
             cameraView.setVisibility(VISIBLE);
             cameraView.bringToFront();
+            zoomControlView.bringToFront();
             cameraPanel.bringToFront();
+            zoomControlView.setVisibility(VISIBLE);
+            zoomControlView.setAlpha(0f);
             cameraPanel.animate().cancel();
             setCameraOpenProgress(1.0f);
             if (gridView != null) {
@@ -2749,7 +2752,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
             cameraView.setOutlineProvider(new ViewOutlineProvider() {
                 @Override
                 public void getOutline(View view, Outline outline) {
-                    int maxY = (int) Math.min(parentAlert.getCommentTextViewTop() - (parentAlert.mentionContainer != null ? parentAlert.mentionContainer.clipBottom() + dp(RADIUS) : 0) + currentPanTranslationY + parentAlert.getContainerView().getTranslationY() - cameraView.getTranslationY(), view.getMeasuredHeight());
+                    int maxY = (int) Math.min(parentAlert.getCommentTextViewTop() - (parentAlert.mentionContainer != null ? parentAlert.mentionContainer.clipBottom() + dp(RADIUS) : 0) + currentPanTranslationY + parentAlert.getContainerView().getTranslationY() - view.getTranslationY(), view.getMeasuredHeight());
                     if (cameraOpened) {
                         maxY = view.getMeasuredHeight();
                     } else if (cameraAnimationInProgress) {
@@ -3012,6 +3015,20 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
             cameraExpanded = false;
             cameraOpened = false;
             openCameraAfterInit = false;
+            pressed = false;
+            zooming = false;
+            dragging = false;
+            maybeStartDraging = false;
+            if (zoomControlHideRunnable != null) {
+                AndroidUtilities.cancelRunOnUIThread(zoomControlHideRunnable);
+                zoomControlHideRunnable = null;
+            }
+            if (zoomControlAnimation != null) {
+                zoomControlAnimation.cancel();
+                zoomControlAnimation = null;
+            }
+            zoomControlView.setTag(null);
+            zoomControlView.setVisibility(GONE);
             if (cameraInitAnimation != null) {
                 cameraInitAnimation.cancel();
                 cameraInitAnimation = null;
@@ -5078,6 +5095,19 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
             super(context, frontface, lazy);
         }
 
+        @Override
+        public boolean onInterceptTouchEvent(MotionEvent event) {
+            return isStandaloneCamera && cameraOpened || super.onInterceptTouchEvent(event);
+        }
+
+        @Override
+        public boolean onTouchEvent(MotionEvent event) {
+            if (isStandaloneCamera && cameraOpened) {
+                return processTouchEvent(event);
+            }
+            return super.onTouchEvent(event);
+        }
+
         public boolean drawInDecoration;
 
         @Override
@@ -5091,7 +5121,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 return;
             }
 
-            int maxY = (int) Math.min(parentAlert.getCommentTextViewTop() + currentPanTranslationY + parentAlert.getContainerView().getTranslationY() - cameraView.getTranslationY() - (parentAlert.mentionContainer != null ? parentAlert.mentionContainer.clipBottom() + dp(8) : 0), getMeasuredHeight());
+            int maxY = (int) Math.min(parentAlert.getCommentTextViewTop() + currentPanTranslationY + parentAlert.getContainerView().getTranslationY() - getTranslationY() - (parentAlert.mentionContainer != null ? parentAlert.mentionContainer.clipBottom() + dp(8) : 0), getMeasuredHeight());
             if (cameraAnimationInProgress) {
                 AndroidUtilities.rectTmp.set(
                     animationClipLeft + cameraViewOffsetX * (1f - cameraOpenProgress),
@@ -5126,14 +5156,14 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         @Override
         protected void onAttachedToWindow() {
             super.onAttachedToWindow();
-            Bulletin.addDelegate(cameraView, bulletinDelegate);
+            Bulletin.addDelegate(this, bulletinDelegate);
             gridView.invalidate();
         }
 
         @Override
         protected void onDetachedFromWindow() {
             super.onDetachedFromWindow();
-            Bulletin.removeDelegate(cameraView);
+            Bulletin.removeDelegate(this);
         }
     }
 

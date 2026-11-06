@@ -35345,6 +35345,13 @@ public class ChatActivity extends BaseFragment implements
 
     @Override
     public boolean onBackPressed(boolean invoked) {
+        if (chatAttachAlert != null && chatAttachAlert.isShowing()
+                && chatAttachAlert.getPhotoLayout().isStandaloneCamera) {
+            if (invoked) {
+                chatAttachAlert.getPhotoLayout().closeCamera(true);
+            }
+            return false;
+        }
         final Bulletin bulletin = Bulletin.getVisibleBulletin();
         if (bulletin != null && bulletin.getLayout() instanceof Bulletin.LottieLayoutWithReactions) {
             if (invoked) {

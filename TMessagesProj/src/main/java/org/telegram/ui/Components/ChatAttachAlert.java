@@ -7107,6 +7107,10 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
 
     @Override
     public void dismiss() {
+        if (!allowPassConfirmationAlert && photoLayout != null && photoLayout.isStandaloneCamera) {
+            photoLayout.closeCamera(true);
+            return;
+        }
         if (currentAttachLayout.onDismiss() || isDismissed()) {
             return;
         }
