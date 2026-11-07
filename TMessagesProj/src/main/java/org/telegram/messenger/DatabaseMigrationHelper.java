@@ -1703,11 +1703,41 @@ public class DatabaseMigrationHelper {
             database.executeFast("INSERT INTO message_archive(uid, mid, topic_id, date, data) SELECT uid, mid, COALESCE(thread_reply_id, 0), COALESCE(date, 0), data FROM messages_v2 WHERE mid > 0 AND uid != 0 AND data IS NOT NULL").stepThis().dispose();
             database.executeFast("UPDATE message_archive SET topic_id = (SELECT topic_id FROM messages_topics WHERE uid = message_archive.uid AND mid = message_archive.mid LIMIT 1) WHERE EXISTS (SELECT 1 FROM messages_topics WHERE uid = message_archive.uid AND mid = message_archive.mid)").stepThis().dispose();
             database.executeFast("INSERT INTO message_archive(uid, mid, topic_id, date, data) SELECT t.uid, t.mid, t.topic_id, COALESCE(t.date, 0), t.data FROM messages_topics t WHERE t.mid > 0 AND t.uid != 0 AND t.data IS NOT NULL AND NOT EXISTS (SELECT 1 FROM message_archive a WHERE a.uid = t.uid AND a.mid = t.mid AND a.data = t.data)").stepThis().dispose();
+            database.executeFast("CREATE TABLE IF NOT EXISTS widget_state(uid INTEGER, mid INTEGER, local TEXT, PRIMARY KEY(uid, mid));").stepThis().dispose();
+            database.executeFast("CREATE TABLE IF NOT EXISTS widget_heights(uid INTEGER, mid INTEGER, width INTEGER, height INTEGER, date INTEGER, PRIMARY KEY(uid, mid, width));").stepThis().dispose();
             database.executeFast("PRAGMA user_version = 180").stepThis().dispose();
             version = 180;
         }
+        if (version == 180) {
+            // Test builds rewrote step 179 in place, so a database at 180 may lack these tables or have the
+            // early widget_state with a height column: bring both to the current schema.
+            if (hasColumn(database, "widget_state", "height")) {
+                database.executeFast("DROP TABLE widget_state").stepThis().dispose();
+            }
+            database.executeFast("CREATE TABLE IF NOT EXISTS widget_state(uid INTEGER, mid INTEGER, local TEXT, PRIMARY KEY(uid, mid));").stepThis().dispose();
+            database.executeFast("CREATE TABLE IF NOT EXISTS widget_heights(uid INTEGER, mid INTEGER, width INTEGER, height INTEGER, date INTEGER, anchor INTEGER default 0, PRIMARY KEY(uid, mid, width));").stepThis().dispose();
+            if (!hasColumn(database, "widget_heights", "anchor")) {
+                database.executeFast("ALTER TABLE widget_heights ADD COLUMN anchor INTEGER default 0").stepThis().dispose();
+            }
+            database.executeFast("PRAGMA user_version = 181").stepThis().dispose();
+            version = 181;
+        }
 
         return version;
+    }
+
+    private static boolean hasColumn(SQLiteDatabase database, String table, String column) throws Exception {
+        SQLiteCursor cursor = database.queryFinalized("PRAGMA table_info(" + table + ")");
+        try {
+            while (cursor.next()) {
+                if (column.equals(cursor.stringValue(1))) {
+                    return true;
+                }
+            }
+            return false;
+        } finally {
+            cursor.dispose();
+        }
     }
 
     private static void executeNoException(SQLiteDatabase database, String query) {
