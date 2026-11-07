@@ -4472,6 +4472,11 @@ public class MessageObject {
         return isVoted((TLRPC.TL_messageMediaPoll) m);
     }
 
+    public static boolean isShowStarMessagesEnabled() {
+        android.content.SharedPreferences prefs = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", android.content.Context.MODE_PRIVATE);
+        return prefs.getBoolean("easygram_show_star_messages", true);
+    }
+
     public boolean isSponsored() {
         android.content.SharedPreferences prefs = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", android.content.Context.MODE_PRIVATE);
         if (prefs.getBoolean("easygram_disable_ads", false)) {

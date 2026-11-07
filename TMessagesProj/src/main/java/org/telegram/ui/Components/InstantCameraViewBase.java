@@ -50,7 +50,8 @@ public abstract class InstantCameraViewBase extends FrameLayout {
             Theme.ResourcesProvider resourcesProvider,
             boolean isNewDesign
     ) {
-        return isCamera2Enabled(UserConfig.selectedAccount)
+        return !RoundVideoRecorderSettings.useCustomRecorder(context)
+                && isCamera2Enabled(UserConfig.selectedAccount)
                 ? new InstantCameraView2(context, delegate, resourcesProvider, isNewDesign)
                 : new InstantCameraView(context, delegate, resourcesProvider, isNewDesign);
     }

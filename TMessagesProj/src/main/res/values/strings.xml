@@ -11756,6 +11756,8 @@
     <string name="EasygramDisableStoriesInfo">Do not display the stories block above the chats list.</string>
     <string name="EasygramDisableAds">Disable ads</string>
     <string name="EasygramDisableAdsInfo">Disables sponsored messages in channels, ads in search, promo channels, and video ads.</string>
+    <string name="EasygramShowStarMessages">Paid media thumbnails without blur</string>
+    <string name="EasygramShowStarMessagesInfo">Removes additional blur and spoiler effects from paid photo and video thumbnails. Quality is limited to the thumbnail provided by Telegram; originals require purchase.</string>
     <string name="EasygramSendMediaHd">Send media in HD</string>
     <string name="EasygramSendMediaHdInfo">Applies to third-party pickers selected above.</string>
     <string name="EasygramPhotoMenu">Photo menu options</string>

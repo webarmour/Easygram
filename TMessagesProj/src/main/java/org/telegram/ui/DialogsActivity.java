@@ -292,15 +292,18 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     public static final int MAIN_TABS_HEIGHT = 56;
     public static final int MAIN_TABS_MARGIN = 8;
-    public static final int MAIN_TABS_BOTTOM_MARGIN = MAIN_TABS_MARGIN;
-    public static final int MAIN_TABS_HEIGHT_WITH_MARGINS = MAIN_TABS_HEIGHT + MAIN_TABS_MARGIN * 2;
+    public static final int MAIN_TABS_BOTTOM_MARGIN = MAIN_TABS_MARGIN + 8;
+    public static final int MAIN_TABS_HEIGHT_WITH_MARGINS = MAIN_TABS_HEIGHT + MAIN_TABS_MARGIN + MAIN_TABS_BOTTOM_MARGIN;
 
     public static int getMainTabsHeight() {
-        return MAIN_TABS_HEIGHT;
+        return MessagesController.getGlobalMainSettings().getBoolean(OtherSettingsActivity.KEY_HIDE_NAV_LABELS, false)
+                ? 48 : MAIN_TABS_HEIGHT;
     }
+
     public static int getMainTabsHeightWithMargins() {
-        return MAIN_TABS_HEIGHT_WITH_MARGINS;
+        return getMainTabsHeight() + MAIN_TABS_MARGIN + MAIN_TABS_BOTTOM_MARGIN;
     }
+
     public static final int FILTER_TABS_HEIGHT = 36;
     public static final int SEARCH_TABS_HEIGHT = 36 + 7 + 7;
     public static final int SEARCH_FIELD_HEIGHT = 48;
@@ -2861,6 +2864,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             .add(NotificationCenter.didClearDatabase)
             .add(NotificationCenter.onDatabaseReset)
             .add(NotificationCenter.storiesUpdated)
+            .add(NotificationCenter.mainTabsLayoutChanged)
             .add(NotificationCenter.storiesEnabledUpdate)
             .add(NotificationCenter.unconfirmedAuthUpdate)
             .add(NotificationCenter.premiumPromoUpdated)
@@ -2903,8 +2907,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
 
         BirthdayController.getInstance(currentAccount).check();
-        additionNavigationBarHeight = hasMainTabs ? dp(MAIN_TABS_HEIGHT_WITH_MARGINS) : 0;
-        additionFloatingButtonOffset = hasMainTabs ? dp(DialogsActivity.MAIN_TABS_HEIGHT + DialogsActivity.MAIN_TABS_MARGIN) : 0;
+        additionNavigationBarHeight = hasMainTabs ? dp(getMainTabsHeightWithMargins()) : 0;
+        additionFloatingButtonOffset = hasMainTabs ? dp(getMainTabsHeight() + MAIN_TABS_BOTTOM_MARGIN) : 0;
 
         return true;
     }
@@ -10792,10 +10796,11 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     }
                 }
             }
-        } else if (id == NotificationCenter.storiesUpdated) {
+        } else if (id == NotificationCenter.storiesUpdated || id == NotificationCenter.mainTabsLayoutChanged) {
             updateStoriesVisibility(wasDrawn);
             updateVisibleRows(0);
         } else if (id == NotificationCenter.storiesEnabledUpdate) {
+            updateStoriesVisibility(wasDrawn);
             updateStoriesPosting();
         } else if (id == NotificationCenter.unconfirmedAuthUpdate) {
             updateDialogsHint();
@@ -12433,8 +12438,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
         boolean onlySelfStories = !isArchive() && getStoriesController().hasOnlySelfStories();
         boolean newVisibility;
-        if (communityId != 0) {
+        if (ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Context.MODE_PRIVATE)
+                .getBoolean("easygram_disable_stories", false) || communityId != 0) {
             newVisibility = false;
+            onlySelfStories = false;
         } else if (isArchive()) {
             newVisibility = !getStoriesController().getHiddenList().isEmpty();
         } else {
@@ -13845,7 +13852,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         if (BitwiseUtils.hasFlag(flags, GlassEngine.FLAG_INVALIDATED_POSITIONS)) {
             final int additionalList = dp(48);
             final int mainTabBottom = fragmentView.getMeasuredHeight() - navigationBarHeight - dp(DialogsActivity.MAIN_TABS_MARGIN);
-            final int mainTabTop = mainTabBottom - dp(DialogsActivity.MAIN_TABS_HEIGHT);
+            final int mainTabTop = mainTabBottom - dp(DialogsActivity.getMainTabsHeight());
 
             final int actionBarHeight = actionBar.getMeasuredHeight()
                 + dp(DialogsActivity.SEARCH_FIELD_HEIGHT)

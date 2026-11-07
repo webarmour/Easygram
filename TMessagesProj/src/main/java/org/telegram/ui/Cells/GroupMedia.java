@@ -14,6 +14,7 @@ import android.graphics.ColorMatrixColorFilter;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
+import android.graphics.drawable.BitmapDrawable;
 import android.text.TextUtils;
 import android.view.MotionEvent;
 
@@ -556,11 +557,16 @@ public class GroupMedia {
     public void drawImages(Canvas canvas, boolean withSpoilers) {
         float hiddenAlpha = animatedHidden.set(hidden);
         final MessageObject messageObject = cell.getMessageObject();
+        final boolean showPreview = MessageObject.isShowStarMessagesEnabled() && !messageObject.isRepostPreview;
         float l = Float.MAX_VALUE, t = Float.MAX_VALUE, b = Float.MIN_VALUE, r = Float.MIN_VALUE;
         clipPath2.rewind();
         for (int i = 0; i < holders.size(); ++i) {
             final MediaHolder h = holders.get(i);
 
+            // Rebind when the setting changes, even if the message instance is unchanged.
+            if (h.showPreviewWithoutBlur != (showPreview && h.media instanceof TLRPC.TL_messageExtendedMediaPreview)) {
+                h.updateMedia(h.media, messageObject);
+            }
             h.imageReceiver.setImageCoords(x + h.l, y + h.t, h.r - h.l, h.b - h.t);
             h.imageReceiver.draw(canvas);
             if (h.imageReceiver.getAnimation() != null) {
@@ -600,7 +606,7 @@ public class GroupMedia {
             h.radialProgress.draw(canvas);
             canvas.restore();
         }
-        if (hiddenAlpha > 0 && withSpoilers) {
+        if (hiddenAlpha > 0 && withSpoilers && !showPreview) {
             canvas.save();
             canvas.clipPath(clipPath2);
             canvas.translate(l, t);
@@ -640,6 +646,7 @@ public class GroupMedia {
         public final ChatMessageCell cell;
         public final ImageReceiver imageReceiver;
         public boolean hidden;
+        private boolean showPreviewWithoutBlur;
         private final int w, h;
 
         public final float[] radii = new float[8];
@@ -714,9 +721,12 @@ public class GroupMedia {
         }
 
         public void updateMedia(TLRPC.MessageExtendedMedia media, MessageObject msg) {
-            if (this.media == media)
+            final boolean showPreview = media instanceof TLRPC.TL_messageExtendedMediaPreview
+                    && !msg.isRepostPreview && MessageObject.isShowStarMessagesEnabled();
+            if (this.media == media && showPreviewWithoutBlur == showPreview)
                 return;
             this.media = media;
+            showPreviewWithoutBlur = showPreview;
 
             autoplay = false;
             String filter = w + "_" + h;
@@ -725,12 +735,24 @@ public class GroupMedia {
                 filename = null;
 
                 TLRPC.TL_messageExtendedMediaPreview mediaPreview = (TLRPC.TL_messageExtendedMediaPreview) media;
-                imageReceiver.setImage(ImageLocation.getForObject(mediaPreview.thumb, msg.messageOwner), filter + "_b2", null, null, msg, 0);
+                if (showPreview && mediaPreview.thumb instanceof TLRPC.TL_photoStrippedSize) {
+                    // ImageLoader always blurs stripped thumbnails. Decode this preview separately
+                    // so the normal blurred thumbnail cache remains untouched.
+                    imageReceiver.setImageBitmap(new BitmapDrawable(cell.getResources(),
+                            ImageLoader.getStrippedPhotoBitmap(mediaPreview.thumb.bytes, null)));
+                } else {
+                    imageReceiver.setImage(ImageLocation.getForObject(mediaPreview.thumb, msg.messageOwner),
+                            filter + (showPreview ? "" : "_b2"), null, null, msg, 0);
+                }
 
-                ColorMatrix colorMatrix = new ColorMatrix();
-                colorMatrix.setSaturation(1.4f);
-                AndroidUtilities.adjustBrightnessColorMatrix(colorMatrix, -.1f);
-                this.imageReceiver.setColorFilter(new ColorMatrixColorFilter(colorMatrix));
+                if (showPreview) {
+                    imageReceiver.setColorFilter(null);
+                } else {
+                    ColorMatrix colorMatrix = new ColorMatrix();
+                    colorMatrix.setSaturation(1.4f);
+                    AndroidUtilities.adjustBrightnessColorMatrix(colorMatrix, -.1f);
+                    imageReceiver.setColorFilter(new ColorMatrixColorFilter(colorMatrix));
+                }
             } else if (media instanceof TLRPC.TL_messageExtendedMedia) {
                 hidden = msg.isRepostPreview;
                 if (hidden) {

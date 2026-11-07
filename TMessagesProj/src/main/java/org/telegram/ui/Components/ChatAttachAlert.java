@@ -206,6 +206,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
     public static final int LAYOUT_TYPE_LINK = 15;
     public static final int LAYOUT_TYPE_RICH = 16;
     public static final int LAYOUT_TYPE_MONEY = 17;
+    public static final int LAYOUT_TYPE_MEDIA_PICKER = 18;
 
     private static final int ANIMATOR_ID_CAPTION_ABOVE = 0;
     private static final int ANIMATOR_ID_CAPTION_VISIBLE = 1;
@@ -2239,6 +2240,9 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
             @Override
             public void onItemClick(int id) {
                 if (id == -1) {
+                    if (photoLayout != null && photoLayout.isStandaloneCamera && photoLayout.onBackPressed()) {
+                        return;
+                    }
                     if (currentAttachLayout.onBackPressed()) {
                         return;
                     }
@@ -2765,7 +2769,15 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
                     if (!photosEnabled && !videosEnabled) {
                         showLayout(restrictedLayout = new ChatAttachRestrictedLayout(1, this, getContext(), resourcesProvider));
                     }
+                    selectAttachTab(1);
                     showLayout(photoLayout);
+                } else if (num == LAYOUT_TYPE_MEDIA_PICKER) {
+                    if (!photosEnabled && !videosEnabled && checkCanRemoveRestrictionsByBoosts()) return;
+                    if (!photosEnabled && !videosEnabled) {
+                        showLayout(restrictedLayout = new ChatAttachRestrictedLayout(1, this, getContext(), resourcesProvider));
+                        return;
+                    }
+                    openMediaPicker(lastFragment);
                 } else if (num == LAYOUT_TYPE_MONEY) {
                     if (gramLayout == null && baseFragment instanceof ChatActivity) {
                         final TLRPC.User recipient = ((ChatActivity) baseFragment).getCurrentUser();
@@ -4416,7 +4428,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
 
     @Override
     protected boolean shouldOverlayCameraViewOverNavBar() {
-        return currentAttachLayout == photoLayout && photoLayout.cameraExpanded;
+        return photoLayout != null && photoLayout.cameraExpanded;
     }
 
     @Override
@@ -4920,6 +4932,8 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
     public void onRequestPermissionsResultFragment(int requestCode, String[] permissions, int[] grantResults) {
         if (requestCode == BasePermissionsActivity.REQUEST_CODE_ATTACH_CONTACT && grantResults != null && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             openContactsLayout();
+        } else if (requestCode == 30 && locationLayout != null && currentAttachLayout == locationLayout && isShowing()) {
+            locationLayout.openShareLiveLocation();
         }
     }
 
@@ -6245,9 +6259,15 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
                 typeButtonsAvailable = false;
             }
         } else {
-            layoutToSet = photoLayout;
             typeButtonsAvailable = avatarPicker == 0 && !storyMediaPicker;
-            selectedId = 1;
+            if (baseFragment instanceof ChatActivity && typeButtonsAvailable) {
+                openDocumentsLayout(false);
+                layoutToSet = documentLayout;
+                selectedId = 4;
+            } else {
+                layoutToSet = photoLayout;
+                selectedId = 1;
+            }
         }
         buttonsRecyclerViewWrapper.setVisibility(typeButtonsAvailable ? View.VISIBLE : View.GONE);
         if (currentAttachLayout != layoutToSet) {
@@ -6700,17 +6720,22 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
                     attachButton.glassTabView.onPreBind();
                     boolean err = false;
                     boolean needPremium = false;
-                    if (position == galleryButton) {
-                        attachButton.setTextAndIcon(1, getString(R.string.ChatGallery), GlassTabView.TabAnimation.GALLERY);
-                        attachButton.setTag(1);
-                        err = !checkPhotoAndCameraPermission(mContext);
-                    } else if (position == moneyButton) {
-                        attachButton.setTextAndIcon(LAYOUT_TYPE_MONEY, getString(R.string.WalletAttachMoney), GlassTabView.TabAnimation.GRAM);
-                        attachButton.setTag(LAYOUT_TYPE_MONEY);
-                    } else if (position == documentButton) {
+                    if (position == documentButton) {
                         attachButton.setTextAndIcon(4, getString(R.string.ChatDocument), GlassTabView.TabAnimation.FILES);
                         attachButton.setTag(4);
                         err = !checkPhotoAndDocumentsPermission(mContext);
+                    } else if (position == galleryButton) {
+                        if (baseFragment instanceof ChatActivity && editingMessageObject == null && !isPollAttach) {
+                            attachButton.setTextAndIcon(LAYOUT_TYPE_MEDIA_PICKER, getString(R.string.Gallery), GlassTabView.TabAnimation.GALLERY);
+                            attachButton.setTag(LAYOUT_TYPE_MEDIA_PICKER);
+                        } else {
+                            attachButton.setTextAndIcon(1, getString(R.string.Gallery), GlassTabView.TabAnimation.GALLERY);
+                            attachButton.setTag(1);
+                            err = !checkPhotoAndCameraPermission(mContext);
+                        }
+                    } else if (position == moneyButton) {
+                        attachButton.setTextAndIcon(LAYOUT_TYPE_MONEY, getString(R.string.WalletAttachMoney), GlassTabView.TabAnimation.GRAM);
+                        attachButton.setTag(LAYOUT_TYPE_MONEY);
                     } else if (position == locationButton) {
                         attachButton.setTextAndIcon(6, getString(R.string.ChatLocation), GlassTabView.TabAnimation.LOCATION);
                         attachButton.setTag(6);
@@ -6853,8 +6878,8 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
                 TLRPC.User user = baseFragment instanceof ChatActivity ? ((ChatActivity) baseFragment).getCurrentUser() : null;
                 TLRPC.Chat chat = baseFragment instanceof ChatActivity ? ((ChatActivity) baseFragment).getCurrentChat() : null;
                 final boolean paidUser = user != null && ((ChatActivity) baseFragment).getMessagesController().getSendPaidMessagesStars(user.id) > 0;
-                galleryButton = buttonsCount++;
                 documentButton = buttonsCount++;
+                galleryButton = buttonsCount++;
                 if (MessagesController.getInstance(currentAccount).config.walletAvailable.get() && ((ChatActivity) baseFragment).getChatMode() == ChatActivity.MODE_DEFAULT && isMoneyTabRecipient(user)) {
                     moneyButton = buttonsCount++;
                 }
@@ -7006,6 +7031,9 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
             actionBar.closeSearchField();
             return;
         }
+        if (photoLayout != null && photoLayout.isStandaloneCamera && photoLayout.onBackPressed()) {
+            return;
+        }
         if (currentAttachLayout.onBackPressed()) {
             return;
         }
@@ -7050,6 +7078,10 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
 
     @Override
     public void dismiss() {
+        if (!allowPassConfirmationAlert && photoLayout != null && photoLayout.isStandaloneCamera) {
+            photoLayout.closeCamera(true);
+            return;
+        }
         if (currentAttachLayout.onDismiss() || isDismissed()) {
             return;
         }
@@ -7222,11 +7254,27 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
     }
 
     public void openGalleryApp(BaseFragment fragment) {
-        if (fragment == null || fragment.getParentActivity() == null) return;
-        SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
+        if (fragment != null && fragment.getParentActivity() != null) openMediaPicker(fragment);
+    }
+
+    private void openMediaPicker(BaseFragment fragment) {
+        SharedPreferences preferences = ApplicationLoader.applicationContext
+                .getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
         String packageName = preferences.getString(org.telegram.ui.OtherSettingsActivity.DEFAULT_GALLERY_PACKAGE, null);
 
+        showLayout(photoLayout);
+        selectAttachTab(LAYOUT_TYPE_MEDIA_PICKER);
+
+        // No configured package means the Telegram gallery is the selected picker.
+        // Keep it in this tab instead of launching the system chooser.
+        if (packageName == null || packageName.isEmpty()) {
+            return;
+        }
+
         if (org.telegram.ui.OtherSettingsActivity.EMBEDDED_PHOTO_PICKER.equals(packageName)) {
+            if (photoLayout != null && photoLayout.showEmbeddedPhotoPicker()) {
+                return;
+            }
             openSystemMediaPicker(fragment);
             return;
         }
@@ -7259,6 +7307,18 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
         openSystemMediaPicker(fragment);
     }
 
+    private void selectAttachTab(int id) {
+        selectedId = id;
+        animatorCurrentVisibleLayout.replace((long) id, false);
+        buttonsAdapter.notifyDataSetChanged();
+        for (int i = 0; i < buttonsRecyclerView.getChildCount(); i++) {
+            View child = buttonsRecyclerView.getChildAt(i);
+            if (child instanceof AttachButton) {
+                ((AttachButton) child).updateCheckedState(true);
+            }
+        }
+    }
+
     void openSystemMediaPicker(BaseFragment fragment) {
         try {
             fragment.startActivityForResult(createMultipleMediaPickerIntent(null), 1);
@@ -7283,14 +7343,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
 
     void sendEmbeddedMedia(ArrayList<Uri> uris) {
         if (baseFragment instanceof ChatActivity && uris != null && !uris.isEmpty()) {
-            ArrayList<SendMessagesHelper.SendingMediaInfo> photos = new ArrayList<>(uris.size());
-            for (int i = 0; i < uris.size(); i++) {
-                SendMessagesHelper.SendingMediaInfo info = new SendMessagesHelper.SendingMediaInfo();
-                info.uri = uris.get(i);
-                info.highQuality = SharedConfig.photoHighQualityDefault;
-                photos.add(info);
-            }
-            ((ChatActivity) baseFragment).didSelectPhotos(photos, true, 0, 0, 0);
+            ((ChatActivity) baseFragment).didSelectEmbeddedMedia(uris);
         }
         dismiss(true);
     }
