@@ -795,6 +795,17 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             items.add(UItem.asShadow(null));
         }
 
+        if (!getMessagesController().androidDisableRoundCamera2) {
+            items.add(SettingCell.Factory.of(
+                    24,
+                    IconBackgroundColors.PURPLE.top,
+                    IconBackgroundColors.PURPLE.bottom,
+                    R.drawable.settings_round_video,
+                    getString(R.string.EasygramVideoMessagesTitle),
+                    getString(R.string.EasygramVideoMessagesInfo)
+            ));
+        }
+        items.add(SettingCell.Factory.of(100, IconBackgroundColors.RED.top, IconBackgroundColors.RED.bottom, R.drawable.settings_other, getString(R.string.EasygramOther), getString(R.string.EasygramOtherInfo)));
         items.add(SettingCell.Factory.of(1, IconBackgroundColors.BLUE.top, IconBackgroundColors.BLUE.bottom, R.drawable.settings_account, getString(R.string.SettingsAccount), getString(R.string.SettingsAccountInfo)));
         items.add(SettingCell.Factory.of(2, IconBackgroundColors.ORANGE.top, IconBackgroundColors.ORANGE.bottom, R.drawable.settings_chat, getString(R.string.SettingsChat), getString(R.string.SettingsChatInfo)));
         items.add(SettingCell.Factory.of(3, IconBackgroundColors.GREEN.top, IconBackgroundColors.GREEN.bottom, R.drawable.settings_privacy, getString(R.string.SettingsPrivacySecurity), getString(R.string.SettingsPrivacySecurityInfo)));
@@ -804,6 +815,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         items.add(SettingCell.Factory.of(8, IconBackgroundColors.CYAN.top, IconBackgroundColors.CYAN.bottom, R.drawable.settings_devices, getString(R.string.SettingsDevices), getString(R.string.SettingsDevicesInfo)));
         items.add(SettingCell.Factory.of(9, IconBackgroundColors.ORANGE_DEEP.top, IconBackgroundColors.ORANGE_DEEP.bottom, R.drawable.settings_power, getString(R.string.SettingsPowerSaving), getString(R.string.SettingsPowerSavingInfo)));
         items.add(SettingCell.Factory.of(10, IconBackgroundColors.PURPLE.top, IconBackgroundColors.PURPLE.bottom, R.drawable.settings_language, getString(R.string.SettingsLanguage), LocaleController.getCurrentLanguageName()));
+        items.add(SettingCell.Factory.of(101, IconBackgroundColors.BLUE.top, IconBackgroundColors.BLUE.bottom, R.drawable.settings_features, getString(R.string.EasygramCheckUpdates), getString(R.string.EasygramCheckUpdatesInfo)));
 
         items.add(UItem.asShadow(null));
         if (!walletAbove && getMessagesController().config.walletAvailable.get()) {
@@ -957,6 +969,15 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             case 25:
                 presentSettingFragment(new WalletActivity());
                 break;
+            case 24:
+                presentFragment(new RoundVideoSettingsActivity());
+                break;
+            case 100:
+                presentSettingFragment(new OtherSettingsActivity());
+                break;
+            case 101:
+                org.telegram.ui.Components.EasygramUpdater.check(getParentActivity(), true);
+                break;
             case 15:
                 presentSettingFragment(new PremiumPreviewFragment(PremiumPreviewFragment.FEATURES_BUSINESS, "settings"));
                 break;
@@ -991,10 +1012,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 }
                 break;
             }
-            case 24: {
-                presentFragment(new RoundVideoSettingsActivity());
-                break;
-            }
+
             case 26: {
                 presentFragment(new AudioRecorderSettingsActivity());
                 break;
@@ -1056,7 +1074,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                     }
                     break;
             }
-            return formatString(R.string.TelegramVersion, String.format(Locale.US, "v%s (%d)\n%s", pInfo.versionName, code, abi));
+            int versionString = pInfo.packageName.endsWith(".beta") ? R.string.EasygramBetaVersion : R.string.EasygramVersion;
+            return formatString(versionString, String.format(Locale.US, "v%s (%d)\n%s", pInfo.versionName, code, abi));
         } catch (Exception e) {
             FileLog.e(e);
         }
