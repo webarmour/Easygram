@@ -55,6 +55,8 @@ public class OtherSettingsActivity extends BaseFragment {
     public static final String DEFAULT_GALLERY_PACKAGE = "easygram_default_gallery_package";
     public static final String EMBEDDED_PHOTO_PICKER = "__embedded_photo_picker__";
 
+    public static final String KEY_PREMIUM_ACCESS = "easygram_premium_access";
+
     public static final String KEY_TAB_CHATS = "easygram_tab_chats";
     public static final String KEY_TAB_CONTACTS = "easygram_tab_contacts";
     public static final String KEY_TAB_CALLS = "easygram_tab_calls";
@@ -89,6 +91,8 @@ public class OtherSettingsActivity extends BaseFragment {
     private ItemTouchHelper itemTouchHelper;
 
     private int headerRow;
+    private int premiumAccessRow;
+    private int premiumAccessInfoRow;
     private int galleryRow;
     private int galleryInfoRow;
     private int sendMediaHdRow;
@@ -276,6 +280,8 @@ public class OtherSettingsActivity extends BaseFragment {
     private void updateRows() {
         rowCount = 0;
         headerRow = rowCount++;
+        premiumAccessRow = rowCount++;
+        premiumAccessInfoRow = rowCount++;
         galleryRow = rowCount++;
         galleryInfoRow = rowCount++;
         sendMediaHdRow = rowCount++;
@@ -332,7 +338,29 @@ public class OtherSettingsActivity extends BaseFragment {
         itemTouchHelper.attachToRecyclerView(listView);
 
         listView.setOnItemClickListener((view, position) -> {
-            if (position == galleryRow) {
+            if (position == premiumAccessRow) {
+                boolean current = preferences().getBoolean(KEY_PREMIUM_ACCESS, false);
+                boolean next = !current;
+                preferences().edit().putBoolean(KEY_PREMIUM_ACCESS, next).apply();
+                if (view instanceof TextCheckCell) {
+                    ((TextCheckCell) view).setChecked(next);
+                }
+                for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
+                    if (UserConfig.getInstance(a).isClientActivated()) {
+                        boolean isPrem = UserConfig.getInstance(a).isPremium();
+                        org.telegram.messenger.MessagesController.getInstance(a).updatePremium(isPrem);
+                        org.telegram.messenger.MediaDataController.getInstance(a).loadPremiumPromo(false);
+                        org.telegram.messenger.MediaDataController.getInstance(a).loadReactions(false, null);
+                        org.telegram.messenger.MessagesController.getInstance(a).getStoriesController().invalidateStoryLimit();
+                        NotificationCenter.getInstance(a).postNotificationName(NotificationCenter.currentUserPremiumStatusChanged);
+                        NotificationCenter.getInstance(a).postNotificationName(NotificationCenter.updateInterfaces, org.telegram.messenger.MessagesController.UPDATE_MASK_ALL);
+                        NotificationCenter.getInstance(a).postNotificationName(NotificationCenter.storiesUpdated);
+                        NotificationCenter.getInstance(a).postNotificationName(NotificationCenter.storiesEnabledUpdate);
+                        NotificationCenter.getInstance(a).postNotificationName(NotificationCenter.mainTabsLayoutChanged);
+                    }
+                }
+                NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.premiumStatusChangedGlobal);
+            } else if (position == galleryRow) {
                 showGalleryChooser(view);
             } else if (position == sendMediaHdRow) {
                 boolean current = preferences().getBoolean("easygram_send_media_hd", SharedConfig.photoHighQualityDefault);
@@ -557,8 +585,8 @@ public class OtherSettingsActivity extends BaseFragment {
         public int getItemViewType(int position) {
             if (position == headerRow || position == navHeaderRow || position == photoMenuHeaderRow) return 0;
             if (position == galleryRow) return 1;
-            if (position == galleryInfoRow || position == sendMediaHdInfoRow || position == storiesInfoRow || position == adsInfoRow || position == navInfoRow || position == photoMenuInfoRow) return 2;
-            if (position == sendMediaHdRow || position == disableStoriesRow || position == disableAdsRow || position == navLabelsRow) return 3;
+            if (position == premiumAccessInfoRow || position == galleryInfoRow || position == sendMediaHdInfoRow || position == storiesInfoRow || position == adsInfoRow || position == navInfoRow || position == photoMenuInfoRow) return 2;
+            if (position == premiumAccessRow || position == sendMediaHdRow || position == disableStoriesRow || position == disableAdsRow || position == navLabelsRow) return 3;
             if (position >= navStartRow && position < navEndRow) return 4;
             if (position >= photoMenuStartRow && position < photoMenuEndRow) return 5;
             return 0;
@@ -617,7 +645,9 @@ public class OtherSettingsActivity extends BaseFragment {
                     break;
                 case 2:
                     TextInfoPrivacyCell infoCell = (TextInfoPrivacyCell) holder.itemView;
-                    if (position == galleryInfoRow) {
+                    if (position == premiumAccessInfoRow) {
+                        infoCell.setText(AndroidUtilities.replaceTags(LocaleController.getString(R.string.EasygramPremiumAccessInfo)));
+                    } else if (position == galleryInfoRow) {
                         infoCell.setText(LocaleController.getString(R.string.EasygramDefaultGalleryInfo));
                     } else if (position == sendMediaHdInfoRow) {
                         infoCell.setText(LocaleController.getString(R.string.EasygramSendMediaHdInfo));
@@ -633,7 +663,14 @@ public class OtherSettingsActivity extends BaseFragment {
                     break;
                 case 3:
                     TextCheckCell checkCell = (TextCheckCell) holder.itemView;
-                    if (position == sendMediaHdRow) {
+                    if (position == premiumAccessRow) {
+                        boolean premiumAccess = preferences().getBoolean(KEY_PREMIUM_ACCESS, false);
+                        checkCell.setTextAndCheck(
+                                LocaleController.getString(R.string.EasygramPremiumAccess),
+                                premiumAccess,
+                                true
+                        );
+                    } else if (position == sendMediaHdRow) {
                         boolean sendMediaHd = preferences().getBoolean("easygram_send_media_hd", SharedConfig.photoHighQualityDefault);
                         checkCell.setTextAndCheck(
                                 LocaleController.getString(R.string.EasygramSendMediaHd),

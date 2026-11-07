@@ -267,7 +267,7 @@ public class ConnectionsManager extends BaseController {
         forceTryIpV6 = mainPreferences.getBoolean("forceTryIpV6", false);
         boolean userPremium = false;
         if (getUserConfig().getCurrentUser() != null) {
-            userPremium = getUserConfig().getCurrentUser().premium;
+            userPremium = getUserConfig().isPremium();
         }
         init(SharedConfig.buildVersion(), TLRPC.LAYER, BuildVars.APP_ID, deviceModel, systemVersion, appVersion, langCode, systemLangCode, configPath, FileLog.getNetworkLogPath(), pushString, fingerprint, timezoneOffset, getUserConfig().getClientUserId(), userPremium, enablePushConnection);
     }
