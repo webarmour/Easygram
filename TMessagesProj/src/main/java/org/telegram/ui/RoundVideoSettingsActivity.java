@@ -75,6 +75,7 @@ public class RoundVideoSettingsActivity extends BaseFragment {
     private static final String FOCUS = "focus";
     private static final String ANTIBANDING = "antibanding";
     private static final String ZOOM = "zoom";
+    private static final String REAR_GL_ZOOM = "rear_gl_zoom";
     private static final String NOISE = "noise";
     private static final String STABILIZATION = "stabilization";
     private static final String OPTICAL_STABILIZATION = "optical_stabilization";
@@ -167,6 +168,7 @@ public class RoundVideoSettingsActivity extends BaseFragment {
             case MANUAL_FOCUS_DISTANCE: return R.string.RVDescFocusDistance;
             case ANTIBANDING: return R.string.RVDescAntibanding;
             case ZOOM: return R.string.RVDescZoom;
+            case REAR_GL_ZOOM: return R.string.RVDescRearGlZoom;
             case NOISE: return R.string.RVDescNoise;
             case STABILIZATION: return R.string.RVDescStabilization;
             case OPTICAL_STABILIZATION: return R.string.RVDescOpticalStabilization;
@@ -216,6 +218,7 @@ public class RoundVideoSettingsActivity extends BaseFragment {
         addValue(ANTIBANDING, getString(R.string.RVAntibanding));
         addValue(ZOOM, getString(R.string.RVZoom));
         addHeader(getString(R.string.RVHeaderProcessing));
+        addCheck(REAR_GL_ZOOM, getString(R.string.RVRearGlZoom));
         addValue(NOISE, getString(R.string.RVNoise));
         addValue(STABILIZATION, getString(R.string.RVStabilization));
         addValue(OPTICAL_STABILIZATION, getString(R.string.RVOpticalStabilization));
@@ -714,7 +717,7 @@ public class RoundVideoSettingsActivity extends BaseFragment {
                     TextView description = new TextView(context);
                     description.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
                     description.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2));
-                    description.setMaxLines(2);
+                    description.setMaxLines(4);
                     description.setEllipsize(TextUtils.TruncateAt.END);
                     LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);

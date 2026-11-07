@@ -50,6 +50,7 @@ public final class RoundVideoRecorderSettings {
     private static final String COLOR_CORRECTION = "color_correction";
     private static final String TONEMAP = "tonemap";
     private static final String ZOOM = "zoom";
+    public static final String REAR_GL_ZOOM = "rear_gl_zoom";
     private static final String AUDIO_BITRATE = "audio_bitrate";
     private static final String HOT_PIXEL = "hot_pixel";
     private static final String SHADING = "shading";
@@ -144,6 +145,7 @@ public final class RoundVideoRecorderSettings {
                     if (!p.contains(FOCUS)) e.putString(FOCUS, "CONTINUOUS_VIDEO");
                     if (!p.contains(ANTIBANDING)) e.putString(ANTIBANDING, "HZ_60");
                     if (!p.contains(ZOOM)) e.putInt(ZOOM, Float.floatToIntBits(0.8f));
+                    if (!p.contains(REAR_GL_ZOOM)) e.putBoolean(REAR_GL_ZOOM, false);
                     if (!p.contains(NOISE)) e.putString(NOISE, "OFF");
                     if (!p.contains(STABILIZATION)) e.putString(STABILIZATION, "OEM_DEFAULT");
                     if (!p.contains(OPTICAL_STABILIZATION)) e.putString(OPTICAL_STABILIZATION, "ON");
@@ -301,6 +303,7 @@ public final class RoundVideoRecorderSettings {
                 focus,
                 Float.intBitsToFloat(p.getInt(MANUAL_FOCUS_DISTANCE, Float.floatToIntBits(d.getManualFocusDistance()))),
                 Float.intBitsToFloat(p.getInt(ZOOM, Float.floatToIntBits(DEFAULT_ZOOM))),
+                p.getBoolean(REAR_GL_ZOOM, false),
                 d.getAperture(),
                 false, // Never bake a circular mask into the MP4: Telegram clips the preview itself.
                 d.getHidePreviewUntilRecording(),
@@ -446,8 +449,9 @@ public final class RoundVideoRecorderSettings {
 
     private static void showProcessing(Context context) {
         SharedPreferences p = prefs(context);
-        new AlertDialog.Builder(context).setTitle("Обработка изображения")
+        new AlertDialog.Builder(context).setTitle("Обработка изображения и зум")
                 .setItems(new String[]{
+                        "GL-зум для основной (1×) · " + onOff(p, REAR_GL_ZOOM, false),
                         "Шумоподавление · " + readableEnum(p.getString(NOISE, DEFAULT_NOISE.name())),
                         "Электронная стабилизация · " + readableEnum(p.getString(STABILIZATION, DEFAULT_STABILIZATION.name())),
                         "Оптическая стабилизация · " + readableEnum(p.getString(OPTICAL_STABILIZATION, DEFAULT_OPTICAL_STABILIZATION.name())),
@@ -456,14 +460,15 @@ public final class RoundVideoRecorderSettings {
                         "Тональная обработка · " + readableEnum(p.getString(TONEMAP, DEFAULT_TONEMAP.name()))
                 }, (d, i) -> {
                     switch (i) {
-                        case 0: enumChoose(context, NOISE, "Шумоподавление", NoiseReductionSetting.values(), 3); break;
-                        case 1: enumChoose(context, STABILIZATION, "Электронная стабилизация", StabilizationSetting.values(), 3); break;
-                        case 2: enumChoose(context, OPTICAL_STABILIZATION, "Оптическая стабилизация (на фронталке может отсутствовать)", OpticalStabilizationSetting.values(), 3); break;
-                        case 3: enumChoose(context, EDGE, "Резкость", EdgeSetting.values(), 3); break;
-                        case 4: enumChoose(context, COLOR_CORRECTION, "Коррекция цвета", ColorCorrectionSetting.values(), 3); break;
-                        case 5: enumChoose(context, TONEMAP, "Тональная обработка", TonemapSetting.values(), 3); break;
+                        case 0: toggle(context, REAR_GL_ZOOM, false, 3); break;
+                        case 1: enumChoose(context, NOISE, "Шумоподавление", NoiseReductionSetting.values(), 3); break;
+                        case 2: enumChoose(context, STABILIZATION, "Электронная стабилизация", StabilizationSetting.values(), 3); break;
+                        case 3: enumChoose(context, OPTICAL_STABILIZATION, "Оптическая стабилизация", OpticalStabilizationSetting.values(), 3); break;
+                        case 4: enumChoose(context, EDGE, "Резкость и контуры", EdgeSetting.values(), 3); break;
+                        case 5: enumChoose(context, COLOR_CORRECTION, "Коррекция цвета", ColorCorrectionSetting.values(), 3); break;
+                        case 6: enumChoose(context, TONEMAP, "Тональная обработка", TonemapSetting.values(), 3); break;
                     }
-                }).setNegativeButton("Назад", (d, w) -> showDialog(context)).show();
+                }).setNegativeButton("Назад", (dialog, which) -> showDialog(context)).show();
     }
 
     private static void showRecordingStartDelay(Context context) {

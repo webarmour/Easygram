@@ -34,6 +34,7 @@
     <string name="RVFocusDistance">Focus distance (diopters)</string>
     <string name="RVAntibanding">Flicker reduction</string>
     <string name="RVZoom">Initial zoom</string>
+    <string name="RVRearGlZoom">GL zoom for main camera</string>
     <string name="RVNoise">Noise reduction</string>
     <string name="RVStabilization">Electronic stabilization</string>
     <string name="RVOpticalStabilization">Optical stabilization</string>
@@ -68,6 +69,7 @@
     <string name="RVDescFocusDistance">Set the distance for manual focus.</string>
     <string name="RVDescAntibanding">Reduce flicker from artificial lighting.</string>
     <string name="RVDescZoom">Set the zoom used when recording starts.</string>
+    <string name="RVDescRearGlZoom">Software GL crop zoom (from 1x lens) for main camera instead of Camera2 hardware zoom.</string>
     <string name="RVDescNoise">Reduce grain in the image.</string>
     <string name="RVDescStabilization">Reduce shake using digital processing.</string>
     <string name="RVDescOpticalStabilization">Reduce shake using the camera lens.</string>
