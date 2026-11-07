@@ -26,7 +26,12 @@ import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.net.Uri;
+import android.provider.MediaStore;
+import org.telegram.messenger.ApplicationLoader;
+import org.telegram.messenger.FileLoader;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -7214,6 +7219,80 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
             mentionContainer.getAdapter().setNeedUsernames(false);
         }
         mentionContainer.getAdapter().setNeedBotContext(false);
+    }
+
+    public void openGalleryApp(BaseFragment fragment) {
+        if (fragment == null || fragment.getParentActivity() == null) return;
+        SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
+        String packageName = preferences.getString(org.telegram.ui.OtherSettingsActivity.DEFAULT_GALLERY_PACKAGE, null);
+
+        if (org.telegram.ui.OtherSettingsActivity.EMBEDDED_PHOTO_PICKER.equals(packageName)) {
+            openSystemMediaPicker(fragment);
+            return;
+        }
+
+        if (packageName != null && !packageName.isEmpty()) {
+            Intent mediaPicker = createMultipleMediaPickerIntent(packageName);
+            try {
+                fragment.startActivityForResult(mediaPicker, 1);
+                dismiss(true);
+                return;
+            } catch (Exception e) {
+                FileLog.e(e);
+                try {
+                    Intent imagePicker = new Intent(Intent.ACTION_GET_CONTENT);
+                    imagePicker.setType("image/*");
+                    imagePicker.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/*", "video/*"});
+                    imagePicker.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                    imagePicker.addCategory(Intent.CATEGORY_OPENABLE);
+                    imagePicker.setPackage(packageName);
+                    fragment.startActivityForResult(imagePicker, 1);
+                    dismiss(true);
+                    return;
+                } catch (Exception fallbackError) {
+                    FileLog.e(fallbackError);
+                    preferences.edit().remove(org.telegram.ui.OtherSettingsActivity.DEFAULT_GALLERY_PACKAGE).apply();
+                }
+            }
+        }
+
+        openSystemMediaPicker(fragment);
+    }
+
+    void openSystemMediaPicker(BaseFragment fragment) {
+        try {
+            fragment.startActivityForResult(createMultipleMediaPickerIntent(null), 1);
+            dismiss(true);
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }
+
+    private Intent createMultipleMediaPickerIntent(String packageName) {
+        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+        intent.setType("*/*");
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/*", "video/*"});
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.putExtra(MediaStore.EXTRA_SIZE_LIMIT, FileLoader.DEFAULT_MAX_FILE_SIZE);
+        if (packageName != null) {
+            intent.setPackage(packageName);
+        }
+        return intent;
+    }
+
+    void sendEmbeddedMedia(ArrayList<Uri> uris) {
+        if (baseFragment instanceof ChatActivity && uris != null && !uris.isEmpty()) {
+            ArrayList<SendMessagesHelper.SendingMediaInfo> photos = new ArrayList<>(uris.size());
+            for (int i = 0; i < uris.size(); i++) {
+                SendMessagesHelper.SendingMediaInfo info = new SendMessagesHelper.SendingMediaInfo();
+                info.uri = uris.get(i);
+                info.highQuality = SharedConfig.photoHighQualityDefault;
+                photos.add(info);
+            }
+            ((ChatActivity) baseFragment).didSelectPhotos(photos, true, 0, 0, 0);
+        }
+        dismiss(true);
     }
 
     public void setCaptionAbove(boolean above) {
