@@ -123,7 +123,7 @@ public class UserConfig extends BaseController {
     }
 
     public static int getMaxAccountCount() {
-        return hasPremiumOnAccounts() ? 5 : 3;
+        return hasPremiumOnAccounts() ? MAX_ACCOUNT_COUNT : MAX_ACCOUNT_DEFAULT_COUNT;
     }
 
     public int getNewMessageId() {
