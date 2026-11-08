@@ -164,6 +164,11 @@ public class QRCodeBottomSheet extends BottomSheet {
         return null;
     }
 
+    public void setPrimaryAction(CharSequence text, View.OnClickListener listener) {
+        buttonTextView.setText(text);
+        buttonTextView.setOnClickListener(listener);
+    }
+
     public void setCenterAnimation(int resId) {
         iconImage.setAutoRepeat(true);
         iconImage.setAnimation(resId, 60, 60);

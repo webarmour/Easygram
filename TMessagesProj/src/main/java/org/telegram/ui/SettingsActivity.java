@@ -118,6 +118,7 @@ import org.telegram.ui.Components.LinkSpanDrawable;
 import org.telegram.ui.Components.Paint.PersistColorPalette;
 import org.telegram.ui.Components.Premium.boosts.UserSelectorBottomSheet;
 import org.telegram.ui.Components.ProfileGooeyView;
+import org.telegram.ui.Components.QRCodeBottomSheet;
 import org.telegram.ui.Components.RadialProgressView;
 import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.ScaleStateListAnimator;
@@ -816,6 +817,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         items.add(SettingCell.Factory.of(9, IconBackgroundColors.ORANGE_DEEP.top, IconBackgroundColors.ORANGE_DEEP.bottom, R.drawable.settings_power, getString(R.string.SettingsPowerSaving), getString(R.string.SettingsPowerSavingInfo)));
         items.add(SettingCell.Factory.of(10, IconBackgroundColors.PURPLE.top, IconBackgroundColors.PURPLE.bottom, R.drawable.settings_language, getString(R.string.SettingsLanguage), LocaleController.getCurrentLanguageName()));
         items.add(SettingCell.Factory.of(101, IconBackgroundColors.BLUE.top, IconBackgroundColors.BLUE.bottom, R.drawable.settings_features, getString(R.string.EasygramCheckUpdates), getString(R.string.EasygramCheckUpdatesInfo)));
+        items.add(SettingCell.Factory.of(102, 0xFFF06292, 0xFFD81B60, R.drawable.settings_support_heart, getString(R.string.EasygramSupportAuthor), getString(R.string.EasygramSupportAuthorInfo)));
 
         items.add(UItem.asShadow(null));
         if (!walletAbove && getMessagesController().config.walletAvailable.get()) {
@@ -977,6 +979,24 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             case 101:
                 org.telegram.ui.Components.EasygramUpdater.check(getParentActivity(), true);
                 break;
+            case 102: {
+                if (getParentActivity() == null) {
+                    break;
+                }
+                final String donateUrl = "https://boosty.to/webarmour/donate";
+                QRCodeBottomSheet sheet = new QRCodeBottomSheet(
+                        getParentActivity(),
+                        getString(R.string.EasygramSupportAuthor),
+                        donateUrl,
+                        getString(R.string.EasygramSupportAuthorDescription) + "\n\n" + donateUrl,
+                        true,
+                        resourceProvider
+                );
+                sheet.setPrimaryAction(getString(R.string.EasygramSupportOnBoosty),
+                        v -> Browser.openUrlInSystemBrowser(getParentActivity(), donateUrl));
+                showDialog(sheet);
+                break;
+            }
             case 15:
                 presentSettingFragment(new PremiumPreviewFragment(PremiumPreviewFragment.FEATURES_BUSINESS, "settings"));
                 break;

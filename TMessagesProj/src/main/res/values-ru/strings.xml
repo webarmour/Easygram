@@ -393,6 +393,10 @@
     <string name="EasygramCheckUpdates">Проверить обновления</string>
     <string name="EasygramCheckUpdatesInfo">Скачать новую версию Easygram</string>
     <!-- EASYGRAM_UPDATER_STRINGS_END -->
+    <string name="EasygramSupportAuthor">Поддержать автора</string>
+    <string name="EasygramSupportAuthorInfo">Помочь развитию Easygram</string>
+    <string name="EasygramSupportAuthorDescription">Если вам нравится Easygram, вы можете поддержать его разработку донатом. Спасибо за вашу поддержку!\n\nОткройте Boosty кнопкой ниже или отсканируйте QR-код.</string>
+    <string name="EasygramSupportOnBoosty">Поддержать на Boosty</string>
     <string name="EasygramOther">Дополнительно</string>
     <string name="EasygramOtherInfo">Функционал Easygram</string>
     <string name="EasygramPremiumAccess">Доступ к премиум функциям</string>

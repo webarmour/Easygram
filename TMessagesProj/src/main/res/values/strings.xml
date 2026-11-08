@@ -11738,6 +11738,10 @@
     <string name="EasygramCheckUpdates">Check for updates</string>
     <string name="EasygramCheckUpdatesInfo">Download the latest Easygram version</string>
     <!-- EASYGRAM_UPDATER_STRINGS_END -->
+    <string name="EasygramSupportAuthor">Support the developer</string>
+    <string name="EasygramSupportAuthorInfo">Support Easygram development</string>
+    <string name="EasygramSupportAuthorDescription">If you enjoy Easygram, you can support its development with a donation. Thank you for your support!\n\nOpen Boosty using the button below or scan the QR code.</string>
+    <string name="EasygramSupportOnBoosty">Support on Boosty</string>
     <string name="EasygramOther">Advanced</string>
     <string name="EasygramOtherInfo">Easygram features</string>
     <string name="EasygramPremiumAccess">Access to premium functions</string>
