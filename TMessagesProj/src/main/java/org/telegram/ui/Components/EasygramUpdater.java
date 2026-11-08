@@ -48,7 +48,10 @@ public final class EasygramUpdater {
             "https://api.github.com/repos/webarmour/Easygram/releases?per_page=100";
     private static final String RELEASE_ASSET_BASE =
             "https://github.com/webarmour/Easygram/releases/download/";
-    private static final Pattern RELEASE_TAG = Pattern.compile("^v?(\\d+(?:\\.\\d+){1,3})-(\\d+)$");
+    private static final Pattern RELEASE_TAG_STABLE =
+            Pattern.compile("^v?(\\d+(?:\\.\\d+){1,3})-(\\d+)$");
+    private static final Pattern RELEASE_TAG_BETA =
+            Pattern.compile("^v?(\\d+(?:\\.\\d+){1,3})-(\\d+)-beta.*$");
     private static final long CHECK_INTERVAL_MS = 60L * 60L * 1000L;
     private static final long MAX_APK_BYTES = 300L * 1024L * 1024L;
     private static final int MAX_JSON_BYTES = 2 * 1024 * 1024;
@@ -59,6 +62,7 @@ public final class EasygramUpdater {
     private static final AtomicBoolean CANCEL = new AtomicBoolean(false);
     private static WeakReference<UpdateLayout> layoutRef = new WeakReference<>(null);
     private static WeakReference<ViewGroup> hostRef = new WeakReference<>(null);
+    private static WeakReference<EasygramUpdateSheet> sheetRef = new WeakReference<>(null);
     private static volatile Update pendingUpdate;
     private static volatile boolean downloaded;
     private static volatile int progress;
@@ -126,10 +130,11 @@ public final class EasygramUpdater {
     private static Update newestGitHubRelease(String response, String packageName, boolean beta) throws Exception {
         JSONArray releases = new JSONArray(response);
         Update newest = null;
+        Pattern pattern = beta ? RELEASE_TAG_BETA : RELEASE_TAG_STABLE;
         for (int i = 0; i < releases.length(); i++) {
             JSONObject release = releases.getJSONObject(i);
             if (release.optBoolean("draft") || release.optBoolean("prerelease") != beta) continue;
-            Matcher tag = RELEASE_TAG.matcher(release.optString("tag_name", ""));
+            Matcher tag = pattern.matcher(release.optString("tag_name", ""));
             if (!tag.matches()) continue;
             long baseCode;
             try {
@@ -164,7 +169,7 @@ public final class EasygramUpdater {
             candidate.packageName = packageName;
             candidate.url = url;
             candidate.sha256 = digest.substring(7).toLowerCase(Locale.ROOT);
-            candidate.changelog = release.optString("body", "");
+            candidate.changelog = release.isNull("body") ? "" : release.optString("body", "");
             newest = candidate;
         }
         return newest;
@@ -195,11 +200,25 @@ public final class EasygramUpdater {
         }
         Update update = pendingUpdate;
         if (update == null) return;
-        if (downloaded) {
-            install(activity, targetFile(activity.getApplicationContext(), update));
-        } else {
-            download(activity, update);
-        }
+        showReleaseNotes(activity, update);
+    }
+
+    private static void showReleaseNotes(Activity activity, Update update) {
+        if (activity.isFinishing() || activity.isDestroyed() || DOWNLOADING.get()) return;
+        EasygramUpdateSheet previous = sheetRef.get();
+        if (previous != null && previous.isShowing()) return;
+        EasygramUpdateSheet sheet = new EasygramUpdateSheet(activity, update.versionName,
+                update.changelog, downloaded, () -> {
+            if (pendingUpdate != update) {
+                onPanelClicked(activity);
+            } else if (downloaded) {
+                install(activity, targetFile(activity.getApplicationContext(), update));
+            } else {
+                download(activity, update);
+            }
+        });
+        sheetRef = new WeakReference<>(sheet);
+        sheet.show();
     }
 
     private static File targetFile(Context app, Update update) {
@@ -248,7 +267,10 @@ public final class EasygramUpdater {
                     downloaded = false;
                 }
                 pendingUpdate = update;
-                onUi(activity, EasygramUpdater::render);
+                onUi(activity, () -> {
+                    render();
+                    if (manual) showReleaseNotes(activity, update);
+                });
             } catch (Exception e) {
                 android.util.Log.w("EasygramUpdater", "Failed to check for updates", e);
                 if (manual) onUi(activity, () -> info(activity, "Не удалось проверить обновления", reason(e)));

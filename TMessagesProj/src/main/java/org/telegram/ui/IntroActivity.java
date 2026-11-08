@@ -34,9 +34,6 @@ import android.opengl.GLES20;
 import android.opengl.GLUtils;
 import android.os.Looper;
 import android.os.Parcelable;
-import android.text.SpannableStringBuilder;
-import android.text.Spanned;
-import android.text.style.ImageSpan;
 import android.util.TypedValue;
 import android.view.Display;
 import android.view.Gravity;
@@ -73,7 +70,6 @@ import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ActionBar.ThemeBind;
-import org.telegram.ui.ActionBar.ThemeColors;
 import org.telegram.ui.ActionBar.ThemeDescription;
 import org.telegram.ui.Components.BottomPagesView;
 import org.telegram.ui.Components.LayoutHelper;
@@ -113,7 +109,6 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
     private int lastPage = 0;
     private boolean justCreated = false;
     private boolean startPressed = false;
-    private Drawable logoDrawable;
     private CharSequence[] titles;
     private String[] messages;
     private int currentViewPagerPage;
@@ -154,11 +149,8 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
 
     @Override
     public View createView(Context context) {
-        logoDrawable = context.getResources().getDrawable(R.drawable.telegram_logo).mutate();
-        logoDrawable.setBounds(0, dp(8.666f), dp(115), dp(35));
-        SpannableStringBuilder ssb = new SpannableStringBuilder(LocaleController.getString(R.string.Page1Title));
-        ssb.setSpan(new ImageSpan(logoDrawable), 0, ssb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        titles[0] = ssb;
+        // Use the bundled brand name, independent of Telegram's downloadable language packs.
+        titles[0] = context.getString(R.string.AppName);
 
 
         actionBar.setAddToContainer(false);
@@ -663,7 +655,7 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
             int size = dp(ICON_HEIGHT_DP);
             Bitmap bm = Bitmap.createBitmap(dp(ICON_WIDTH_DP), size, Bitmap.Config.ARGB_8888);
             Canvas c = new Canvas(bm);
-            c.drawColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+            c.drawColor(getIntroBackgroundColor());
             Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
             paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
             c.drawCircle(bm.getWidth() / 2f, bm.getHeight() / 2f, size / 2f, paint);
@@ -770,7 +762,7 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
                 return false;
             }
 
-            GLES20.glGenTextures(23, textures, 0);
+            GLES20.glGenTextures(textures.length, textures, 0);
             loadTexture(R.drawable.intro_fast_arrow_shadow, 0);
             loadTexture(R.drawable.intro_fast_arrow, 1);
             loadTexture(R.drawable.intro_fast_body, 2);
@@ -788,20 +780,13 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
             loadTexture(R.drawable.intro_knot_up, 14);
             loadTexture(R.drawable.intro_powerful_infinity_white, 15);
             loadTexture(R.drawable.intro_powerful_infinity, 16);
-            loadTexture(R.drawable.intro_powerful_mask, 17, Theme.getColor(Theme.key_windowBackgroundWhite), false);
+            loadTexture(R.drawable.intro_powerful_mask, 17, getIntroBackgroundColor());
             loadTexture(R.drawable.intro_powerful_star, 18);
             loadTexture(R.drawable.intro_private_door, 19);
             loadTexture(R.drawable.intro_private_screw, 20);
-            loadTexture(R.drawable.intro_tg_plane, 21);
-            loadTexture(v -> {
-                Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-                paint.setColor(ThemeColors.TELEGRAM_COLOR); // It's logo color, it should not be colored by the theme
-                int size = dp(ICON_HEIGHT_DP);
-                Bitmap bm = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
-                Canvas c = new Canvas(bm);
-                c.drawCircle(size / 2f, size / 2f, size / 2f, paint);
-                return bm;
-            }, 22);
+            // The Easygram mark is part of the circular texture; leave the old flying plane empty.
+            loadTexture(v -> Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888), 21);
+            loadEasygramTexture();
             loadTexture(telegramMaskProvider, 23);
 
             updateTelegramTextures();
@@ -814,6 +799,26 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
             currentDate = System.currentTimeMillis() - 1000;
 
             return true;
+        }
+
+        private void loadEasygramTexture() {
+            final boolean dark = Theme.isCurrentThemeDark();
+            final int background = getIntroBackgroundColor();
+            loadTexture(v -> {
+                int size = dp(ICON_HEIGHT_DP);
+                Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+                Canvas canvas = new Canvas(bitmap);
+                Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+                paint.setColor(background);
+                canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint);
+                Drawable mark = ApplicationLoader.applicationContext.getResources().getDrawable(dark
+                        ? R.drawable.ic_easygram_bloom_blue_monochrome
+                        : R.drawable.ic_easygram_bloom_blue_light_foreground).mutate();
+                int inset = -size / 8;
+                mark.setBounds(inset, inset, size - inset, size - inset);
+                mark.draw(canvas);
+                return bitmap;
+            }, 22);
         }
 
         public void updateTelegramTextures() {
@@ -883,14 +888,8 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
         };
 
         private void loadTexture(GenericProvider<Void, Bitmap> bitmapProvider, int index) {
-            loadTexture(bitmapProvider, index, false);
-        }
-
-        private void loadTexture(GenericProvider<Void, Bitmap> bitmapProvider, int index, boolean rebind) {
-            if (rebind) {
-                GLES20.glDeleteTextures(1, textures, index);
-                GLES20.glGenTextures(1, textures, index);
-            }
+            // Native intro shapes retain texture IDs from onSurfaceCreated().
+            // Update the pixels in place so theme changes never invalidate those IDs.
             Bitmap bm = bitmapProvider.provide(null);
             GLES20.glBindTexture(GL10.GL_TEXTURE_2D, textures[index]);
             GLES20.glTexParameteri(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_MIN_FILTER, GL10.GL_LINEAR);
@@ -902,17 +901,13 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
         }
 
         private void loadTexture(int resId, int index) {
-            loadTexture(resId, index, 0, false);
+            loadTexture(resId, index, 0);
         }
 
-        private void loadTexture(int resId, int index, int tintColor, boolean rebind) {
+        private void loadTexture(int resId, int index, int tintColor) {
             Drawable drawable = getParentActivity().getResources().getDrawable(resId);
             if (drawable instanceof BitmapDrawable) {
-                if (rebind) {
-                    GLES20.glDeleteTextures(1, textures, index);
-                    GLES20.glGenTextures(1, textures, index);
-                }
-
+                // Keep the texture ID held by the native renderer when changing its tint.
                 Bitmap bitmap = ((BitmapDrawable) drawable).getBitmap();
                 GLES20.glBindTexture(GL10.GL_TEXTURE_2D, textures[index]);
                 GLES20.glTexParameteri(GL10.GL_TEXTURE_2D, GL10.GL_TEXTURE_MIN_FILTER, GL10.GL_LINEAR);
@@ -964,24 +959,24 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
 
     private void updateColors(boolean fromTheme) {
         startMessagingButtonBackground.setColors(new int[]{getThemedColor(Theme.key_featuredStickers_addButton), getThemedColor(Theme.key_featuredStickers_addButton2)});
-        logoDrawable.setColorFilter(Theme.multAlpha(getThemedColor(Theme.key_actionBarDefaultTitle), 0.9f), PorterDuff.Mode.MULTIPLY);
-        fragmentView.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+        fragmentView.setBackgroundColor(getIntroBackgroundColor());
         switchLanguageTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText4));
         startMessagingButton.setTextColor(Theme.getColor(Theme.key_featuredStickers_buttonText));
         startMessagingButton.setBackground(Theme.createSimpleSelectorRoundRectDrawable(dp(24), Color.TRANSPARENT, Theme.getColor(Theme.key_featuredStickers_addButtonPressed)));
         darkThemeDrawable.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_featuredStickers_addButton), PorterDuff.Mode.SRC_IN));
         bottomPages.invalidate();
-        glTexturesColor = Theme.getColor(Theme.key_windowBackgroundWhite);
+        glTexturesColor = getIntroBackgroundColor();
         if (fromTheme) {
             if (eglThread != null) {
                 eglThread.postRunnable(()->{
-                    eglThread.loadTexture(R.drawable.intro_powerful_mask, 17, Theme.getColor(Theme.key_windowBackgroundWhite), true);
+                    eglThread.loadTexture(R.drawable.intro_powerful_mask, 17, getIntroBackgroundColor());
                     eglThread.updatePowerfulTextures();
 
-                    eglThread.loadTexture(eglThread.telegramMaskProvider, 23, true);
+                    eglThread.loadEasygramTexture();
+                    eglThread.loadTexture(eglThread.telegramMaskProvider, 23);
                     eglThread.updateTelegramTextures();
 
-                    Intro.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+                    Intro.setBackgroundColor(getIntroBackgroundColor());
                 });
             }
             for (int i = 0; i < viewPager.getChildCount(); i++) {
@@ -991,7 +986,7 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
                 TextView messageTextView = ch.findViewWithTag(pagerMessageTag);
                 messageTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
             }
-        } else Intro.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+        } else Intro.setBackgroundColor(getIntroBackgroundColor());
     }
 
     private int glTexturesColor;
@@ -1003,7 +998,7 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
     };
 
     // last colors applied by onThemeColorsChanged(): avoids per-frame allocations
-    private int lastButtonColor1, lastButtonColor2, lastLogoColor, lastDarkThemeColor;
+    private int lastButtonColor1, lastButtonColor2, lastDarkThemeColor;
 
     @Override
     public void onThemeColorsChanged() {
@@ -1018,12 +1013,7 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
                 lastButtonColor2 = buttonColor2;
                 startMessagingButtonBackground.setColors(new int[]{buttonColor1, buttonColor2});
             }
-            final int logoColor = Theme.multAlpha(getThemedColor(Theme.key_actionBarDefaultTitle), 0.9f);
-            if (logoDrawable != null && logoColor != lastLogoColor) {
-                lastLogoColor = logoColor;
-                logoDrawable.setColorFilter(logoColor, PorterDuff.Mode.MULTIPLY);
-            }
-            fragmentView.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+            fragmentView.setBackgroundColor(getIntroBackgroundColor());
             if (switchLanguageTextView != null) {
                 switchLanguageTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText4));
             }
@@ -1052,7 +1042,7 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
                     }
                 }
             }
-            if (eglThread != null && glTexturesColor != Theme.getColor(Theme.key_windowBackgroundWhite)) {
+            if (eglThread != null && glTexturesColor != getIntroBackgroundColor()) {
                 // textures are heavy: reload once the theme animation settled
                 AndroidUtilities.cancelRunOnUIThread(reloadGlTexturesRunnable);
                 AndroidUtilities.runOnUIThread(reloadGlTexturesRunnable, 100);
@@ -1064,17 +1054,18 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
 
     private void reloadGlTextures() {
         try {
-            final int color = Theme.getColor(Theme.key_windowBackgroundWhite);
+            final int color = getIntroBackgroundColor();
             final EGLThread eglThread = this.eglThread;
             if (eglThread == null || fragmentView == null || glTexturesColor == color) {
                 return;
             }
             glTexturesColor = color;
             eglThread.postRunnable(() -> {
-                eglThread.loadTexture(R.drawable.intro_powerful_mask, 17, color, true);
+                eglThread.loadTexture(R.drawable.intro_powerful_mask, 17, color);
                 eglThread.updatePowerfulTextures();
 
-                eglThread.loadTexture(eglThread.telegramMaskProvider, 23, true);
+                eglThread.loadEasygramTexture();
+                eglThread.loadTexture(eglThread.telegramMaskProvider, 23);
                 eglThread.updateTelegramTextures();
 
                 Intro.setBackgroundColor(color);
@@ -1084,9 +1075,19 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
         }
     }
 
+    private int getIntroBackgroundColor() {
+        return androidx.core.content.ContextCompat.getColor(ApplicationLoader.applicationContext, Theme.isCurrentThemeDark()
+                ? R.color.easygram_bloom_mono_background
+                : R.color.easygram_bloom_blue_light_background);
+    }
+
+    @Override
+    public int getNavigationBarColor() {
+        return getIntroBackgroundColor();
+    }
+
     @Override
     public boolean isLightStatusBar() {
-        int color = Theme.getColor(Theme.key_windowBackgroundWhite, null, true);
-        return ColorUtils.calculateLuminance(color) > 0.7f;
+        return ColorUtils.calculateLuminance(getIntroBackgroundColor()) > 0.5f;
     }
 }
