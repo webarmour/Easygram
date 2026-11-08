@@ -1199,7 +1199,10 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
         }
 
         void updateCheckedState(boolean animate) {
-            final boolean checked = currentId == selectedId;
+            // The gallery button can launch a configured picker, but also represents
+            // the built-in photo layout when it is opened directly or restored.
+            final boolean checked = currentId == selectedId
+                    || currentId == LAYOUT_TYPE_MEDIA_PICKER && selectedId == LAYOUT_TYPE_PHOTO;
             glassTabView.setSelected(checked, animate);
         }
 
@@ -6260,7 +6263,10 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
             }
         } else {
             typeButtonsAvailable = avatarPicker == 0 && !storyMediaPicker;
-            if (baseFragment instanceof ChatActivity && typeButtonsAvailable) {
+            String galleryPackage = ApplicationLoader.applicationContext
+                    .getSharedPreferences("mainconfig", Activity.MODE_PRIVATE)
+                    .getString(org.telegram.ui.OtherSettingsActivity.DEFAULT_GALLERY_PACKAGE, null);
+            if (baseFragment instanceof ChatActivity && typeButtonsAvailable && !TextUtils.isEmpty(galleryPackage)) {
                 openDocumentsLayout(false);
                 layoutToSet = documentLayout;
                 selectedId = 4;
