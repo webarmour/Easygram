@@ -274,7 +274,10 @@ public class CropView extends FrameLayout implements CropAreaView.AreaViewListen
     }
 
     public boolean isReady() {
-        return !detector.isScaling() && !detector.isDragging() && !areaView.isDragging();
+        return state != null && state.width > 0 && state.height > 0
+                && state.scale > 0 && !Float.isInfinite(state.scale)
+                && areaView.getCropWidth() > 0 && areaView.getCropHeight() > 0
+                && !detector.isScaling() && !detector.isDragging() && !areaView.isDragging();
     }
 
     public void setListener(CropViewListener l) {

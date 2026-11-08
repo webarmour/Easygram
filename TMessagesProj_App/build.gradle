@@ -19,6 +19,7 @@ dependencies {
     implementation files('../TMessagesProj/libs/video-message-recorder.aar')
     implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.1.20'
     implementation project(':TMessagesProj')
+    implementation 'com.google.firebase:firebase-analytics'
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
     implementation files('../TMessagesProj/libs/libgsaverification-client.aar')
 }
@@ -159,6 +160,13 @@ android {
             }
             buildConfigField "boolean", "BUNDLE", "false"
         }
+    }
+
+    // Variant manifests take precedence over the shared build-type manifests.
+    sourceSets {
+        afatDebug.manifest.srcFile 'config/analytics/AndroidManifest.xml'
+        afatRelease.manifest.srcFile 'config/analytics/AndroidManifest.xml'
+        bundleAfatRelease.manifest.srcFile 'config/analytics/AndroidManifest.xml'
     }
 
     defaultConfig.versionCode = Integer.parseInt(APP_VERSION_CODE)

@@ -954,6 +954,10 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
         final int touchSlop = ViewConfiguration.get(activity).getScaledTouchSlop();
         secretDeleteTimer.setClickable(true);
         secretDeleteTimer.setOnTouchListener((view, event) -> {
+            if (!OtherSettingsActivity.SECRET_MEDIA_ACTIONS_ENABLED) {
+                cancelMediaMenuHold();
+                return false;
+            }
             switch (event.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
                     final float fireX = view.getWidth() - dp(35);
@@ -1798,7 +1802,8 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
     }
 
     private void showMediaActionsMenu() {
-        if (parentActivity == null || secretDeleteTimer == null
+        if (!OtherSettingsActivity.SECRET_MEDIA_ACTIONS_ENABLED
+                || parentActivity == null || secretDeleteTimer == null
                 || !isPhotoVisible || isMediaActionsMenuShowing()) {
             return;
         }

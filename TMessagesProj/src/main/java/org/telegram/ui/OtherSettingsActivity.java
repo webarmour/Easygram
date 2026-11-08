@@ -90,6 +90,10 @@ public class OtherSettingsActivity extends BaseFragment {
     private ListAdapter adapter;
     private ItemTouchHelper itemTouchHelper;
 
+    // Unavailable until secret media actions are ready for release.
+    public static final boolean SECRET_MEDIA_ACTIONS_ENABLED = false;
+
+    private int secretMediaRow;
     private int headerRow;
     private int premiumAccessRow;
     private int premiumAccessInfoRow;
@@ -294,6 +298,7 @@ public class OtherSettingsActivity extends BaseFragment {
         adsInfoRow = rowCount++;
         showStarMessagesRow = rowCount++;
         starMessagesInfoRow = rowCount++;
+        secretMediaRow = rowCount++;
         navHeaderRow = rowCount++;
         navLabelsRow = rowCount++;
         navStartRow = rowCount;
@@ -597,6 +602,7 @@ public class OtherSettingsActivity extends BaseFragment {
         public int getItemViewType(int position) {
             if (position == headerRow || position == navHeaderRow || position == photoMenuHeaderRow) return 0;
             if (position == galleryRow) return 1;
+            if (position == secretMediaRow) return 6;
             if (position == premiumAccessInfoRow || position == galleryInfoRow || position == sendMediaHdInfoRow || position == storiesInfoRow || position == adsInfoRow || position == starMessagesInfoRow || position == navInfoRow || position == photoMenuInfoRow) return 2;
             if (position == premiumAccessRow || position == sendMediaHdRow || position == disableStoriesRow || position == disableAdsRow || position == showStarMessagesRow || position == navLabelsRow) return 3;
             if (position >= navStartRow && position < navEndRow) return 4;
@@ -620,6 +626,7 @@ public class OtherSettingsActivity extends BaseFragment {
                 case 2:
                     view = new TextInfoPrivacyCell(mContext);
                     break;
+                case 6:
                 case 3:
                     view = new TextCheckCell(mContext);
                     view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
@@ -674,6 +681,15 @@ public class OtherSettingsActivity extends BaseFragment {
                     } else if (position == photoMenuInfoRow) {
                         infoCell.setText(LocaleController.getString(R.string.EasygramPhotoMenuInfo));
                     }
+                    break;
+                case 6:
+                    TextCheckCell secretMediaCell = (TextCheckCell) holder.itemView;
+                    secretMediaCell.setTextAndValueAndCheck(
+                            LocaleController.getString(R.string.EasygramSecretMedia),
+                            LocaleController.getString(R.string.EasygramSecretMediaInfo),
+                            SECRET_MEDIA_ACTIONS_ENABLED, false, false);
+                    secretMediaCell.setEnabled(false);
+                    secretMediaCell.setAlpha(0.5f);
                     break;
                 case 3:
                     TextCheckCell checkCell = (TextCheckCell) holder.itemView;

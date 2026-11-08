@@ -7864,8 +7864,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             if (currentEditMode == EDIT_MODE_CROP && !photoCropView.isReady()) {
                 return;
             }
-            applyCurrentEditMode();
-            switchToEditMode(EDIT_MODE_NONE);
+            if (applyCurrentEditMode()) {
+                switchToEditMode(EDIT_MODE_NONE);
+            }
         });
 
         resetButton = new TextView(activityContext);
@@ -11517,13 +11518,13 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         return entry.isLivePhoto() ? AndroidUtilities.getPhotoSize() : thumbSize;
     }
 
-    private void applyCurrentEditMode() {
+    private boolean applyCurrentEditMode() {
         if (currentIndex < 0 || currentIndex >= imagesArrLocals.size()) {
-            return;
+            return false;
         }
         Object object = imagesArrLocals.get(currentIndex);
         if (!(object instanceof MediaController.MediaEditState)) {
-            return;
+            return false;
         }
         Bitmap bitmap = null;
         Bitmap[] paintThumbBitmap = new Bitmap[1];
@@ -11533,10 +11534,16 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         int[] orientation = null;
         boolean hasChanged = false;
         MediaController.MediaEditState entry = (MediaController.MediaEditState) imagesArrLocals.get(currentIndex);
-        if (currentEditMode == EDIT_MODE_CROP || currentEditMode == EDIT_MODE_NONE && sendPhotoType == SELECT_TYPE_AVATAR) {
+        final boolean applyingCrop = currentEditMode == EDIT_MODE_CROP || currentEditMode == EDIT_MODE_NONE && sendPhotoType == SELECT_TYPE_AVATAR;
+        final String previousImagePath = entry.imagePath;
+        final String previousThumbPath = entry.thumbPath;
+        if (applyingCrop) {
+            if (!photoCropView.isReady() || !isCurrentVideo && (!centerImage.hasImageLoaded() || centerImage.getBitmap() == null || centerImage.getBitmap().isRecycled())) {
+                return false;
+            }
             photoCropView.makeCrop(entry);
-            if (entry.cropState == null && currentEditMode != EDIT_MODE_CROP) {
-                return;
+            if (entry.cropState == null) {
+                return false;
             }
             if (isCurrentVideo) {
                 if (!TextUtils.isEmpty(entry.filterPath)) {
@@ -11595,17 +11602,27 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     stickerMakerView.updateOutlinePath(bitmap);
                 }
             }
-            return;
+            return true;
         }
-        if (bitmap == null) {
-            return;
+        if (bitmap == null || bitmap.isRecycled()) {
+            return false;
         }
 
-        if (entry.thumbPath != null) {
+        Bitmap cropResult = null;
+        if (applyingCrop) {
+            cropResult = createCroppedBitmap(bitmap, entry.cropState, orientation, true);
+            if (cropResult == null) {
+                BulletinFactory.of(containerView, resourcesProvider).createErrorBulletin(getString(R.string.ErrorOccurred)).show();
+                return false;
+            }
+        }
+
+        // Keep the last successful crop until both replacement files are saved.
+        if (!applyingCrop && entry.thumbPath != null) {
             new File(entry.thumbPath).delete();
             entry.thumbPath = null;
         }
-        if (entry.imagePath != null) {
+        if (!applyingCrop && entry.imagePath != null) {
             new File(entry.imagePath).delete();
             entry.imagePath = null;
         }
@@ -11616,7 +11633,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             editState.croppedMediaEntities = entry.croppedMediaEntities;
 
             if (entry.cropState != null) {
-                Bitmap croppedBitmap = createCroppedBitmap(bitmap, entry.cropState, orientation, true);
+                Bitmap croppedBitmap = cropResult;
                 if (entry.paintPath != null) {
                     Bitmap paintBitmap = BitmapFactory.decodeFile(entry.fullPaintPath);
                     Bitmap croppedPaintBitmap = createCroppedBitmap(paintBitmap, entry.cropState, null, false);
@@ -11624,6 +11641,11 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     if (!isCurrentVideo || entry.isLivePhoto()) {
                         if (hasAnimatedMediaEntities()) {
                             TLRPC.PhotoSize size = ImageLoader.scaleAndSaveImage(croppedBitmap, getCompressFormat(), AndroidUtilities.getPhotoSize(), AndroidUtilities.getPhotoSize(), 87, false, 101, 101);
+                            if (size == null) {
+                                croppedBitmap.recycle();
+                                BulletinFactory.of(containerView, resourcesProvider).createErrorBulletin(getString(R.string.ErrorOccurred)).show();
+                                return false;
+                            }
                             entry.imagePath = currentImagePath = FileLoader.getInstance(currentAccount).getPathToAttach(size, true).toString();
                         } else {
                             mergeImages(entry.imagePath = getTempFileAbsolutePath(), null, croppedPaintBitmap, croppedBitmap, AndroidUtilities.getPhotoSize(), true);
@@ -11637,17 +11659,43 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                         paintBitmap.recycle();
                     }
                 } else {
+                    String imagePath = null;
                     if (!isCurrentVideo || entry.isLivePhoto()) {
                         TLRPC.PhotoSize size = ImageLoader.scaleAndSaveImage(croppedBitmap, getCompressFormat(), AndroidUtilities.getPhotoSize(), AndroidUtilities.getPhotoSize(), 87, false, 101, 101);
-                        entry.imagePath = currentImagePath = FileLoader.getInstance(currentAccount).getPathToAttach(size, true).toString();
+                        if (size == null) {
+                            croppedBitmap.recycle();
+                            BulletinFactory.of(containerView, resourcesProvider).createErrorBulletin(getString(R.string.ErrorOccurred)).show();
+                            return false;
+                        }
+                        imagePath = FileLoader.getInstance(currentAccount).getPathToAttach(size, true).toString();
                     }
                     TLRPC.PhotoSize size = ImageLoader.scaleAndSaveImage(croppedBitmap, thumbSize, thumbSize, 70, false, 101, 101);
+                    if (size == null) {
+                        if (imagePath != null) {
+                            new File(imagePath).delete();
+                        }
+                        croppedBitmap.recycle();
+                        BulletinFactory.of(containerView, resourcesProvider).createErrorBulletin(getString(R.string.ErrorOccurred)).show();
+                        return false;
+                    }
+                    entry.imagePath = imagePath;
+                    if (imagePath != null) {
+                        currentImagePath = imagePath;
+                    }
                     entry.thumbPath = FileLoader.getInstance(currentAccount).getPathToAttach(size, true).toString();
                 }
                 if (currentEditMode == EDIT_MODE_NONE && isCurrentVideo) {
                     bitmap.recycle();
                     bitmap = croppedBitmap;
+                } else {
+                    croppedBitmap.recycle();
                 }
+            }
+            if (previousImagePath != null && !previousImagePath.equals(entry.imagePath)) {
+                new File(previousImagePath).delete();
+            }
+            if (previousThumbPath != null && !previousThumbPath.equals(entry.thumbPath)) {
+                new File(previousThumbPath).delete();
             }
         } else if (currentEditMode == EDIT_MODE_FILTER) {
             if (entry.filterPath != null) {
@@ -11888,6 +11936,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         }
         ignoreDidSetImage = false;
         centerImage.setParentView(containerView);
+        return true;
     }
 
     private void setPhotoChecked() {
@@ -12075,7 +12124,10 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     private boolean wasCountViewShown;
 
     public void switchToEditMode(final int mode) {
-        if (currentEditMode == mode || (isCurrentVideo && photoProgressViews[0].backgroundState != 3) && !isCurrentVideo && (centerImage.getBitmap() == null || photoProgressViews[0].backgroundState != -1) || changeModeAnimation != null || imageMoveAnimation != null || isCaptionOpen()) {
+        // A gallery thumbnail is only a transition placeholder, not an editing source.
+        if (currentEditMode == mode || mode != EDIT_MODE_NONE && !isCurrentVideo && currentEditMode == EDIT_MODE_NONE
+                && (!centerImage.hasImageLoaded() || centerImage.getBitmap() == null || centerImage.getBitmap().isRecycled())
+                || changeModeAnimation != null || imageMoveAnimation != null || isCaptionOpen()) {
             return;
         }
         if (placeProvider != null && (currentEditMode == EDIT_MODE_NONE || mode == EDIT_MODE_NONE)) {
