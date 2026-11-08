@@ -86,6 +86,8 @@ public class PhotoAttachPhotoCell extends FrameLayout {
     private boolean itemSizeChanged;
     private boolean needCheckShow;
     private int itemSize;
+    private int galleryFilterSize;
+    private String galleryFilter;
     private boolean isVertical;
     private boolean zoomOnSelect = true;
 
@@ -456,6 +458,9 @@ public class PhotoAttachPhotoCell extends FrameLayout {
     }
 
     public void setItemSize(int size) {
+        if (itemSizeChanged && itemSize == size) {
+            return;
+        }
         itemSize = size;
 
         LayoutParams layoutParams = (LayoutParams) container.getLayoutParams();
@@ -472,6 +477,7 @@ public class PhotoAttachPhotoCell extends FrameLayout {
         checkBox.setDrawBackgroundAsArc(6);
 
         itemSizeChanged = true;
+        requestLayout();
     }
 
     @Override
@@ -514,6 +520,14 @@ public class PhotoAttachPhotoCell extends FrameLayout {
     public void setPhotoEntry(MediaController.PhotoEntry entry, boolean selectedMultiple, boolean needCheckShow, boolean last, boolean allowLivePhotos) {
         pressed = false;
         photoEntry = entry;
+        // A loaded tile should be immediately recognizable while scrolling.
+        imageView.getImageReceiver().setCrossfadeDuration(0);
+        int thumbSize = Math.max(1, (int) Math.ceil(itemSize / AndroidUtilities.density));
+        if (galleryFilter == null || galleryFilterSize != thumbSize) {
+            galleryFilterSize = thumbSize;
+            galleryFilter = thumbSize + "_" + thumbSize + "_gp";
+        }
+        boolean spacingChanged = isLast != last;
         isLast = last;
         this.allowLivePhotos = allowLivePhotos;
         if (allowLivePhotos) {
@@ -540,10 +554,10 @@ public class PhotoAttachPhotoCell extends FrameLayout {
             imageView.setImage(photoEntry.thumbPath, null, Theme.chat_attachEmptyDrawable);
         } else if (photoEntry.path != null) {
             if (photoEntry.isVideo && !photoEntry.isLivePhoto()) {
-                imageView.setImage("vthumb://" + photoEntry.imageId + ":" + photoEntry.path, null, Theme.chat_attachEmptyDrawable);
+                imageView.setImage("vthumb://" + photoEntry.imageId + ":" + photoEntry.path, galleryFilter, Theme.chat_attachEmptyDrawable);
             } else {
                 imageView.setOrientation(photoEntry.orientation, photoEntry.invert, true);
-                imageView.setImage("thumb://" + photoEntry.imageId + ":" + photoEntry.path, null, Theme.chat_attachEmptyDrawable);
+                imageView.setImage("thumb://" + photoEntry.imageId + ":" + photoEntry.path, galleryFilter, Theme.chat_attachEmptyDrawable);
             }
         } else {
             imageView.setImageDrawable(Theme.chat_attachEmptyDrawable);
@@ -552,7 +566,10 @@ public class PhotoAttachPhotoCell extends FrameLayout {
         imageView.getImageReceiver().setVisible(!showing, true);
         checkBox.setAlpha(showing ? 0.0f : 1.0f);
         videoInfoContainer.setAlpha(showing ? 0.0f : 1.0f);
-        requestLayout();
+        // Grid dimensions are handled by setItemSize; only strip spacing depends on last.
+        if (!itemSizeChanged && spacingChanged) {
+            requestLayout();
+        }
         setHasSpoiler(entry.hasSpoiler);
         setHighQuality(entry.isHighQuality() && isChecked());
         setStarsPrice(entry.starsAmount, selectedMultiple);

@@ -12,6 +12,7 @@ import android.annotation.TargetApi;
 import android.app.ActivityManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.ContentUris;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Bitmap;
@@ -29,11 +30,14 @@ import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Build;
+import android.os.CancellationSignal;
+import android.os.OperationCanceledException;
 import android.os.Environment;
 import android.os.SystemClock;
 import android.provider.MediaStore;
 import android.text.TextUtils;
 import android.util.Pair;
+import android.util.Size;
 import android.util.SparseArray;
 
 import androidx.annotation.Nullable;
@@ -87,6 +91,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
 
@@ -127,6 +134,14 @@ public class ImageLoader {
     private LinkedList<HttpImageTask> httpTasks = new LinkedList<>();
     private LinkedList<ArtworkLoadTask> artworkTasks = new LinkedList<>();
     private DispatchQueuePriority cacheOutQueue = new DispatchQueuePriority("cacheOutQueue");
+    // Keep visible gallery tiles independent of chat image decoding. Detaching a
+    // receiver removes queued work and cancels its active MediaStore request.
+    private final ThreadPoolExecutor galleryThumbQueue = new ThreadPoolExecutor(2, 2,
+            30, TimeUnit.SECONDS, new LinkedBlockingQueue<>(), runnable -> {
+                Thread thread = new Thread(runnable, "galleryThumb");
+                thread.setPriority(Thread.NORM_PRIORITY - 1);
+                return thread;
+            });
     private DispatchQueue2 cacheThumbOutQueue = new DispatchQueue2("cacheThumbOutQueue");
     private DispatchQueue2 thumbGeneratingQueue = new DispatchQueue2("thumbGeneratingQueue");
     private DispatchQueue2 imageLoadQueue = new DispatchQueue2("imageLoadQueue");
@@ -852,6 +867,7 @@ public class ImageLoader {
     }
 
     private class CacheOutTask implements Runnable {
+        private final CancellationSignal galleryCancellation = new CancellationSignal();
         private Thread runningThread;
         private final Object sync = new Object();
 
@@ -882,6 +898,10 @@ public class ImageLoader {
                 if (isCancelled) {
                     return;
                 }
+            }
+
+            if (loadGalleryThumbnail()) {
+                return;
             }
 
             if (cacheImage.imageLocation.photoSize instanceof TLRPC.TL_photoStrippedSize) {
@@ -1757,7 +1777,43 @@ public class ImageLoader {
             });
         }
 
+        // Only attachment-grid requests use this path. Other image filters retain their
+        // existing decoding/rotation behaviour, including edited local cover images.
+        private boolean loadGalleryThumbnail() {
+            if (!cacheImage.isGalleryThumbnail() || Build.VERSION.SDK_INT < 29) {
+                return false;
+            }
+            String path = cacheImage.imageLocation.path;
+            boolean video = path.startsWith("vthumb://");
+            int prefix = video ? 9 : 8;
+            try {
+                int separator = path.indexOf(':', prefix);
+                long id = Long.parseLong(path.substring(prefix, separator));
+                if (id <= 0) {
+                    return false;
+                }
+                String[] dimensions = cacheImage.filter.split("_");
+                int width = Math.max(1, Math.round(Float.parseFloat(dimensions[0]) * AndroidUtilities.density));
+                int height = Math.max(1, Math.round(Float.parseFloat(dimensions[1]) * AndroidUtilities.density));
+                Uri uri = ContentUris.withAppendedId(video ? MediaStore.Video.Media.EXTERNAL_CONTENT_URI : MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id);
+                Bitmap bitmap = ApplicationLoader.applicationContext.getContentResolver().loadThumbnail(uri, new Size(width, height), galleryCancellation);
+                if (galleryCancellation.isCanceled()) {
+                    bitmap.recycle();
+                    return true;
+                }
+                // MediaStore thumbnails already include EXIF orientation.
+                onPostExecute(new ExtendedBitmapDrawable(bitmap, 0, 0));
+                return true;
+            } catch (OperationCanceledException e) {
+                return true;
+            } catch (Exception e) {
+                // Missing provider entry / unsupported format: retain the file decoder.
+                return galleryCancellation.isCanceled();
+            }
+        }
+
         public void cancel() {
+            galleryCancellation.cancel();
             synchronized (sync) {
                 try {
                     isCancelled = true;
@@ -1859,6 +1915,12 @@ public class ImageLoader {
 
     private class CacheImage {
 
+        private boolean isGalleryThumbnail() {
+            return filter != null && filter.endsWith("_gp") && imageLocation != null
+                    && imageLocation.path != null && (imageLocation.path.startsWith("thumb://")
+                    || imageLocation.path.startsWith("vthumb://"));
+        }
+
         public int priority = 1;
         public Runnable runningTask;
         public boolean isPFrame;
@@ -1959,6 +2021,7 @@ public class ImageLoader {
                     }
                 }
                 if (cacheTask != null) {
+                    galleryThumbQueue.remove(cacheTask);
                     if (currentMediaType == ImageReceiver.TYPE_THUMB) {
                         cacheThumbOutQueue.cancelRunnable(cacheTask);
                     } else {
@@ -3269,7 +3332,9 @@ public class ImageLoader {
 
                         imageLoadingByKeys.put(key, img);
                         imageLoadingKeys.add(cutFilter(key));
-                        if (thumb != 0) {
+                        if (img.isGalleryThumbnail()) {
+                            galleryThumbQueue.execute(img.cacheTask);
+                        } else if (thumb != 0) {
                             cacheThumbOutQueue.postRunnable(img.cacheTask);
                         } else {
                             img.runningTask = cacheOutQueue.postRunnable(img.cacheTask, img.priority);
