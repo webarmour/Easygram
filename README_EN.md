@@ -26,10 +26,6 @@ Find these options under **Settings → Video Messages**. Camera behavior and fe
 
 Easygram will continue to evolve, with more improvements planned for video message recording, image quality, and everyday usability. Updates will be introduced gradually.
 
-## Building
-
-The project uses Android SDK 36, Android NDK 27.2.12479018, and the Gradle Wrapper included in this repository. To build your own version, you need your own `api_id` and `api_hash`, Firebase configuration, and signing key. See the [Telegram API documentation](https://core.telegram.org/api/obtaining_api_id) for instructions on obtaining API credentials. Replace the sample values and configuration files with your own before publishing a build.
-
 ## Source and license
 
 Easygram is an independent project and is not affiliated with the Telegram team. It is based on [Telegram for Android](https://github.com/DrKLO/Telegram). See [LICENSE](LICENSE) for the source code license.
