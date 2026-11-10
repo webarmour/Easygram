@@ -455,9 +455,6 @@ public class CropView extends FrameLayout implements CropAreaView.AreaViewListen
                 state.update(w, h, rotation);
             }
             imageView.setImageBitmap(videoView == null ? bitmap : null);
-            if (videoView == null && bitmap != null) {
-                imageView.setVisibility(VISIBLE);
-            }
         }
     }
 
@@ -484,7 +481,7 @@ public class CropView extends FrameLayout implements CropAreaView.AreaViewListen
 
     public void show() {
         updateCropTransform();
-        imageView.setVisibility(VISIBLE);
+        //imageView.setVisibility(VISIBLE);
         areaView.setDimVisibility(true);
         areaView.setFrameVisibility(true, true);
         areaView.invalidate();
@@ -537,7 +534,6 @@ public class CropView extends FrameLayout implements CropAreaView.AreaViewListen
         overlayMatrix.postRotate(state.getOrientationOnly());
         state.getConcatMatrix(overlayMatrix);
         overlayMatrix.postTranslate(areaView.getCropCenterX(), areaView.getCropCenterY());
-        imageView.setImageMatrix(overlayMatrix);
         if (!freeform || isVisible || force) {
             updateCropTransform();
             listener.onUpdate();

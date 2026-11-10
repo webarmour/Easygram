@@ -1801,8 +1801,50 @@ public class ImageLoader {
                     bitmap.recycle();
                     return true;
                 }
-                // MediaStore thumbnails already include EXIF orientation.
-                onPostExecute(new ExtendedBitmapDrawable(bitmap, 0, 0));
+                // Match upstream's raw-bitmap contract: PhotoEntry supplies the same
+                // orientation to the tile, opening animation, viewer and crop editor.
+                // MediaStore has already applied it, so undo it on this small thumbnail.
+                // The transform is part of the cache key (including zero for videos).
+                int orientation = Integer.parseInt(dimensions[2]);
+                int invert = Integer.parseInt(dimensions[3]);
+                if (orientation != 0 || invert != 0) {
+                    Matrix inverse = new Matrix();
+                    inverse.postScale(invert == 1 ? -1 : 1, invert == 2 ? -1 : 1);
+                    inverse.postRotate(-orientation);
+                    Bitmap rawThumbnail = Bitmap.createBitmap(bitmap, 0, 0,
+                            bitmap.getWidth(), bitmap.getHeight(), inverse, true);
+                    if (rawThumbnail != bitmap) {
+                        bitmap.recycle();
+                        bitmap = rawThumbnail;
+                    }
+                }
+                // Validate after undoing orientation, in the same coordinates as the
+                // file decoder. Providers can crop to rectangles as well as squares.
+                // Read bounds only; never allocate the original bitmap here.
+                if (!video) {
+                    BitmapFactory.Options bounds = new BitmapFactory.Options();
+                    bounds.inJustDecodeBounds = true;
+                    BitmapFactory.decodeFile(path.substring(separator + 1), bounds);
+                    if (bounds.outWidth > 0 && bounds.outHeight > 0) {
+                        long aspectError = Math.abs((long) bitmap.getWidth() * bounds.outHeight
+                                - (long) bitmap.getHeight() * bounds.outWidth);
+                        // Allow one pixel of rounding in each thumbnail dimension.
+                        if (aspectError > (long) bounds.outWidth + bounds.outHeight) {
+                            if (BuildVars.LOGS_ENABLED) {
+                                FileLog.d("Gallery thumbnail aspect mismatch: "
+                                        + bitmap.getWidth() + "x" + bitmap.getHeight()
+                                        + ", source " + bounds.outWidth + "x" + bounds.outHeight);
+                            }
+                            bitmap.recycle();
+                            return galleryCancellation.isCanceled();
+                        }
+                    }
+                }
+                if (galleryCancellation.isCanceled()) {
+                    bitmap.recycle();
+                    return true;
+                }
+                onPostExecute(new BitmapDrawable(bitmap));
                 return true;
             } catch (OperationCanceledException e) {
                 return true;
@@ -1916,7 +1958,7 @@ public class ImageLoader {
     private class CacheImage {
 
         private boolean isGalleryThumbnail() {
-            return filter != null && filter.endsWith("_gp") && imageLocation != null
+            return filter != null && filter.endsWith("_gp4") && imageLocation != null
                     && imageLocation.path != null && (imageLocation.path.startsWith("thumb://")
                     || imageLocation.path.startsWith("vthumb://"));
         }

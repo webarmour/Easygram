@@ -525,7 +525,7 @@ public class PhotoAttachPhotoCell extends FrameLayout {
         int thumbSize = Math.max(1, (int) Math.ceil(itemSize / AndroidUtilities.density));
         if (galleryFilter == null || galleryFilterSize != thumbSize) {
             galleryFilterSize = thumbSize;
-            galleryFilter = thumbSize + "_" + thumbSize + "_gp";
+            galleryFilter = thumbSize + "_" + thumbSize;
         }
         boolean spacingChanged = isLast != last;
         isLast = last;
@@ -554,10 +554,10 @@ public class PhotoAttachPhotoCell extends FrameLayout {
             imageView.setImage(photoEntry.thumbPath, null, Theme.chat_attachEmptyDrawable);
         } else if (photoEntry.path != null) {
             if (photoEntry.isVideo && !photoEntry.isLivePhoto()) {
-                imageView.setImage("vthumb://" + photoEntry.imageId + ":" + photoEntry.path, galleryFilter, Theme.chat_attachEmptyDrawable);
+                imageView.setImage("vthumb://" + photoEntry.imageId + ":" + photoEntry.path, galleryFilter + "_0_0_gp4", Theme.chat_attachEmptyDrawable);
             } else {
                 imageView.setOrientation(photoEntry.orientation, photoEntry.invert, true);
-                imageView.setImage("thumb://" + photoEntry.imageId + ":" + photoEntry.path, galleryFilter, Theme.chat_attachEmptyDrawable);
+                imageView.setImage("thumb://" + photoEntry.imageId + ":" + photoEntry.path, galleryFilter + "_" + photoEntry.orientation + "_" + photoEntry.invert + "_gp4", Theme.chat_attachEmptyDrawable);
             }
         } else {
             imageView.setImageDrawable(Theme.chat_attachEmptyDrawable);
