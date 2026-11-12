@@ -194,10 +194,16 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
         lastDispatchedZoomRatio = Float.NaN;
         zoomCameraRole = null;
         // Use explicit constructor parameters, matching the actual 0.0.2 AAR API.
+        // Per-frame capture telemetry is only collected when Telegram logging is enabled, so
+        // release builds pay nothing for it (CaptureTelemetry.onCapture early-returns and no CSV
+        // is written). Users can still flip "Enable logs" in the debug menu to diagnose a device.
+        DiagnosticsMode diagnosticsMode = org.telegram.messenger.BuildVars.LOGS_ENABLED
+                ? DiagnosticsMode.TelemetryCsv
+                : DiagnosticsMode.Disabled;
         recorder = new VideoMessageRecorder(
                 applicationContext,
                 RoundVideoRecorderSettings.recordingMode(applicationContext),
-                DiagnosticsMode.TelemetryCsv,
+                diagnosticsMode,
                 state -> {
                     main.post(() -> onRecorderState(state));
                     return Unit.INSTANCE;
