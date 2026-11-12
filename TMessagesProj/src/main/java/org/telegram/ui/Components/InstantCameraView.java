@@ -4241,9 +4241,8 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         }
 
         if (ev.getActionMasked() == MotionEvent.ACTION_DOWN || ev.getActionMasked() == MotionEvent.ACTION_POINTER_DOWN) {
-            if (aarRecorder != null && ev.getActionMasked() == MotionEvent.ACTION_POINTER_DOWN
-                    && finishZoomTransition != null) {
-                // A new pinch may interrupt an in-progress release animation.
+            if (aarRecorder != null && finishZoomTransition != null) {
+                // Any touch down interrupts an in-progress release animation.
                 finishZoomTransition.cancel();
                 finishZoomTransition = null;
             }
@@ -4312,11 +4311,14 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         if (aarRecorder != null) {
             final VideoMessageRecorderAdapter activeRecorder = aarRecorder;
             float currentZoom = activeRecorder.getZoomRatio();
-            if (Math.abs(currentZoom - aarPinchStartZoomRatio) < 0.001f) return;
+            float targetZoom = aarPinchStartZoomRatio;
+            if (Math.abs(currentZoom - targetZoom) < 0.001f) return;
 
-            // Same release animation as Telegram's native camera, returning to
-            // the zoom that was active before the gesture (including 0.8x).
-            final ValueAnimator transition = ValueAnimator.ofFloat(currentZoom, aarPinchStartZoomRatio);
+            // Smooth decelerating return animation so release looks natural and slow
+            float zoomDelta = Math.abs(currentZoom - targetZoom);
+            long duration = Math.min(800L, Math.max(500L, (long) (zoomDelta * 280L)));
+
+            final ValueAnimator transition = ValueAnimator.ofFloat(currentZoom, targetZoom);
             finishZoomTransition = transition;
             transition.addUpdateListener(animation -> {
                 if (aarRecorder == activeRecorder) {
@@ -4329,8 +4331,8 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     if (finishZoomTransition == animation) finishZoomTransition = null;
                 }
             });
-            transition.setDuration(350);
-            transition.setInterpolator(CubicBezierInterpolator.DEFAULT);
+            transition.setDuration(duration);
+            transition.setInterpolator(CubicBezierInterpolator.EASE_OUT);
             transition.start();
             return;
         }
