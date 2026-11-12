@@ -23,6 +23,7 @@
     <string name="RVExposureMode">Режим экспозиции</string>
     <string name="RVAeLock">Блокировка автоэкспозиции</string>
     <string name="RVAwbLock">Блокировка автобаланса белого</string>
+    <string name="RVFaceAwareMetering">Экспозиция и фокус по лицу</string>
     <string name="RVExposureSteps">Поправка экспозиции</string>
     <string name="RVAwb">Баланс белого</string>
     <string name="RVFocus">Фокусировка</string>
@@ -58,6 +59,7 @@
     <string name="RVDescExposureMode">Автоматическое или ручное управление экспозицией.</string>
     <string name="RVDescAeLock">Не даёт яркости меняться во время записи.</string>
     <string name="RVDescAwbLock">Не даёт цветам меняться во время записи.</string>
+    <string name="RVDescFaceAwareMetering">Наводит экспозицию и фокус на обнаруженное лицо, а не на весь кадр. Требует поддержки обнаружения лиц и зон экспозиции/фокуса на обеих камерах.</string>
     <string name="RVDescExposureSteps">Делает автоэкспозицию светлее или темнее.</string>
     <string name="RVDescAwb">Подстраивает цвета под освещение.</string>
     <string name="RVDescFocus">Определяет, как камера наводит резкость.</string>

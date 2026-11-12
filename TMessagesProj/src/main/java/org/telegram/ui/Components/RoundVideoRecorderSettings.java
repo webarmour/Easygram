@@ -68,11 +68,13 @@ public final class RoundVideoRecorderSettings {
     private static final String MAX_DURATION = "max_duration_seconds";
     public static final String ENABLE_CONCURRENT_PREWARM = "enable_concurrent_prewarm";
     public static final String CONCURRENT_PREWARM_FPS = "concurrent_prewarm_fps";
+    public static final String FACE_AWARE_METERING = "face_aware_metering";
     private static final int DEFAULT_MAX_DURATION_SECONDS = 60;
     private static final int DEFAULT_RECORDING_START_DELAY_MS = 200;
     private static final int MAX_RECORDING_START_DELAY_MS = 2000;
     public static final boolean DEFAULT_ENABLE_CONCURRENT_PREWARM = false;
     public static final int DEFAULT_CONCURRENT_PREWARM_FPS = 30;
+    public static final boolean DEFAULT_FACE_AWARE_METERING = true;
 
     // Defaults for new Easygram installs (existing SharedPreferences always take precedence).
     // Resetting CustomRecorder options also returns to these defaults.
@@ -157,6 +159,7 @@ public final class RoundVideoRecorderSettings {
                     if (!p.contains(MAX_DURATION)) e.putInt(MAX_DURATION, DEFAULT_MAX_DURATION_SECONDS);
                     if (!p.contains(ENABLE_CONCURRENT_PREWARM)) e.putBoolean(ENABLE_CONCURRENT_PREWARM, DEFAULT_ENABLE_CONCURRENT_PREWARM);
                     if (!p.contains(CONCURRENT_PREWARM_FPS)) e.putInt(CONCURRENT_PREWARM_FPS, DEFAULT_CONCURRENT_PREWARM_FPS);
+                    if (!p.contains(FACE_AWARE_METERING)) e.putBoolean(FACE_AWARE_METERING, DEFAULT_FACE_AWARE_METERING);
                     e.putBoolean("easygram_native_defaults_initialized_v1", true).apply();
                 }
             }
@@ -308,7 +311,8 @@ public final class RoundVideoRecorderSettings {
                 false, // Never bake a circular mask into the MP4: Telegram clips the preview itself.
                 d.getHidePreviewUntilRecording(),
                 d.getAudioSampleRate(),
-                p.getInt(AUDIO_BITRATE, DEFAULT_AUDIO_BITRATE)
+                p.getInt(AUDIO_BITRATE, DEFAULT_AUDIO_BITRATE),
+                p.getBoolean(FACE_AWARE_METERING, DEFAULT_FACE_AWARE_METERING)
         ));
     }
 

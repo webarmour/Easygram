@@ -26,6 +26,7 @@
     <string name="RVExposureMode">Exposure mode</string>
     <string name="RVAeLock">Lock auto exposure</string>
     <string name="RVAwbLock">Lock auto white balance</string>
+    <string name="RVFaceAwareMetering">Face-aware exposure and focus</string>
     <string name="RVExposureSteps">Exposure compensation</string>
     <string name="RVAwb">White balance</string>
     <string name="RVFocus">Focus</string>
@@ -61,6 +62,7 @@
     <string name="RVDescExposureMode">Choose automatic or manual exposure control.</string>
     <string name="RVDescAeLock">Keep exposure from changing while recording.</string>
     <string name="RVDescAwbLock">Keep colors from shifting while recording.</string>
+    <string name="RVDescFaceAwareMetering">Meters exposure and focus on the detected face instead of the whole frame. Needs face detection and exposure/focus regions supported by both cameras.</string>
     <string name="RVDescExposureSteps">Make automatic exposure brighter or darker.</string>
     <string name="RVDescAwb">Adjust colors for the lighting.</string>
     <string name="RVDescFocus">Choose how the camera focuses.</string>

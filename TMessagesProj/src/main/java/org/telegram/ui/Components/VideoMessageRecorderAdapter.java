@@ -59,6 +59,10 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
     private final Handler main = new Handler(Looper.getMainLooper());
     private VideoMessageRecorder recorder;
     private Surface surface;
+    // Consumed by the next startRecording() call only; a later resume segment after a pause
+    // falls back to the library's own temp file so VideoMessageSegmentMerger still has a plain
+    // file to merge against. Call setNextOutputFile() again before each first segment.
+    private File pendingOutputFile;
     private boolean pendingStart;
     private boolean startRequested;
     private boolean recordStarted;
@@ -101,7 +105,9 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
         }
         pendingStart = false;
         startRequested = true;
-        recorder.startRecording();
+        File outputFile = pendingOutputFile;
+        pendingOutputFile = null;
+        recorder.startRecording(outputFile);
     };
 
     private void scheduleRecordingStartIfReady() {
@@ -119,6 +125,17 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
         this.applicationContext = context.getApplicationContext();
         this.preview = preview;
         this.listener = listener;
+    }
+
+    /**
+     * Writes the very next startRecording() directly to {@code file} instead of the library's
+     * own cache temp file, avoiding a host-side copy. Must be called before {@link #startSession()}
+     * for the first segment of a recording; do not call it again before a post-pause resume, so
+     * that segment keeps using a plain temp file for {@code VideoMessageSegmentMerger}.
+     */
+    public void setNextOutputFile(File file) {
+        requireMainThread();
+        pendingOutputFile = file;
     }
 
     /**

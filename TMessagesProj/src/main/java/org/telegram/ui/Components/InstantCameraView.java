@@ -1333,6 +1333,10 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                         startAnimation(false, false);
                     }
                 });
+        // First segment only: write straight to the final destination and skip the host-side
+        // copy in finishAarRecording(). A later resume after a pause leaves this unset, so that
+        // segment still lands in a plain temp file for VideoMessageSegmentMerger to merge against.
+        aarRecorder.setNextOutputFile(cameraFile);
         aarRecorder.startSession();
     }
 

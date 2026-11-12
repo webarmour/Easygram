@@ -19,6 +19,9 @@ import java.util.List;
 public final class RoundVideoCameraSupport {
     private final List<CameraCharacteristics> cameras = new ArrayList<>(2);
     private final boolean prewarmAvailable;
+    // Default to unsupported: matches this class's "unknown hardware capability = unsupported"
+    // policy if an exception below leaves this unset.
+    private boolean faceMeteringAvailable = false;
 
     public RoundVideoCameraSupport(Context context) {
         boolean canPrewarm = false;
@@ -61,9 +64,33 @@ public final class RoundVideoCameraSupport {
             }
             if (front != null) cameras.add(front);
             if (rear != null) cameras.add(rear);
+            boolean faceMetering = !cameras.isEmpty();
+            for (CameraCharacteristics c : cameras) {
+                if (!faceMeteringSupportedOnCamera(c)) {
+                    faceMetering = false;
+                    break;
+                }
+            }
+            this.faceMeteringAvailable = faceMetering;
         } catch (CameraAccessException | SecurityException | IllegalArgumentException error) {
             cameras.clear();
         }
+    }
+
+    /**
+     * Mirrors the library's own FaceMeteringTracker.supported check: face detection plus at
+     * least one AE or AF metering region, all explicitly advertised by the camera.
+     */
+    private static boolean faceMeteringSupportedOnCamera(CameraCharacteristics c) {
+        boolean hasSimpleFaceDetect = has(
+                c.get(CameraCharacteristics.STATISTICS_INFO_AVAILABLE_FACE_DETECT_MODES),
+                CameraMetadata.STATISTICS_FACE_DETECT_MODE_SIMPLE);
+        Integer maxFaceCount = c.get(CameraCharacteristics.STATISTICS_INFO_MAX_FACE_COUNT);
+        Integer maxAeRegions = c.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AE);
+        Integer maxAfRegions = c.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AF);
+        return hasSimpleFaceDetect
+                && maxFaceCount != null && maxFaceCount > 0
+                && ((maxAeRegions != null && maxAeRegions > 0) || (maxAfRegions != null && maxAfRegions > 0));
     }
 
     private static float focalLengthScore(CameraCharacteristics c) {
@@ -81,9 +108,16 @@ public final class RoundVideoCameraSupport {
         return prewarmAvailable;
     }
 
+    public boolean isFaceMeteringAvailable() {
+        return faceMeteringAvailable;
+    }
+
     public boolean rowAvailable(String key) {
         if ("enable_concurrent_prewarm".equals(key) || "concurrent_prewarm_fps".equals(key)) {
             return isPrewarmAvailable();
+        }
+        if ("face_aware_metering".equals(key)) {
+            return isFaceMeteringAvailable();
         }
         if (cameras.isEmpty()) return false;
         switch (key) {

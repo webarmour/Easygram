@@ -62,6 +62,7 @@ public class RoundVideoSettingsActivity extends BaseFragment {
     private static final String REMEMBER_LAST_CAMERA = "remember_last_camera";
     private static final String ENABLE_CONCURRENT_PREWARM = "enable_concurrent_prewarm";
     private static final String CONCURRENT_PREWARM_FPS = "concurrent_prewarm_fps";
+    private static final String FACE_AWARE_METERING = "face_aware_metering";
     private static final String QUALITY = "quality";
     private static final String FPS = "fps";
     private static final String BITRATE = "bitrate";
@@ -160,6 +161,7 @@ public class RoundVideoSettingsActivity extends BaseFragment {
             case EXPOSURE_MODE: return R.string.RVDescExposureMode;
             case AE_LOCK: return R.string.RVDescAeLock;
             case AWB_LOCK: return R.string.RVDescAwbLock;
+            case FACE_AWARE_METERING: return R.string.RVDescFaceAwareMetering;
             case EXPOSURE_STEPS: return R.string.RVDescExposureSteps;
             case AWB: return R.string.RVDescAwb;
             case FOCUS: return R.string.RVDescFocus;
@@ -209,6 +211,7 @@ public class RoundVideoSettingsActivity extends BaseFragment {
         addValue(EXPOSURE_MODE, getString(R.string.RVExposureMode));
         addCheck(AE_LOCK, getString(R.string.RVAeLock));
         addCheck(AWB_LOCK, getString(R.string.RVAwbLock));
+        addCheck(FACE_AWARE_METERING, getString(R.string.RVFaceAwareMetering));
         addValue(EXPOSURE_STEPS, getString(R.string.RVExposureSteps));
         addValue(AWB, getString(R.string.RVAwb));
         addValue(FOCUS, getString(R.string.RVFocus));
@@ -310,7 +313,7 @@ public class RoundVideoSettingsActivity extends BaseFragment {
         SharedPreferences p = prefs();
         String key = row.key;
         if (row.type == CHECK) {
-            boolean fallback = HOLD_FPS.equals(key);
+            boolean fallback = HOLD_FPS.equals(key) || FACE_AWARE_METERING.equals(key);
             p.edit().putBoolean(key, !p.getBoolean(key, fallback)).apply();
             refresh();
             return;
@@ -614,6 +617,7 @@ public class RoundVideoSettingsActivity extends BaseFragment {
             case AE_LOCK: return automaticConfig.getAeLock();
             case AWB_LOCK: return automaticConfig.getAwbLock();
             case ENABLE_CONCURRENT_PREWARM: return automaticConfig.getEnableConcurrentPrewarm();
+            case FACE_AWARE_METERING: return automaticConfig.getFaceAwareMetering();
             case REMEMBER_LAST_CAMERA: return RoundVideoRecorderSettings.rememberLastCamera(getParentActivity());
             default: return false;
         }

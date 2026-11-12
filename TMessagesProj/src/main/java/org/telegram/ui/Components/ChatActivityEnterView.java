@@ -3052,6 +3052,18 @@ public class ChatActivityEnterView extends FrameLayout implements
                 if (isLiveComment) return false;
                 createRecordCircle();
                 if (motionEvent.getAction() == MotionEvent.ACTION_DOWN) {
+                    // CUSTOM_RECORDER_PREWARM_V1: the dominant cost before the first recorded
+                    // frame is camera/codec capability discovery, not opening the camera device
+                    // itself (which still only happens after the existing 150ms hold-confirm
+                    // below, unchanged). Kick that discovery off on a background thread as soon
+                    // as the gesture starts; a quick tap that never reaches
+                    // recordAudioVideoRunnable wastes nothing beyond one short-lived thread.
+                    if (hasRecordVideo && isInVideoMode()) {
+                        try {
+                            io.github.webarmour.videomessagerecorder.VideoMessageRecorder.prewarm(getContext());
+                        } catch (Throwable ignored) {
+                        }
+                    }
                     if (recordCircle.isSendButtonVisible()) {
                         if (!hasRecordVideo || calledRecordRunnable) {
                             startedDraggingX = -1;
