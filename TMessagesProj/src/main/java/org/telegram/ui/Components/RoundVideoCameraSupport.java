@@ -22,6 +22,9 @@ public final class RoundVideoCameraSupport {
     // Default to unsupported: matches this class's "unknown hardware capability = unsupported"
     // policy if an exception below leaves this unset.
     private boolean faceMeteringAvailable = false;
+    // Stricter than faceMeteringAvailable: requires an actual AE region (not just AF), since
+    // that is specifically what CONTROL_AE_REGIONS face tracking needs.
+    private boolean faceExposureAvailable = false;
 
     public RoundVideoCameraSupport(Context context) {
         boolean canPrewarm = false;
@@ -48,6 +51,13 @@ public final class RoundVideoCameraSupport {
             for (String id : manager.getCameraIdList()) {
                 CameraCharacteristics c = manager.getCameraCharacteristics(id);
                 Integer facing = c.get(CameraCharacteristics.LENS_FACING);
+                Range<Integer>[] fpsRanges = c.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
+                android.util.Log.i("RoundVideoDiag", "CameraSupport cameraId=" + id
+                        + " facing=" + facing
+                        + " fpsRanges=" + java.util.Arrays.toString(fpsRanges)
+                        + " maxAeRegions=" + c.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AE)
+                        + " maxAfRegions=" + c.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AF)
+                        + " faceDetectModes=" + java.util.Arrays.toString(c.get(CameraCharacteristics.STATISTICS_INFO_AVAILABLE_FACE_DETECT_MODES)));
                 if (facing != null && facing == CameraMetadata.LENS_FACING_FRONT && front == null) front = c;
                 if (facing != null && facing == CameraMetadata.LENS_FACING_BACK) {
                     boolean logical = has(c.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES),
@@ -65,14 +75,29 @@ public final class RoundVideoCameraSupport {
             if (front != null) cameras.add(front);
             if (rear != null) cameras.add(rear);
             boolean faceMetering = !cameras.isEmpty();
+            boolean faceExposure = !cameras.isEmpty();
             for (CameraCharacteristics c : cameras) {
                 if (!faceMeteringSupportedOnCamera(c)) {
                     faceMetering = false;
-                    break;
+                }
+                if (!faceExposureSupportedOnCamera(c)) {
+                    faceExposure = false;
                 }
             }
             this.faceMeteringAvailable = faceMetering;
+            this.faceExposureAvailable = faceExposure;
+            android.util.Log.i("RoundVideoDiag", "CameraSupport summary: selectedCameras=" + cameras.size()
+                    + " prewarmAvailable=" + prewarmAvailable
+                    + " faceMeteringAvailable=" + faceMeteringAvailable
+                    + " faceExposureAvailable=" + faceExposureAvailable
+                    + " fps24=" + optionAvailable("fps", "24")
+                    + " fps30=" + optionAvailable("fps", "30")
+                    + " fps60=" + optionAvailable("fps", "60")
+                    + " hold_fps=" + optionAvailable("hold_fps", "true")
+                    + " zoom0.8=" + optionAvailable("zoom", "0.8")
+                    + " zoom1.0=" + optionAvailable("zoom", "1.0"));
         } catch (CameraAccessException | SecurityException | IllegalArgumentException error) {
+            android.util.Log.e("RoundVideoDiag", "CameraSupport init error", error);
             cameras.clear();
         }
     }
@@ -91,6 +116,18 @@ public final class RoundVideoCameraSupport {
         return hasSimpleFaceDetect
                 && maxFaceCount != null && maxFaceCount > 0
                 && ((maxAeRegions != null && maxAeRegions > 0) || (maxAfRegions != null && maxAfRegions > 0));
+    }
+
+    /** Like {@link #faceMeteringSupportedOnCamera}, but specifically requires an AE region. */
+    private static boolean faceExposureSupportedOnCamera(CameraCharacteristics c) {
+        boolean hasSimpleFaceDetect = has(
+                c.get(CameraCharacteristics.STATISTICS_INFO_AVAILABLE_FACE_DETECT_MODES),
+                CameraMetadata.STATISTICS_FACE_DETECT_MODE_SIMPLE);
+        Integer maxFaceCount = c.get(CameraCharacteristics.STATISTICS_INFO_MAX_FACE_COUNT);
+        Integer maxAeRegions = c.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AE);
+        return hasSimpleFaceDetect
+                && maxFaceCount != null && maxFaceCount > 0
+                && maxAeRegions != null && maxAeRegions > 0;
     }
 
     private static float focalLengthScore(CameraCharacteristics c) {
@@ -112,12 +149,45 @@ public final class RoundVideoCameraSupport {
         return faceMeteringAvailable;
     }
 
+    public boolean isFaceExposureAvailable() {
+        return faceExposureAvailable;
+    }
+
+    /**
+     * Returns true if every selected camera has an advertised AE target FPS range whose lower
+     * bound is at least {@code targetFps} (matching {@code CameraUtils.chooseVideoFpsRange} when
+     * {@code holdFpsInLowLight} is enabled).
+     */
+    public boolean canHoldFps(int targetFps) {
+        if (cameras.isEmpty()) return false;
+        for (CameraCharacteristics c : cameras) {
+            Range<Integer>[] ranges = c.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
+            if (ranges == null) return false;
+            boolean holdsOnCamera = false;
+            for (Range<Integer> range : ranges) {
+                if (range.getLower() != null && range.getLower() >= targetFps
+                        && range.getUpper() != null && range.getUpper() >= targetFps) {
+                    holdsOnCamera = true;
+                    break;
+                }
+            }
+            if (!holdsOnCamera) return false;
+        }
+        return true;
+    }
+
     public boolean rowAvailable(String key) {
-        if ("enable_concurrent_prewarm".equals(key) || "concurrent_prewarm_fps".equals(key)) {
+        if ("enable_concurrent_prewarm".equals(key)) {
             return isPrewarmAvailable();
+        }
+        if ("concurrent_prewarm_fps".equals(key)) {
+            return isPrewarmAvailable() && countSupported(key, new String[]{"15", "30", "60"}) > 1;
         }
         if ("face_aware_metering".equals(key)) {
             return isFaceMeteringAvailable();
+        }
+        if ("face_aware_exposure".equals(key)) {
+            return isFaceExposureAvailable();
         }
         if (cameras.isEmpty()) return false;
         switch (key) {
@@ -127,35 +197,47 @@ public final class RoundVideoCameraSupport {
             case "low_light_boost": return optionAvailable(key, "true");
             case "hold_fps": return optionAvailable(key, "true");
             case "ae_lock": case "awb_lock": return optionAvailable(key, "true");
-            case "exposure_steps": return optionAvailable(key, "-1") || optionAvailable(key, "1");
-            case "zoom": return optionAvailable(key, "1.2") || optionAvailable(key, "0.8");
+            case "exposure_steps":
+                return countSupported(key, new String[]{"-7", "-6", "-5", "-4", "-3", "-2", "-1", "0", "1", "2", "3"}) > 1;
+            case "zoom":
+                return countSupported(key, new String[]{"0.8", "1.0", "1.2", "1.5", "2.0"}) > 1;
+            case "rear_gl_zoom":
+                return countSupported("zoom", new String[]{"1.0", "1.2", "1.5", "2.0"}) > 1;
             case "manual_iso":
-                for (String iso : new String[]{"100", "200", "400", "800", "1600", "3200"})
-                    if (optionAvailable(key, iso)) return true;
-                return false;
+                return countSupported(key, new String[]{"100", "200", "400", "800", "1600", "3200"}) > 1;
             case "manual_exposure_us":
-                for (String us : new String[]{"1000", "2000", "4000", "8000", "10000", "16667", "33333"})
-                    if (optionAvailable(key, us)) return true;
-                return false;
-            case "manual_focus_distance": return optionAvailable(key, "0.5");
-            case "color_temperature_kelvin": return optionAvailable(key, "5000");
-            case "ae_priority": return optionAvailable(key, "ISO") || optionAvailable(key, "SHUTTER");
-            case "exposure_mode": return optionAvailable(key, "MANUAL");
+                return countSupported(key, new String[]{"1000", "2000", "4000", "8000", "10000", "16667", "33333"}) > 1;
+            case "manual_focus_distance":
+                return countSupported(key, new String[]{"0", "0.5", "1", "2", "5", "10"}) > 1;
+            case "color_temperature_kelvin":
+                return countSupported(key, new String[]{"2700", "3200", "4000", "5000", "5600", "6500", "7500"}) > 1;
+            case "ae_priority":
+                return countSupported(key, new String[]{"OFF", "ISO", "SHUTTER"}) > 1;
+            case "exposure_mode":
+                return countSupported(key, new String[]{"AUTO", "MANUAL"}) > 1;
             default:
                 String[] values = allModes(key);
                 if (values == null) return true; // Software-only settings.
-                int count = 0;
+                int explicitCount = 0;
                 for (String value : values) {
-                    if (optionAvailable(key, value) && ++count >= 2) return true;
+                    if ("OEM_DEFAULT".equals(value)) continue;
+                    if (optionAvailable(key, value) && ++explicitCount >= 2) return true;
                 }
                 return false;
         }
     }
 
-    private int countSupported(String key, String[] values) {
+    public int countSupported(String key, String[] values) {
         int count = 0;
         for (String value : values) if (optionAvailable(key, value)) count++;
         return count;
+    }
+
+    public String firstSupported(String key, String fallback, String... candidates) {
+        for (String candidate : candidates) {
+            if (optionAvailable(key, candidate)) return candidate;
+        }
+        return fallback;
     }
 
     /** Unknown/undisclosed hardware capabilities are treated as unsupported. */
@@ -187,11 +269,25 @@ public final class RoundVideoCameraSupport {
                     if (Math.min(supported.getWidth(), supported.getHeight()) >= size) return true;
                 return false;
             }
-            case "fps": {
+            case "fps":
+            case "concurrent_prewarm_fps": {
                 int requested = Integer.parseInt(value);
                 Range<Integer>[] ranges = c.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
                 if (ranges == null) return false;
-                for (Range<Integer> supported : ranges) if (supported.contains(requested)) return true;
+                boolean anyStandardUpper = false;
+                for (Range<Integer> supported : ranges) {
+                    Integer upper = supported.getUpper();
+                    if (upper == null) continue;
+                    if (upper == 15 || upper == 24 || upper == 30 || upper == 60) {
+                        anyStandardUpper = true;
+                    }
+                    if (upper == requested) return true;
+                }
+                if (!anyStandardUpper) {
+                    for (Range<Integer> supported : ranges) {
+                        if (supported.contains(requested)) return true;
+                    }
+                }
                 return false;
             }
             case "low_light_boost":

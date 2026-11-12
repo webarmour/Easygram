@@ -63,6 +63,7 @@ public class RoundVideoSettingsActivity extends BaseFragment {
     private static final String ENABLE_CONCURRENT_PREWARM = "enable_concurrent_prewarm";
     private static final String CONCURRENT_PREWARM_FPS = "concurrent_prewarm_fps";
     private static final String FACE_AWARE_METERING = "face_aware_metering";
+    private static final String FACE_AWARE_EXPOSURE = "face_aware_exposure";
     private static final String QUALITY = "quality";
     private static final String FPS = "fps";
     private static final String BITRATE = "bitrate";
@@ -162,6 +163,7 @@ public class RoundVideoSettingsActivity extends BaseFragment {
             case AE_LOCK: return R.string.RVDescAeLock;
             case AWB_LOCK: return R.string.RVDescAwbLock;
             case FACE_AWARE_METERING: return R.string.RVDescFaceAwareMetering;
+            case FACE_AWARE_EXPOSURE: return R.string.RVDescFaceAwareExposure;
             case EXPOSURE_STEPS: return R.string.RVDescExposureSteps;
             case AWB: return R.string.RVDescAwb;
             case FOCUS: return R.string.RVDescFocus;
@@ -212,6 +214,7 @@ public class RoundVideoSettingsActivity extends BaseFragment {
         addCheck(AE_LOCK, getString(R.string.RVAeLock));
         addCheck(AWB_LOCK, getString(R.string.RVAwbLock));
         addCheck(FACE_AWARE_METERING, getString(R.string.RVFaceAwareMetering));
+        addCheck(FACE_AWARE_EXPOSURE, getString(R.string.RVFaceAwareExposure));
         addValue(EXPOSURE_STEPS, getString(R.string.RVExposureSteps));
         addValue(AWB, getString(R.string.RVAwb));
         addValue(FOCUS, getString(R.string.RVFocus));
@@ -249,6 +252,9 @@ public class RoundVideoSettingsActivity extends BaseFragment {
     @Override
     public View createView(Context context) {
         cameraSupport = new RoundVideoCameraSupport(context);
+        // Ensure defaults exist and clamp any unsupported preferences to this device's capabilities.
+        RoundVideoRecorderSettings.recordingStartDelayMs(context);
+        RoundVideoRecorderSettings.sanitizePreferences(context, cameraSupport);
         createRows();
         actionBar.setBackButtonImage(R.drawable.ic_ab_back);
         actionBar.setAllowOverlayTitle(true);
@@ -283,22 +289,34 @@ public class RoundVideoSettingsActivity extends BaseFragment {
             return cameraSupport != null && cameraSupport.isPrewarmAvailable();
         }
         if (CONCURRENT_PREWARM_FPS.equals(row.key)) {
-            return cameraSupport != null && cameraSupport.isPrewarmAvailable()
+            return cameraSupport != null && cameraSupport.rowAvailable(CONCURRENT_PREWARM_FPS)
                     && prefs().getBoolean(ENABLE_CONCURRENT_PREWARM, false);
         }
-        boolean manualExposure = "MANUAL".equals(prefs().getString(EXPOSURE_MODE, "AUTO"));
+        SharedPreferences p = prefs();
+        int currentFps = p.getInt(FPS, 30);
+        if (HOLD_FPS.equals(row.key)) {
+            return cameraSupport != null && cameraSupport.canHoldFps(currentFps);
+        }
+        boolean manualExposure = "MANUAL".equals(p.getString(EXPOSURE_MODE, "AUTO"));
         if (manualExposure && (EXPOSURE_STEPS.equals(row.key) || AE_PRIORITY.equals(row.key)
-                || AE_LOCK.equals(row.key) || LOW_LIGHT_BOOST.equals(row.key))) return false;
-        if (LOW_LIGHT_BOOST.equals(row.key) && prefs().getInt(FPS, 60) > 30) return false;
-        if (AE_PRIORITY.equals(row.key) && prefs().getBoolean(LOW_LIGHT_BOOST, false)) return false;
-        String priority = prefs().getString(AE_PRIORITY, "OFF");
+                || AE_LOCK.equals(row.key) || LOW_LIGHT_BOOST.equals(row.key)
+                || FACE_AWARE_EXPOSURE.equals(row.key))) return false;
+        if (LOW_LIGHT_BOOST.equals(row.key) && currentFps > 30) return false;
+        if (AE_PRIORITY.equals(row.key) && p.getBoolean(LOW_LIGHT_BOOST, false)) return false;
+        String priority = p.getString(AE_PRIORITY, "OFF");
         if (MANUAL_ISO.equals(row.key) && !manualExposure && !"ISO".equals(priority)) return false;
         if (MANUAL_EXPOSURE_US.equals(row.key) && !manualExposure && !"SHUTTER".equals(priority)) return false;
-        if (AWB.equals(row.key) && "CCT".equals(prefs().getString(COLOR_CORRECTION, "HIGH_QUALITY"))) return false;
+        String colorCorrection = p.getString(COLOR_CORRECTION, "HIGH_QUALITY");
+        if ((AWB.equals(row.key) || AWB_LOCK.equals(row.key)) && "CCT".equals(colorCorrection)) return false;
         if (MANUAL_FOCUS_DISTANCE.equals(row.key)
-                && !"MANUAL".equals(prefs().getString(FOCUS, "CONTINUOUS_VIDEO"))) return false;
+                && !"MANUAL".equals(p.getString(FOCUS, "CONTINUOUS_VIDEO"))) return false;
         if (COLOR_TEMPERATURE.equals(row.key)
-                && !"CCT".equals(prefs().getString(COLOR_CORRECTION, "HIGH_QUALITY"))) return false;
+                && !"CCT".equals(colorCorrection)) return false;
+        // AE-by-face only has any effect while AF-by-face (the master face-detection switch) is
+        // also on and AE is not locked.
+        if (FACE_AWARE_EXPOSURE.equals(row.key)
+                && (!p.getBoolean(FACE_AWARE_METERING, RoundVideoRecorderSettings.DEFAULT_FACE_AWARE_METERING)
+                || p.getBoolean(AE_LOCK, false))) return false;
         return cameraSupport != null && cameraSupport.rowAvailable(row.key);
     }
 
@@ -314,7 +332,9 @@ public class RoundVideoSettingsActivity extends BaseFragment {
         String key = row.key;
         if (row.type == CHECK) {
             boolean fallback = HOLD_FPS.equals(key) || FACE_AWARE_METERING.equals(key);
+            if (FACE_AWARE_EXPOSURE.equals(key)) fallback = false;
             p.edit().putBoolean(key, !p.getBoolean(key, fallback)).apply();
+            RoundVideoRecorderSettings.sanitizePreferences(getParentActivity(), cameraSupport);
             refresh();
             return;
         }
@@ -447,18 +467,25 @@ public class RoundVideoSettingsActivity extends BaseFragment {
 
     private void choose(String key, String title, String[] labels, String[] values) {
         if (labels.length != values.length) throw new IllegalArgumentException("Unequal choices");
-        // Show unavailable values, but do not allow them to be persisted.
-        boolean[] supported = new boolean[values.length];
-        String[] display = labels.clone();
+        // Filter choices strictly to values supported on this device.
+        ArrayList<String> availableLabels = new ArrayList<>(labels.length);
+        ArrayList<String> availableValues = new ArrayList<>(values.length);
         for (int i = 0; i < values.length; i++) {
-            supported[i] = cameraSupport == null || cameraSupport.optionAvailable(key, values[i]);
-            if (!supported[i]) display[i] += getString(R.string.RVUnavailable);
+            if (cameraSupport == null || cameraSupport.optionAvailable(key, values[i])) {
+                availableLabels.add(labels[i]);
+                availableValues.add(values[i]);
+            }
         }
+        if (availableValues.size() <= 1 && !MODE.equals(key)) {
+            return;
+        }
+        String[] display = availableLabels.toArray(new String[0]);
+        String[] selectableValues = availableValues.toArray(new String[0]);
         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
         builder.setTitle(title);
         builder.setItems(display, (dialog, index) -> {
-            if (!supported[index]) return;
-            String selected = values[index];
+            if (index < 0 || index >= selectableValues.length) return;
+            String selected = selectableValues[index];
             SharedPreferences.Editor edit = prefs().edit();
             switch (key) {
                 case MODE:
@@ -480,13 +507,7 @@ public class RoundVideoSettingsActivity extends BaseFragment {
                     edit.putString(key, selected); break;
             }
             edit.apply();
-            if (QUALITY.equals(key) || BITRATE.equals(key)) {
-                int maximum = RoundVideoRecorderSettings.maxAllowedDurationSeconds(getParentActivity());
-                SharedPreferences current = prefs();
-                if (current.getInt(MAX_DURATION, 60) > maximum) {
-                    current.edit().putInt(MAX_DURATION, maximum).apply();
-                }
-            }
+            RoundVideoRecorderSettings.sanitizePreferences(getParentActivity(), cameraSupport);
             refresh();
         });
         showDialog(builder.create());
@@ -536,8 +557,9 @@ public class RoundVideoSettingsActivity extends BaseFragment {
         builder.setMessage(getString(R.string.RVResetInfo));
         builder.setPositiveButton(getString(R.string.RVResetAction), (dialog, which) -> {
             prefs().edit().clear().apply();
-            // Re-create defaults immediately, so UI and actual recording stay in sync.
+            // Re-create defaults immediately and clamp them to hardware capabilities.
             RoundVideoRecorderSettings.recordingStartDelayMs(getParentActivity());
+            RoundVideoRecorderSettings.sanitizePreferences(getParentActivity(), cameraSupport);
             refresh();
         });
         builder.setNegativeButton(getString(R.string.RVCancel), null);
@@ -610,7 +632,34 @@ public class RoundVideoSettingsActivity extends BaseFragment {
     }
 
     private boolean checkedFor(String key) {
-        if (!automatic()) return prefs().getBoolean(key, HOLD_FPS.equals(key));
+        if (!automatic()) {
+            SharedPreferences p = prefs();
+            if (ENABLE_CONCURRENT_PREWARM.equals(key) && (cameraSupport == null || !cameraSupport.isPrewarmAvailable())) {
+                return false;
+            }
+            if (FACE_AWARE_METERING.equals(key) && (cameraSupport == null || !cameraSupport.isFaceMeteringAvailable())) {
+                return false;
+            }
+            if (FACE_AWARE_EXPOSURE.equals(key) && (cameraSupport == null || !cameraSupport.isFaceExposureAvailable()
+                    || !p.getBoolean(FACE_AWARE_METERING, RoundVideoRecorderSettings.DEFAULT_FACE_AWARE_METERING))) {
+                return false;
+            }
+            if (HOLD_FPS.equals(key) && (cameraSupport == null || !cameraSupport.canHoldFps(p.getInt(FPS, 30)))) {
+                return false;
+            }
+            if (LOW_LIGHT_BOOST.equals(key) && (cameraSupport == null || !cameraSupport.optionAvailable(LOW_LIGHT_BOOST, "true")
+                    || p.getInt(FPS, 30) > 30)) {
+                return false;
+            }
+            if ((AE_LOCK.equals(key) || AWB_LOCK.equals(key)) && (cameraSupport == null || !cameraSupport.optionAvailable(key, "true"))) {
+                return false;
+            }
+            if (REAR_GL_ZOOM.equals(key) && (cameraSupport == null || !cameraSupport.rowAvailable(REAR_GL_ZOOM))) {
+                return false;
+            }
+            boolean fallback = HOLD_FPS.equals(key) || FACE_AWARE_METERING.equals(key);
+            return p.getBoolean(key, fallback);
+        }
         switch (key) {
             case HOLD_FPS: return automaticConfig.getHoldFpsInLowLight();
             case LOW_LIGHT_BOOST: return automaticConfig.getLowLightBoost();
@@ -618,6 +667,7 @@ public class RoundVideoSettingsActivity extends BaseFragment {
             case AWB_LOCK: return automaticConfig.getAwbLock();
             case ENABLE_CONCURRENT_PREWARM: return automaticConfig.getEnableConcurrentPrewarm();
             case FACE_AWARE_METERING: return automaticConfig.getFaceAwareMetering();
+            case FACE_AWARE_EXPOSURE: return automaticConfig.getFaceAwareExposure();
             case REMEMBER_LAST_CAMERA: return RoundVideoRecorderSettings.rememberLastCamera(getParentActivity());
             default: return false;
         }

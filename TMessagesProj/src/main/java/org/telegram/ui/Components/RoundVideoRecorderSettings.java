@@ -69,12 +69,14 @@ public final class RoundVideoRecorderSettings {
     public static final String ENABLE_CONCURRENT_PREWARM = "enable_concurrent_prewarm";
     public static final String CONCURRENT_PREWARM_FPS = "concurrent_prewarm_fps";
     public static final String FACE_AWARE_METERING = "face_aware_metering";
+    public static final String FACE_AWARE_EXPOSURE = "face_aware_exposure";
     private static final int DEFAULT_MAX_DURATION_SECONDS = 60;
     private static final int DEFAULT_RECORDING_START_DELAY_MS = 200;
     private static final int MAX_RECORDING_START_DELAY_MS = 2000;
     public static final boolean DEFAULT_ENABLE_CONCURRENT_PREWARM = false;
     public static final int DEFAULT_CONCURRENT_PREWARM_FPS = 30;
     public static final boolean DEFAULT_FACE_AWARE_METERING = true;
+    public static final boolean DEFAULT_FACE_AWARE_EXPOSURE = false;
 
     // Defaults for new Easygram installs (existing SharedPreferences always take precedence).
     // Resetting CustomRecorder options also returns to these defaults.
@@ -136,7 +138,7 @@ public final class RoundVideoRecorderSettings {
                     SharedPreferences.Editor e = p.edit();
                     if (!p.contains(RECORDER)) e.putBoolean(RECORDER, true);
                     if (!p.contains(MODE)) e.putBoolean(MODE, true);
-                    if (!p.contains(QUALITY)) e.putString(QUALITY, "TELEGRAM_NOTE_MAX");
+                    if (!p.contains(QUALITY)) e.putString(QUALITY, "MAX");
                     if (!p.contains(FPS)) e.putInt(FPS, 60);
                     if (!p.contains(BITRATE)) e.putInt(BITRATE, 2_000_000);
                     if (!p.contains(HOLD_FPS)) e.putBoolean(HOLD_FPS, true);
@@ -160,11 +162,245 @@ public final class RoundVideoRecorderSettings {
                     if (!p.contains(ENABLE_CONCURRENT_PREWARM)) e.putBoolean(ENABLE_CONCURRENT_PREWARM, DEFAULT_ENABLE_CONCURRENT_PREWARM);
                     if (!p.contains(CONCURRENT_PREWARM_FPS)) e.putInt(CONCURRENT_PREWARM_FPS, DEFAULT_CONCURRENT_PREWARM_FPS);
                     if (!p.contains(FACE_AWARE_METERING)) e.putBoolean(FACE_AWARE_METERING, DEFAULT_FACE_AWARE_METERING);
+                    if (!p.contains(FACE_AWARE_EXPOSURE)) e.putBoolean(FACE_AWARE_EXPOSURE, DEFAULT_FACE_AWARE_EXPOSURE);
                     e.putBoolean("easygram_native_defaults_initialized_v1", true).apply();
                 }
             }
+            sanitizePreferences(c, new RoundVideoCameraSupport(c));
         }
         return p;
+    }
+
+    private static int nearestSupportedInt(RoundVideoCameraSupport support, String key, int current, int fallback, int[] candidates) {
+        if (support.optionAvailable(key, Integer.toString(current))) return current;
+        Integer best = null;
+        int bestDiff = Integer.MAX_VALUE;
+        for (int candidate : candidates) {
+            if (support.optionAvailable(key, Integer.toString(candidate))) {
+                int diff = Math.abs(candidate - current);
+                if (diff < bestDiff) {
+                    bestDiff = diff;
+                    best = candidate;
+                }
+            }
+        }
+        return best != null ? best : fallback;
+    }
+
+    private static String sanitizeMode(RoundVideoCameraSupport support, String key, String current, String inactiveFallback, String... activeFallbacks) {
+        if (!support.rowAvailable(key)) {
+            return support.optionAvailable(key, inactiveFallback) ? inactiveFallback : "OEM_DEFAULT";
+        }
+        if (current != null && support.optionAvailable(key, current)) {
+            return current;
+        }
+        return support.firstSupported(key, "OEM_DEFAULT", activeFallbacks);
+    }
+
+    /**
+     * Validates all stored preferences against the device's actual Camera2 capabilities, clamping
+     * unsupported values into the supported range and turning off unavailable switches.
+     */
+    public static void sanitizePreferences(Context context, RoundVideoCameraSupport support) {
+        if (context == null || support == null) return;
+        SharedPreferences p = context.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        SharedPreferences.Editor edit = p.edit();
+
+        String rawQuality = p.getString(QUALITY, DEFAULT_QUALITY);
+        String normalizedQuality = rawQuality;
+        if ("TELEGRAM".equals(rawQuality)) normalizedQuality = "DEFAULT_TELEGRAM";
+        else if ("IPHONE_LIKE".equals(rawQuality)) normalizedQuality = "MEDIUM";
+        else if ("TELEGRAM_NOTE_MAX".equals(rawQuality) || "QHD".equals(rawQuality)) normalizedQuality = "MAX";
+        if (normalizedQuality == null || !support.optionAvailable(QUALITY, normalizedQuality)) {
+            normalizedQuality = support.firstSupported(QUALITY, "MAX",
+                    "MAX", "HIGH", "MEDIUM", "DEFAULT_TELEGRAM", "COMPACT");
+        }
+        if (!normalizedQuality.equals(rawQuality)) {
+            edit.putString(QUALITY, normalizedQuality);
+        }
+
+        int fps = p.getInt(FPS, DEFAULT_FPS);
+        if (!support.optionAvailable(FPS, Integer.toString(fps))) {
+            fps = Integer.parseInt(support.firstSupported(FPS, "30", "60", "30", "24"));
+            edit.putInt(FPS, fps);
+        }
+
+        boolean holdFps = p.getBoolean(HOLD_FPS, DEFAULT_HOLD_FPS);
+        if (holdFps && !support.canHoldFps(fps)) {
+            holdFps = false;
+            edit.putBoolean(HOLD_FPS, false);
+        }
+
+        boolean enablePrewarm = p.getBoolean(ENABLE_CONCURRENT_PREWARM, DEFAULT_ENABLE_CONCURRENT_PREWARM);
+        if (enablePrewarm && !support.isPrewarmAvailable()) {
+            enablePrewarm = false;
+            edit.putBoolean(ENABLE_CONCURRENT_PREWARM, false);
+        }
+
+        int prewarmFps = DEFAULT_CONCURRENT_PREWARM_FPS;
+        try {
+            prewarmFps = p.getInt(CONCURRENT_PREWARM_FPS, DEFAULT_CONCURRENT_PREWARM_FPS);
+        } catch (Exception e) {
+            try {
+                prewarmFps = Integer.parseInt(p.getString(CONCURRENT_PREWARM_FPS, "30"));
+            } catch (Exception ignore) {}
+        }
+        if (!support.optionAvailable(CONCURRENT_PREWARM_FPS, Integer.toString(prewarmFps))) {
+            prewarmFps = Integer.parseInt(support.firstSupported(CONCURRENT_PREWARM_FPS, "30", "30", "15", "60"));
+        }
+        edit.putInt(CONCURRENT_PREWARM_FPS, prewarmFps);
+
+        String exposureMode = p.getString(EXPOSURE_MODE, "AUTO");
+        if (exposureMode == null || !support.optionAvailable(EXPOSURE_MODE, exposureMode)) {
+            exposureMode = "AUTO";
+            edit.putString(EXPOSURE_MODE, exposureMode);
+        }
+        boolean manualExposure = "MANUAL".equals(exposureMode);
+
+        boolean lowLight = p.getBoolean(LOW_LIGHT_BOOST, DEFAULT_LOW_LIGHT_BOOST);
+        if (lowLight && (manualExposure || fps > 30 || !support.optionAvailable(LOW_LIGHT_BOOST, "true"))) {
+            lowLight = false;
+            edit.putBoolean(LOW_LIGHT_BOOST, false);
+        }
+
+        String aePriority = p.getString(AE_PRIORITY, DEFAULT_AE_PRIORITY.name());
+        if (aePriority == null || manualExposure || lowLight || !support.optionAvailable(AE_PRIORITY, aePriority)) {
+            aePriority = "OFF";
+            edit.putString(AE_PRIORITY, aePriority);
+        }
+
+        boolean aeLock = p.getBoolean(AE_LOCK, false);
+        if (aeLock && (manualExposure || !support.optionAvailable(AE_LOCK, "true"))) {
+            aeLock = false;
+            edit.putBoolean(AE_LOCK, false);
+        }
+
+        String colorCorrection = sanitizeMode(support, COLOR_CORRECTION,
+                p.getString(COLOR_CORRECTION, DEFAULT_COLOR_CORRECTION.name()),
+                "OEM_DEFAULT", "HIGH_QUALITY", "FAST", "OEM_DEFAULT", "CCT");
+        edit.putString(COLOR_CORRECTION, colorCorrection);
+
+        boolean awbLock = p.getBoolean(AWB_LOCK, false);
+        if (awbLock && ("CCT".equals(colorCorrection) || !support.optionAvailable(AWB_LOCK, "true"))) {
+            awbLock = false;
+            edit.putBoolean(AWB_LOCK, false);
+        }
+
+        boolean faceMetering = p.getBoolean(FACE_AWARE_METERING, DEFAULT_FACE_AWARE_METERING);
+        if (faceMetering && !support.isFaceMeteringAvailable()) {
+            faceMetering = false;
+            edit.putBoolean(FACE_AWARE_METERING, false);
+        }
+
+        boolean faceExposure = p.getBoolean(FACE_AWARE_EXPOSURE, DEFAULT_FACE_AWARE_EXPOSURE);
+        if (faceExposure && (!faceMetering || !support.isFaceExposureAvailable() || manualExposure || aeLock)) {
+            faceExposure = false;
+            edit.putBoolean(FACE_AWARE_EXPOSURE, false);
+        }
+
+        int steps = p.getInt(EXPOSURE_STEPS, DEFAULT_EXPOSURE_STEPS);
+        int validSteps = nearestSupportedInt(support, EXPOSURE_STEPS, steps, 0,
+                new int[]{-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3});
+        if (validSteps != steps) {
+            edit.putInt(EXPOSURE_STEPS, validSteps);
+        }
+
+        String awb = p.getString(AWB, DEFAULT_AWB.name());
+        if (awb == null || !support.optionAvailable(AWB, awb)) {
+            awb = support.firstSupported(AWB, "AUTO",
+                    "AUTO", "DAYLIGHT", "CLOUDY_DAYLIGHT", "INCANDESCENT", "FLUORESCENT", "WARM_FLUORESCENT", "TWILIGHT", "SHADE");
+            edit.putString(AWB, awb);
+        }
+
+        String focus = p.getString(FOCUS, DEFAULT_FOCUS.name());
+        if (focus == null || !support.optionAvailable(FOCUS, focus)) {
+            focus = support.firstSupported(FOCUS, "CONTINUOUS_VIDEO", "CONTINUOUS_VIDEO", "AUTO", "MANUAL");
+            edit.putString(FOCUS, focus);
+        }
+
+        int iso = p.getInt(MANUAL_ISO, 400);
+        int validIso = nearestSupportedInt(support, MANUAL_ISO, iso, 400,
+                new int[]{100, 200, 400, 800, 1600, 3200});
+        if (validIso != iso) {
+            edit.putInt(MANUAL_ISO, validIso);
+        }
+
+        int shutterUs = p.getInt(MANUAL_EXPOSURE_US, 10000);
+        int validShutterUs = nearestSupportedInt(support, MANUAL_EXPOSURE_US, shutterUs, 10000,
+                new int[]{1000, 2000, 4000, 8000, 10000, 16667, 33333});
+        if (validShutterUs != shutterUs) {
+            edit.putInt(MANUAL_EXPOSURE_US, validShutterUs);
+        }
+
+        float focusDist = Float.intBitsToFloat(p.getInt(MANUAL_FOCUS_DISTANCE, Float.floatToIntBits(0f)));
+        String focusDistStr = focusDist == (int) focusDist
+                ? Integer.toString((int) focusDist)
+                : String.format(java.util.Locale.US, "%.1f", focusDist);
+        if (!support.optionAvailable(MANUAL_FOCUS_DISTANCE, focusDistStr)) {
+            float validFocusDist = Float.parseFloat(support.firstSupported(
+                    MANUAL_FOCUS_DISTANCE, "0", "0", "0.5", "1", "2", "5", "10"));
+            edit.putInt(MANUAL_FOCUS_DISTANCE, Float.floatToIntBits(validFocusDist));
+        }
+
+        String antibanding = p.getString(ANTIBANDING, DEFAULT_ANTIBANDING.name());
+        if (antibanding == null || !support.optionAvailable(ANTIBANDING, antibanding)) {
+            antibanding = support.firstSupported(ANTIBANDING, "AUTO", "AUTO", "HZ_50", "HZ_60", "OFF");
+            edit.putString(ANTIBANDING, antibanding);
+        }
+
+        float zoom = Float.intBitsToFloat(p.getInt(ZOOM, Float.floatToIntBits(DEFAULT_ZOOM)));
+        String zoomStr = String.format(java.util.Locale.US, "%.1f", zoom);
+        if (!support.optionAvailable(ZOOM, zoomStr)) {
+            float validZoom = Float.parseFloat(support.firstSupported(
+                    ZOOM, "1.0", "1.0", "0.8", "1.2", "1.5", "2.0"));
+            edit.putInt(ZOOM, Float.floatToIntBits(validZoom));
+        }
+
+        if (p.getBoolean(REAR_GL_ZOOM, false) && !support.rowAvailable(REAR_GL_ZOOM)) {
+            edit.putBoolean(REAR_GL_ZOOM, false);
+        }
+
+        edit.putString(NOISE, sanitizeMode(support, NOISE,
+                p.getString(NOISE, DEFAULT_NOISE.name()),
+                "OFF", "OFF", "MINIMAL", "FAST", "HIGH_QUALITY", "OEM_DEFAULT"));
+        edit.putString(STABILIZATION, sanitizeMode(support, STABILIZATION,
+                p.getString(STABILIZATION, DEFAULT_STABILIZATION.name()),
+                "OFF", "OEM_DEFAULT", "VIDEO", "PREVIEW", "OFF"));
+        edit.putString(OPTICAL_STABILIZATION, sanitizeMode(support, OPTICAL_STABILIZATION,
+                p.getString(OPTICAL_STABILIZATION, DEFAULT_OPTICAL_STABILIZATION.name()),
+                "OFF", "ON", "OFF", "OEM_DEFAULT"));
+        edit.putString(EDGE, sanitizeMode(support, EDGE,
+                p.getString(EDGE, DEFAULT_EDGE.name()),
+                "OEM_DEFAULT", "HIGH_QUALITY", "FAST", "OFF", "OEM_DEFAULT"));
+        edit.putString(TONEMAP, sanitizeMode(support, TONEMAP,
+                p.getString(TONEMAP, DEFAULT_TONEMAP.name()),
+                "OEM_DEFAULT", "HIGH_QUALITY", "FAST", "OEM_DEFAULT"));
+        edit.putString(HOT_PIXEL, sanitizeMode(support, HOT_PIXEL,
+                p.getString(HOT_PIXEL, "FAST"),
+                "OEM_DEFAULT", "FAST", "HIGH_QUALITY", "OFF", "OEM_DEFAULT"));
+        edit.putString(SHADING, sanitizeMode(support, SHADING,
+                p.getString(SHADING, "FAST"),
+                "OEM_DEFAULT", "FAST", "HIGH_QUALITY", "OFF", "OEM_DEFAULT"));
+        edit.putString(DISTORTION, sanitizeMode(support, DISTORTION,
+                p.getString(DISTORTION, "FAST"),
+                "OFF", "FAST", "HIGH_QUALITY", "OFF", "OEM_DEFAULT"));
+        edit.putString(ABERRATION, sanitizeMode(support, ABERRATION,
+                p.getString(ABERRATION, "FAST"),
+                "OEM_DEFAULT", "FAST", "HIGH_QUALITY", "OFF", "OEM_DEFAULT"));
+
+        int kelvin = p.getInt(COLOR_TEMPERATURE, 5000);
+        int validKelvin = nearestSupportedInt(support, COLOR_TEMPERATURE, kelvin, 5000,
+                new int[]{2700, 3200, 4000, 5000, 5600, 6500, 7500});
+        if (validKelvin != kelvin) {
+            edit.putInt(COLOR_TEMPERATURE, validKelvin);
+        }
+
+        edit.apply();
+
+        int maxAllowed = maxAllowedDurationSeconds(context);
+        if (p.getInt(MAX_DURATION, DEFAULT_MAX_DURATION_SECONDS) > maxAllowed) {
+            p.edit().putInt(MAX_DURATION, maxAllowed).apply();
+        }
     }
 
     /** CustomRecorder is the only selectable video-note recorder on Android 9+.
@@ -228,8 +464,19 @@ public final class RoundVideoRecorderSettings {
     }
 
     public static RecordingMode recordingMode(Context context) {
+        RoundVideoCameraSupport support = new RoundVideoCameraSupport(context);
         SharedPreferences p = prefs(context);
-        if (!p.getBoolean(MODE, DEFAULT_MANUAL_MODE)) return RecordingMode.Auto.INSTANCE;
+        sanitizePreferences(context, support);
+        boolean manualMode = p.getBoolean(MODE, DEFAULT_MANUAL_MODE);
+        android.util.Log.i("RoundVideoDiag", "prefs dump: mode(manual)=" + manualMode
+                + " allPrefs=" + p.getAll()
+                + " startDelayMs=" + recordingStartDelayMs(context)
+                + " maxDurationSec=" + maxRecordingDurationSeconds(context));
+        if (!manualMode) {
+            RecordingConfig autoCfg = RecordingMode.Auto.INSTANCE.getPreferredConfig();
+            android.util.Log.i("RoundVideoDiag", "recordingMode=AUTO preferredConfig=" + autoCfg);
+            return RecordingMode.Auto.INSTANCE;
+        }
 
         RecordingConfig d = new RecordingConfig();
         String storedQuality = p.getString(QUALITY, DEFAULT_QUALITY);
@@ -261,27 +508,39 @@ public final class RoundVideoRecorderSettings {
         ExposureMode exposureMode = fromPref(p, EXPOSURE_MODE, ExposureMode.class, d.getExposureMode());
         FocusSetting focus = fromPref(p, FOCUS, FocusSetting.class, DEFAULT_FOCUS);
 
-        boolean enablePrewarm = p.getBoolean(ENABLE_CONCURRENT_PREWARM, DEFAULT_ENABLE_CONCURRENT_PREWARM);
-        int prewarmFps = DEFAULT_CONCURRENT_PREWARM_FPS;
-        try {
-            prewarmFps = p.getInt(CONCURRENT_PREWARM_FPS, DEFAULT_CONCURRENT_PREWARM_FPS);
-        } catch (Exception e) {
-            try {
-                prewarmFps = Integer.parseInt(p.getString(CONCURRENT_PREWARM_FPS, "30"));
-            } catch (Exception ignore) {}
-            p.edit().putInt(CONCURRENT_PREWARM_FPS, prewarmFps).apply();
-        }
+        boolean enablePrewarm = p.getBoolean(ENABLE_CONCURRENT_PREWARM, DEFAULT_ENABLE_CONCURRENT_PREWARM)
+                && support.isPrewarmAvailable();
+        int prewarmFps = p.getInt(CONCURRENT_PREWARM_FPS, DEFAULT_CONCURRENT_PREWARM_FPS);
 
-        return new RecordingMode.Custom(new RecordingConfig(
+        int requestedFps = p.getInt(FPS, DEFAULT_FPS);
+        boolean requestedHoldFps = p.getBoolean(HOLD_FPS, DEFAULT_HOLD_FPS) && support.canHoldFps(requestedFps);
+        float requestedZoom = Float.intBitsToFloat(p.getInt(ZOOM, Float.floatToIntBits(DEFAULT_ZOOM)));
+        boolean faceMetering = p.getBoolean(FACE_AWARE_METERING, DEFAULT_FACE_AWARE_METERING)
+                && support.isFaceMeteringAvailable();
+        boolean faceExposure = p.getBoolean(FACE_AWARE_EXPOSURE, DEFAULT_FACE_AWARE_EXPOSURE)
+                && faceMetering && support.isFaceExposureAvailable();
+
+        android.util.Log.i("RoundVideoDiag", "recordingMode=CUSTOM check vs hardware:"
+                + " storedQuality=" + storedQuality + " -> " + quality + " (supported=" + support.optionAvailable("quality", storedQuality != null ? storedQuality : "MAX") + ")"
+                + " requestedFps=" + requestedFps + " (supported=" + support.optionAvailable("fps", Integer.toString(requestedFps)) + ")"
+                + " holdFps=" + requestedHoldFps + " (supported=" + support.canHoldFps(requestedFps) + ")"
+                + " requestedZoom=" + requestedZoom + " (supported=" + support.optionAvailable("zoom", String.format(java.util.Locale.US, "%.1f", requestedZoom)) + ")"
+                + " opticalStab=" + opticalStabilization + " (supported=" + support.optionAvailable("optical_stabilization", opticalStabilization.name()) + ")"
+                + " stab=" + stabilization + " (supported=" + support.optionAvailable("stabilization", stabilization.name()) + ")"
+                + " noise=" + noise + " (supported=" + support.optionAvailable("noise", noise.name()) + ")"
+                + " faceMetering=" + faceMetering + " (avail=" + support.isFaceMeteringAvailable() + ")"
+                + " faceExposure=" + faceExposure + " (avail=" + support.isFaceExposureAvailable() + ")");
+
+        RecordingConfig customConfig = new RecordingConfig(
                 quality,
                 Math.max(500_000, Math.min(2_000_000, p.getInt(BITRATE, 2_000_000))),
-                p.getInt(FPS, DEFAULT_FPS),
+                requestedFps,
                 enablePrewarm,
                 prewarmFps,
                 d.getIFrameIntervalSeconds(),
                 d.getMaxBFrames(),
-                p.getBoolean(HOLD_FPS, DEFAULT_HOLD_FPS),
-                p.getBoolean(LOW_LIGHT_BOOST, DEFAULT_LOW_LIGHT_BOOST),
+                requestedHoldFps,
+                p.getBoolean(LOW_LIGHT_BOOST, DEFAULT_LOW_LIGHT_BOOST) && support.optionAvailable(LOW_LIGHT_BOOST, "true"),
                 aePriority,
                 antibanding,
                 noise,
@@ -297,23 +556,26 @@ public final class RoundVideoRecorderSettings {
                 aberration,
                 tonemap,
                 awb,
-                p.getBoolean(AE_LOCK, d.getAeLock()),
-                p.getBoolean(AWB_LOCK, d.getAwbLock()),
+                p.getBoolean(AE_LOCK, d.getAeLock()) && support.optionAvailable(AE_LOCK, "true"),
+                p.getBoolean(AWB_LOCK, d.getAwbLock()) && support.optionAvailable(AWB_LOCK, "true"),
                 p.getInt(EXPOSURE_STEPS, DEFAULT_EXPOSURE_STEPS),
                 exposureMode,
                 (long) p.getInt(MANUAL_EXPOSURE_US, (int) d.getManualExposureTimeUs()),
                 p.getInt(MANUAL_ISO, d.getManualIso()),
                 focus,
                 Float.intBitsToFloat(p.getInt(MANUAL_FOCUS_DISTANCE, Float.floatToIntBits(d.getManualFocusDistance()))),
-                Float.intBitsToFloat(p.getInt(ZOOM, Float.floatToIntBits(DEFAULT_ZOOM))),
-                p.getBoolean(REAR_GL_ZOOM, false),
+                requestedZoom,
+                p.getBoolean(REAR_GL_ZOOM, false) && support.rowAvailable(REAR_GL_ZOOM),
                 d.getAperture(),
                 false, // Never bake a circular mask into the MP4: Telegram clips the preview itself.
                 d.getHidePreviewUntilRecording(),
                 d.getAudioSampleRate(),
                 p.getInt(AUDIO_BITRATE, DEFAULT_AUDIO_BITRATE),
-                p.getBoolean(FACE_AWARE_METERING, DEFAULT_FACE_AWARE_METERING)
-        ));
+                faceMetering,
+                faceExposure
+        );
+        android.util.Log.i("RoundVideoDiag", "Built RecordingConfig=" + customConfig);
+        return new RecordingMode.Custom(customConfig);
     }
 
     private static <T extends Enum<T>> T safeEnum(Class<T> cls, String name, T fallback) {

@@ -99,14 +99,24 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
 
     private void startRecordingDelayed() {
         startDelayScheduled = false;
+        Log.i("RoundVideoDiag", "startRecordingDelayed: recorder=" + (recorder != null)
+                + " completion=" + completion
+                + " recordStarted=" + recordStarted
+                + " startRequested=" + startRequested
+                + " pendingStart=" + pendingStart
+                + " cameraReadyForStart=" + cameraReadyForStart
+                + " previewHasFrame=" + previewHasFrame
+                + " pendingOutputFile=" + pendingOutputFile);
         if (recorder == null || completion != Completion.NONE || recordStarted || startRequested
                 || !pendingStart || !cameraReadyForStart || !previewHasFrame) {
+            Log.w("RoundVideoDiag", "startRecordingDelayed ABORTED due to guard condition!");
             return;
         }
         pendingStart = false;
         startRequested = true;
         File outputFile = pendingOutputFile;
         pendingOutputFile = null;
+        Log.i("RoundVideoDiag", "Calling recorder.startRecording(" + outputFile + ")");
         recorder.startRecording(outputFile);
     };
 
@@ -114,11 +124,21 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
         if (recorder == null || completion != Completion.NONE || recordStarted || startRequested
                 || !pendingStart || !cameraReadyForStart || !previewHasFrame
                 || startDelayScheduled) {
+            Log.d("RoundVideoDiag", "scheduleRecordingStartIfReady NOT ready yet:"
+                    + " recorder=" + (recorder != null)
+                    + " completion=" + completion
+                    + " recordStarted=" + recordStarted
+                    + " startRequested=" + startRequested
+                    + " pendingStart=" + pendingStart
+                    + " cameraReadyForStart=" + cameraReadyForStart
+                    + " previewHasFrame=" + previewHasFrame
+                    + " startDelayScheduled=" + startDelayScheduled);
             return;
         }
+        long delayMs = RoundVideoRecorderSettings.recordingStartDelayMs(applicationContext);
         startDelayScheduled = true;
-        main.postDelayed(startRecordingAfterPreview,
-                RoundVideoRecorderSettings.recordingStartDelayMs(applicationContext));
+        Log.i("RoundVideoDiag", "scheduleRecordingStartIfReady: scheduling start in " + delayMs + " ms");
+        main.postDelayed(startRecordingAfterPreview, delayMs);
     }
 
     public VideoMessageRecorderAdapter(Context context, TextureView preview, Listener listener) {
@@ -143,6 +163,7 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
      */
     public void startSession() {
         requireMainThread();
+        Log.i("RoundVideoDiag", "Adapter.startSession() begin, pendingOutputFile=" + pendingOutputFile);
         disposeRecorder();
         if (Build.VERSION.SDK_INT < 28) {
             listener.onError(new UnsupportedOperationException("Recorder requires Android 9 (API 28)+"));
@@ -152,6 +173,7 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
                 != PackageManager.PERMISSION_GRANTED ||
                 applicationContext.checkSelfPermission(Manifest.permission.RECORD_AUDIO)
                         != PackageManager.PERMISSION_GRANTED) {
+            Log.e("RoundVideoDiag", "Missing CAMERA or RECORD_AUDIO permission!");
             listener.onError(new SecurityException("CAMERA and RECORD_AUDIO permissions are required"));
             return;
         }
@@ -190,14 +212,18 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
         // The existing remember-camera setting is the only source of camera restoration.
         // With it disabled, the recorder starts with its default front camera.
         if (RoundVideoRecorderSettings.rememberLastCamera(applicationContext)) {
-            recorder.restoreLastCamera(RoundVideoRecorderSettings.lastCameraWasRear(applicationContext)
-                    ? CameraRole.REAR_WIDE : CameraRole.FRONT);
+            boolean rear = RoundVideoRecorderSettings.lastCameraWasRear(applicationContext);
+            Log.i("RoundVideoDiag", "Restoring last camera: rear=" + rear);
+            recorder.restoreLastCamera(rear ? CameraRole.REAR_WIDE : CameraRole.FRONT);
         }
         preview.setSurfaceTextureListener(this);
+        Log.i("RoundVideoDiag", "preview.isAvailable()=" + preview.isAvailable()
+                + " w=" + preview.getWidth() + " h=" + preview.getHeight());
         if (preview.isAvailable()) {
             attachPreview(preview.getSurfaceTexture(), preview.getWidth(), preview.getHeight());
         }
         recorder.setPermissionGranted(true); // actual permissions verified above
+        Log.i("RoundVideoDiag", "Calling recorder.onStart()");
         recorder.onStart();
     }
 
@@ -226,6 +252,7 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
      */
     public void finishAndSend() {
         requireMainThread();
+        Log.i("RoundVideoDiag", "finishAndSend: recorder=" + (recorder != null) + " recordStarted=" + recordStarted);
         if (recorder == null) return;
         if (!recordStarted) {
             cancel();
@@ -239,6 +266,7 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
 
     public void pauseRecording() {
         requireMainThread();
+        Log.i("RoundVideoDiag", "pauseRecording: recorder=" + (recorder != null) + " recordStarted=" + recordStarted + " completion=" + completion);
         if (recorder == null || !recordStarted || completion != Completion.NONE) return;
         completion = Completion.PAUSE;
         pendingStart = false;
@@ -248,6 +276,7 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
 
     public void resumeRecording() {
         requireMainThread();
+        Log.i("RoundVideoDiag", "resumeRecording: recorder=" + (recorder != null) + " recordStarted=" + recordStarted + " startRequested=" + startRequested);
         if (recorder == null || recordStarted || startRequested
                 || completion != Completion.NONE || pendingStart) return;
         pendingStart = true;
@@ -260,6 +289,9 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
      */
     public void cancel() {
         requireMainThread();
+        Log.i("RoundVideoDiag", "Adapter.cancel(): recorder=" + (recorder != null)
+                + " recordStarted=" + recordStarted + " startRequested=" + startRequested
+                + " pendingStart=" + pendingStart);
         if (recorder == null) return;
         completion = Completion.DISCARD;
         pendingStart = false;
@@ -303,6 +335,7 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
      */
     public void close() {
         requireMainThread();
+        Log.i("RoundVideoDiag", "Adapter.close()");
         cancelPendingZoom();
         disposeRecorder();
     }
@@ -310,6 +343,23 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
     private void onRecorderState(CameraUiState state) {
         // The AAR callback may run on a camera or worker thread; this method runs on main.
         if (recorder == null || completion == Completion.SEND || completion == Completion.DISCARD) return;
+        Log.i("RoundVideoDiag", "onRecorderState:"
+                + " cameraReady=" + state.getCameraReady()
+                + " isBusy=" + state.isBusy()
+                + " isRecording=" + state.isRecording()
+                + " isSwitching=" + state.isSwitchingCamera()
+                + " role=" + state.getActiveCameraRole()
+                + " status=\"" + state.getStatus() + "\""
+                + " selectedFpsRange=" + state.getSelectedFpsRange()
+                + " supportedFpsRanges=" + state.getSupportedFpsRanges()
+                + " fpsHoldActive=" + state.getFpsHoldActive()
+                + " cfgFps=" + state.getConfig().getFrameRate()
+                + " cfgHoldFps=" + state.getConfig().getHoldFpsInLowLight()
+                + " cfgQuality=" + state.getConfig().getQuality()
+                + " supportedQualities=" + state.getCapabilities().getSupportedQualities()
+                + " startRequested=" + startRequested
+                + " pendingStart=" + pendingStart
+                + " recordStarted=" + recordStarted);
         if (startRequested && state.isRecording()) {
             startRequested = false;
             recordStarted = true;
@@ -318,6 +368,7 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
                 RoundVideoRecorderSettings.setLastCameraWasRear(applicationContext,
                         zoomCameraRole == CameraRole.REAR_WIDE);
             }
+            Log.i("RoundVideoDiag", "Recording officially started! Notifying listener.onRecordingStarted()");
             listener.onRecordingStarted();
         }
         android.util.Range<Float> zoomRange = state.getCapabilities().getZoomRatioRange();
@@ -342,12 +393,14 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
                 && !state.isSwitchingCamera() && !state.isRecording();
         if (!cameraReadyForStart && startDelayScheduled) {
             // If camera reconfigures while waiting, restart the delay once it's ready again.
+            Log.w("RoundVideoDiag", "Camera became not-ready while startDelayScheduled; cancelling delayed start");
             main.removeCallbacks(startRecordingAfterPreview);
             startDelayScheduled = false;
         }
         if (state.getCameraReady() && !state.isBusy() && !state.isSwitchingCamera()) {
             if (!cameraReadyNotified) {
                 cameraReadyNotified = true;
+                Log.i("RoundVideoDiag", "Camera ready for first time -> listener.onCameraReady()");
                 listener.onCameraReady();
             }
         }
@@ -355,6 +408,8 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
     }
 
     private void onRecordingFinished(File file) {
+        Log.i("RoundVideoDiag", "onRecordingFinished: file=" + file + " exists=" + (file != null && file.exists())
+                + " len=" + (file != null ? file.length() : -1) + " completion=" + completion);
         if (recorder == null) {
             // This adapter no longer owns the session. Avoid stale callbacks.
             file.delete();
@@ -379,6 +434,7 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
     }
 
     private void attachPreview(SurfaceTexture texture, int width, int height) {
+        Log.i("RoundVideoDiag", "attachPreview: recorder=" + (recorder != null) + " texture=" + (texture != null) + " w=" + width + " h=" + height);
         if (recorder == null || texture == null || width <= 0 || height <= 0) return;
         if (surface != null) {
             recorder.detachPreview();
@@ -421,17 +477,20 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
 
     @Override
     public void onSurfaceTextureAvailable(SurfaceTexture st, int w, int h) {
+        Log.i("RoundVideoDiag", "onSurfaceTextureAvailable: w=" + w + " h=" + h);
         attachPreview(st, w, h);
     }
 
     @Override
     public void onSurfaceTextureSizeChanged(SurfaceTexture st, int w, int h) {
+        Log.i("RoundVideoDiag", "onSurfaceTextureSizeChanged: w=" + w + " h=" + h + " surface=" + (surface != null));
         // Do not recreate the camera pipeline during an active recording.
         if (surface == null) attachPreview(st, w, h);
     }
 
     @Override
     public boolean onSurfaceTextureDestroyed(SurfaceTexture st) {
+        Log.i("RoundVideoDiag", "onSurfaceTextureDestroyed");
         if (recorder != null) recorder.detachPreview();
         if (surface != null) surface.release();
         surface = null;
@@ -442,6 +501,7 @@ public final class VideoMessageRecorderAdapter implements TextureView.SurfaceTex
     public void onSurfaceTextureUpdated(SurfaceTexture st) {
         if (!previewHasFrame && recorder != null && completion == Completion.NONE) {
             previewHasFrame = true;
+            Log.i("RoundVideoDiag", "onSurfaceTextureUpdated: first preview frame received!");
             scheduleRecordingStartIfReady();
         }
     }

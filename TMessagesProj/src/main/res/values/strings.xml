@@ -26,7 +26,8 @@
     <string name="RVExposureMode">Exposure mode</string>
     <string name="RVAeLock">Lock auto exposure</string>
     <string name="RVAwbLock">Lock auto white balance</string>
-    <string name="RVFaceAwareMetering">Face-aware exposure and focus</string>
+    <string name="RVFaceAwareMetering">Face-aware focus</string>
+    <string name="RVFaceAwareExposure">Face-aware exposure</string>
     <string name="RVExposureSteps">Exposure compensation</string>
     <string name="RVAwb">White balance</string>
     <string name="RVFocus">Focus</string>
@@ -62,7 +63,8 @@
     <string name="RVDescExposureMode">Choose automatic or manual exposure control.</string>
     <string name="RVDescAeLock">Keep exposure from changing while recording.</string>
     <string name="RVDescAwbLock">Keep colors from shifting while recording.</string>
-    <string name="RVDescFaceAwareMetering">Meters exposure and focus on the detected face instead of the whole frame. Needs face detection and exposure/focus regions supported by both cameras.</string>
+    <string name="RVDescFaceAwareMetering">Keeps focus on the detected face instead of the whole frame. Safe for smoothness — refocusing on its own does not cause visible pulsing. Needs face detection and focus regions supported by both cameras.</string>
+    <string name="RVDescFaceAwareExposure">Also meters exposure on the detected face, not just focus. Off by default: every exposure-region change makes the camera re-search its exposure, which can look like brightness pulsing while moving the camera. Only takes effect together with face-aware focus above.</string>
     <string name="RVDescExposureSteps">Make automatic exposure brighter or darker.</string>
     <string name="RVDescAwb">Adjust colors for the lighting.</string>
     <string name="RVDescFocus">Choose how the camera focuses.</string>

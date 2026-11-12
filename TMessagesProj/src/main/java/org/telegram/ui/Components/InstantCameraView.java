@@ -1235,6 +1235,8 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     };
 
     private void showAarCamera(boolean fromPaused) {
+        android.util.Log.i("RoundVideoDiag", "InstantCameraView.showAarCamera(fromPaused=" + fromPaused
+                + ") aarRecorder=" + (aarRecorder != null) + " aarFinishing=" + aarFinishing + " textureView=" + (textureView != null));
         if (aarRecorder != null || aarFinishing || textureView != null) return;
         if (finishZoomTransition != null) {
             finishZoomTransition.cancel();
@@ -1284,6 +1286,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         aarRecorder = new VideoMessageRecorderAdapter(getContext(), textureView,
                 new VideoMessageRecorderAdapter.Listener() {
                     @Override public void onCameraReady() {
+                        android.util.Log.i("RoundVideoDiag", "InstantCameraView.onCameraReady() textureView=" + (textureView != null));
                         if (textureView != null) {
                             cameraReady = true;
                             // A running open-animation can reset alpha, so hide the overlay itself.
@@ -1291,6 +1294,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                         }
                     }
                     @Override public void onRecordingStarted() {
+                        android.util.Log.i("RoundVideoDiag", "InstantCameraView.onRecordingStarted() aarFinishing=" + aarFinishing + " cancelled=" + cancelled);
                         if (aarFinishing || cancelled) return;
                         recordStartTime = System.currentTimeMillis();
                         recording = true;
@@ -1310,17 +1314,21 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                         }
                     }
                     @Override public void onRecordingPaused(File recordedFile, long durationMs) {
+                        android.util.Log.i("RoundVideoDiag", "InstantCameraView.onRecordingPaused() durationMs=" + durationMs);
                         finishAarRecording(recordedFile, recordPlusTime);
                     }
                     @Override public void onVideoNoteReady(File recordedFile, long durationMs) {
+                        android.util.Log.i("RoundVideoDiag", "InstantCameraView.onVideoNoteReady() durationMs=" + durationMs);
                         aarRecorder = null; // Underlying library has already been closed by adapter.
                         finishAarRecording(recordedFile, recordPlusTime + durationMs);
                     }
                     @Override public void onCancelled() {
+                        android.util.Log.i("RoundVideoDiag", "InstantCameraView.onCancelled()");
                         aarRecorder = null;
                         aarFinishing = false;
                     }
                     @Override public void onError(Exception exception) {
+                        android.util.Log.e("RoundVideoDiag", "InstantCameraView.onError()", exception);
                         FileLog.e(exception);
                         aarFinishing = false;
                         if (aarRecorder != null) {
