@@ -282,8 +282,11 @@ public class RoundVideoSettingsActivity extends BaseFragment {
 
     private boolean editable(Row row) {
         if (Build.VERSION.SDK_INT < 28) return false;
-        if (row.type == ACTION || MODE.equals(row.key) || REMEMBER_LAST_CAMERA.equals(row.key)) return true;
+        if (row.type == ACTION || MODE.equals(row.key)) return true;
         if (automatic()) return false;
+        if (REMEMBER_LAST_CAMERA.equals(row.key)) {
+            return cameraSupport != null && cameraSupport.hasMultipleCameras();
+        }
         if (MAX_DURATION.equals(row.key)) return true;
         if (ENABLE_CONCURRENT_PREWARM.equals(row.key)) {
             return cameraSupport != null && cameraSupport.isPrewarmAvailable();
@@ -802,7 +805,7 @@ public class RoundVideoSettingsActivity extends BaseFragment {
             } else if (row.type == CHECK) {
                 LinearLayout container = (LinearLayout) holder.itemView;
                 TextCheckCell cell = (TextCheckCell) container.getChildAt(0);
-                cell.setEnabled(editable(row));
+                cell.setEnabled(editable(row), null);
                 cell.setTextAndCheck(row.title, checkedFor(row.key), true);
                 TextView description = (TextView) container.getChildAt(1);
                 description.setText(getString(descriptionFor(row.key)));

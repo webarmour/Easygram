@@ -237,6 +237,10 @@ public final class RoundVideoRecorderSettings {
             edit.putBoolean(ENABLE_CONCURRENT_PREWARM, false);
         }
 
+        if (p.getBoolean(REMEMBER_LAST_CAMERA, false) && !support.hasMultipleCameras()) {
+            edit.putBoolean(REMEMBER_LAST_CAMERA, false);
+        }
+
         int prewarmFps = DEFAULT_CONCURRENT_PREWARM_FPS;
         try {
             prewarmFps = p.getInt(CONCURRENT_PREWARM_FPS, DEFAULT_CONCURRENT_PREWARM_FPS);

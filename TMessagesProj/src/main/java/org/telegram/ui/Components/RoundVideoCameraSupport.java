@@ -18,6 +18,8 @@ import java.util.List;
 /** Camera2 capability intersection: settings are shared by front and rear cameras. */
 public final class RoundVideoCameraSupport {
     private final List<CameraCharacteristics> cameras = new ArrayList<>(2);
+    private CameraCharacteristics frontCamera = null;
+    private CameraCharacteristics rearCamera = null;
     private final boolean prewarmAvailable;
     // Default to unsupported: matches this class's "unknown hardware capability = unsupported"
     // policy if an exception below leaves this unset.
@@ -72,8 +74,14 @@ public final class RoundVideoCameraSupport {
                     }
                 }
             }
-            if (front != null) cameras.add(front);
-            if (rear != null) cameras.add(rear);
+            if (front != null) {
+                this.frontCamera = front;
+                cameras.add(front);
+            }
+            if (rear != null) {
+                this.rearCamera = rear;
+                cameras.add(rear);
+            }
             boolean faceMetering = !cameras.isEmpty();
             boolean faceExposure = !cameras.isEmpty();
             for (CameraCharacteristics c : cameras) {
@@ -153,6 +161,14 @@ public final class RoundVideoCameraSupport {
         return faceExposureAvailable;
     }
 
+    public boolean hasMultipleCameras() {
+        return frontCamera != null && rearCamera != null;
+    }
+
+    public boolean hasRearCamera() {
+        return rearCamera != null;
+    }
+
     /**
      * Returns true if every selected camera has an advertised AE target FPS range whose lower
      * bound is at least {@code targetFps} (matching {@code CameraUtils.chooseVideoFpsRange} when
@@ -202,7 +218,7 @@ public final class RoundVideoCameraSupport {
             case "zoom":
                 return countSupported(key, new String[]{"0.8", "1.0", "1.2", "1.5", "2.0"}) > 1;
             case "rear_gl_zoom":
-                return countSupported("zoom", new String[]{"1.0", "1.2", "1.5", "2.0"}) > 1;
+                return hasRearCamera();
             case "manual_iso":
                 return countSupported(key, new String[]{"100", "200", "400", "800", "1600", "3200"}) > 1;
             case "manual_exposure_us":
@@ -240,9 +256,24 @@ public final class RoundVideoCameraSupport {
         return fallback;
     }
 
+    private static boolean isPerCameraFeature(String key) {
+        return "optical_stabilization".equals(key)
+                || "focus".equals(key)
+                || "manual_focus_distance".equals(key)
+                || "exposure_mode".equals(key)
+                || "manual_iso".equals(key)
+                || "manual_exposure_us".equals(key);
+    }
+
     /** Unknown/undisclosed hardware capabilities are treated as unsupported. */
     public boolean optionAvailable(String key, String value) {
         if (cameras.isEmpty()) return false;
+        if (isPerCameraFeature(key)) {
+            for (CameraCharacteristics c : cameras) {
+                if (onCamera(c, key, value)) return true;
+            }
+            return false;
+        }
         for (CameraCharacteristics c : cameras) {
             if (!onCamera(c, key, value)) return false;
         }
@@ -361,7 +392,7 @@ public final class RoundVideoCameraSupport {
                 if ("CCT".equals(value) && Build.VERSION.SDK_INT < 36) return false;
                 // The available-modes key is only published from API 36. Earlier versions
                 // expose no reliable per-mode capabilities: do not disable FAST/HIGH_QUALITY.
-                if (Build.VERSION.SDK_INT < 36) return "OEM_DEFAULT".equals(value);
+                if (Build.VERSION.SDK_INT < 36) return true;
                 if ("CCT".equals(value) && !has(c.get(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES),
                         CameraMetadata.CONTROL_AWB_MODE_OFF)) return false;
                 return nullableMode(value, c.get(CameraCharacteristics.COLOR_CORRECTION_AVAILABLE_MODES),
