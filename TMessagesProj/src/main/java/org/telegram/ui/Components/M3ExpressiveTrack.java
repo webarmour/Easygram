@@ -184,16 +184,30 @@ public class M3ExpressiveTrack {
     public void drawLoudness(Canvas canvas, float from, float to, float trackLeft, float trackRight, float centerY,
                              float thickness, float maxAmplitude, float wavelength, float[] levels, int color) {
         float half = thickness / 2f;
-        from = Math.max(from, trackLeft) + half;
-        to = Math.min(to, trackRight) - half;
-        if (to - from < 1f || levels == null || levels.length < 2) return;
+        if (!buildLoudnessLine(path, Math.max(from, trackLeft) + half, Math.min(to, trackRight) - half,
+                trackLeft, trackRight, centerY, maxAmplitude, wavelength, levels)) {
+            return;
+        }
+        strokePaint.setColor(color);
+        strokePaint.setStrokeWidth(thickness);
+        canvas.drawPath(path, strokePaint);
+    }
+
+    /**
+     * Writes the centre line of the loudness wave for [from, to] of the track [trackLeft, trackRight] into
+     * {@code out} (amplitude follows {@code levels}, plus the audio-driven boost / phase / bass buzz).
+     * Callers that need custom colouring can stroke or clip it themselves. Returns false if nothing to draw.
+     */
+    public boolean buildLoudnessLine(Path out, float from, float to, float trackLeft, float trackRight, float centerY,
+                                     float maxAmplitude, float wavelength, float[] levels) {
+        out.rewind();
+        if (to - from < 1f || levels == null || levels.length < 2) return false;
         int n = levels.length;
         float maxAmp = maxAmplitude * levelsAppear * amplitudeBoost();
         float minAmp = AndroidUtilities.dp(0.5f);
         float k = (float) (Math.PI * 2 / wavelength);
         float taper = wavelength / 2f;
-        float step = AndroidUtilities.dp(1f);
-        path.rewind();
+        float step = Math.min(AndroidUtilities.dp(1f), wavelength / 10f);
         for (float x = from; ; x += step) {
             if (x > to) x = to;
             float pos = (x - trackLeft) / (trackRight - trackLeft) * (n - 1);
@@ -206,12 +220,10 @@ public class M3ExpressiveTrack {
             // the buzz follows the local loudness too: loud parts tremble more, silence stays calm
             float buzz = ripple(x - trackLeft, wavelength, AndroidUtilities.dp(0.6f) + 0.25f * amp);
             float y = centerY + amp * edge * (float) Math.sin(k * (x - trackLeft) - phase) + buzz * edge * (level > 0.01f ? 1f : 0f);
-            if (x == from) path.moveTo(x, y); else path.lineTo(x, y);
+            if (x == from) out.moveTo(x, y); else out.lineTo(x, y);
             if (x >= to) break;
         }
-        strokePaint.setColor(color);
-        strokePaint.setStrokeWidth(thickness);
-        canvas.drawPath(path, strokePaint);
+        return true;
     }
 
     /** M3E slider thumb: vertical rounded bar. */

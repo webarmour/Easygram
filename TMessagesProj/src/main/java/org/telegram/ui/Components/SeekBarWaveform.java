@@ -70,15 +70,6 @@ public class SeekBarWaveform {
     private static Paint expressiveStrokePaint;
     private final Path expressiveLinePath = new Path();
     private final Path expressiveGapPath = new Path();
-    private float[] expressiveEnvelope;
-    private float expressivePhase;
-    private float expressiveBoost = 1f;
-    private float[] envelopeHeights;
-    private int envelopeCount;
-    private boolean envelopeReverse;
-    private float envelopeAppear = -1;
-    private long expressiveLastFrame;
-    private static final float EXPRESSIVE_WAVE_SPEED = (float) (Math.PI * 2 * 0.7);
     private boolean loading;
     private long loadingStart;
     private AnimatedFloat loadingFloat = new AnimatedFloat(150, CubicBezierInterpolator.DEFAULT);
@@ -501,54 +492,34 @@ public class SeekBarWaveform {
     }
 
     /**
-     * Fills {@link #path} with the outline of a wavy line: a sine carrier whose local amplitude is the
-     * loudness of that part of the message (loud = tall waves, silence = an almost flat line).
-     * Returns the x of the M3E thumb, or -1 when no thumb should be drawn.
+     * Fills {@link #path} with the outline of the M3E voice wave: the shared {@link M3ExpressiveTrack} loudness
+     * line (same look and audio reactivity as music tracks), with per-message contrast stretching so quiet and
+     * loud parts are clearly different. Returns the x of the M3E thumb, or -1 when no thumb should be drawn.
      */
     private float buildExpressivePath(float totalBarsCount, float appearProgress, boolean reverse) {
-        final float barStep = AndroidUtilities.dpf2(3);
-        final int count = Math.min(heights.length, (int) Math.ceil(totalBarsCount));
-        if (expressiveEnvelope == null || expressiveEnvelope.length < count) {
-            expressiveEnvelope = new float[count];
-            envelopeHeights = null;
+        float[] levels = getVoiceLevels(reverse);
+        if (levels == null) {
+            return -1;
         }
-        // Envelope: local peak over neighbouring bars, so peaks are not lost between wave crests.
-        // Recomputed only when the data / appear animation changes, not on every animation frame.
-        final boolean envelopeValid = envelopeHeights == heights && envelopeCount == count
-                && envelopeReverse == reverse && envelopeAppear == appearProgress;
-        envelopeHeights = heights;
-        envelopeCount = count;
-        envelopeReverse = reverse;
-        envelopeAppear = appearProgress;
-        for (int i = 0; i < count && !envelopeValid; i++) {
-            float m = 0;
-            for (int j = Math.max(0, i - 1); j <= Math.min(count - 1, i + 1); j++) {
-                m = Math.max(m, heights[reverse ? heights.length - 1 - j : j]);
+        // appear animation (after sending): the wave grows in from the left, like the bars did
+        if (appearProgress < 1f) {
+            if (appearLevels == null || appearLevels.length != levels.length) {
+                appearLevels = new float[levels.length];
             }
-            float bart = MathUtils.clamp(appearProgress * totalBarsCount - i, 0, 1);
-            // contrast curve: quiet parts get noticeably flatter, loud parts keep full height
-            expressiveEnvelope[i] = 7f * (float) Math.pow(m / 7f, 1.6f) * bart;
+            int n = levels.length;
+            for (int i = 0; i < n; i++) {
+                appearLevels[i] = levels[i] * MathUtils.clamp(appearProgress * n - i, 0, 1);
+            }
+            levels = appearLevels;
         }
 
+        if (voiceTrack == null) {
+            voiceTrack = new M3ExpressiveTrack();
+            voiceTrack.setReactToBeat(true);
+        }
         boolean playing = messageObject != null && MediaController.getInstance().isPlayingMessage(messageObject)
                 && !MediaController.getInstance().isMessagePaused();
-        long now = SystemClock.elapsedRealtime();
-        float audioBoostTarget = 1f;
-        if (playing) {
-            // driven by the audio: travels only while there's sound, widens a bit on loudness / bass hits
-            org.telegram.messenger.MusicBeatTracker tracker = org.telegram.messenger.MusicBeatTracker.getInstance();
-            tracker.markInterest();
-            float energy = tracker.getEnergy(), pulse = tracker.getPulse();
-            long dt = expressiveLastFrame == 0 ? 16 : Math.min(64, now - expressiveLastFrame);
-            expressivePhase = (expressivePhase + EXPRESSIVE_WAVE_SPEED * M3ExpressiveTrack.audioSpeed(energy, pulse) * dt / 1000f) % (float) (Math.PI * 2);
-            expressiveLastFrame = now;
-            audioBoostTarget = M3ExpressiveTrack.audioBoost(energy, pulse);
-            M3ExpressiveTrack.invalidateNextFrame(parentView);
-        } else {
-            expressiveLastFrame = 0;
-        }
-        expressiveBoost += (audioBoostTarget - expressiveBoost) * 0.35f;
-        if (Math.abs(expressiveBoost - audioBoostTarget) > 0.002f) {
+        if (voiceTrack.update(playing && !pressed, levels)) {
             M3ExpressiveTrack.invalidateNextFrame(parentView);
         }
 
@@ -558,36 +529,21 @@ public class SeekBarWaveform {
             expressiveStrokePaint.setStrokeCap(Paint.Cap.ROUND);
             expressiveStrokePaint.setStrokeJoin(Paint.Join.ROUND);
         }
-        final float stroke = AndroidUtilities.dpf2(2.2f);
+        final float stroke = AndroidUtilities.dpf2(2f);
         expressiveStrokePaint.setStrokeWidth(stroke);
 
+        final float barStep = AndroidUtilities.dpf2(3);
+        final int count = Math.max(2, Math.min(heights != null ? heights.length : 0, (int) Math.ceil(totalBarsCount)));
         final float centerY = (height - dp(14)) / 2f + dp(7);
-        final float maxAmp = AndroidUtilities.dpf2(1) * waveScaling * expressiveBoost; // heights are in dp (0..7)
-        final float minAmp = AndroidUtilities.dpf2(0.3f);
-        final float wavelength = AndroidUtilities.dpf2(9);
-        final float k = (float) (Math.PI * 2 / wavelength);
         final float startX = AndroidUtilities.dpf2(1);
-        final float endX = Math.max(startX, (count - 1) * barStep + AndroidUtilities.dpf2(1));
-        final float step = AndroidUtilities.dpf2(0.75f);
-
-        expressiveLinePath.rewind();
-        for (float x = startX; ; x += step) {
-            if (x > endX) x = endX;
-            float pos = (x - startX) / barStep;
-            int i0 = MathUtils.clamp((int) pos, 0, count - 1);
-            int i1 = Math.min(count - 1, i0 + 1);
-            float f = pos - i0;
-            float env = expressiveEnvelope[i0] * (1f - f) + expressiveEnvelope[i1] * f;
-            float amp = env > 0.01f ? Math.max(minAmp, env * maxAmp) : 0;
-            // flat ends so the line starts/finishes on the center line
-            float edge = Math.min(1f, Math.min(x - startX, endX - x) / (wavelength / 2f));
-            float y = centerY + amp * edge * (float) Math.sin(k * (x - startX) - expressivePhase);
-            if (x == startX) {
-                expressiveLinePath.moveTo(x, y);
-            } else {
-                expressiveLinePath.lineTo(x, y);
-            }
-            if (x >= endX) break;
+        final float endX = Math.max(startX + 1, (count - 1) * barStep + AndroidUtilities.dpf2(1));
+        // denser than before (7 dp per wave instead of 9) so loudness changes read at a glance
+        final float wavelength = AndroidUtilities.dpf2(7);
+        // use (almost) the full height of the 30 dp area: with the audio boost (up to ~1.27x) and the stroke the
+        // peaks just reach the edges, so loud peaks and quiet parts are far apart
+        final float maxAmp = Math.min(AndroidUtilities.dpf2(10.5f), (height / 2f - stroke) / 1.3f) * waveScaling;
+        if (!voiceTrack.buildLoudnessLine(expressiveLinePath, startX, endX, startX, endX, centerY, maxAmp, wavelength, levels)) {
+            return -1;
         }
         expressiveStrokePaint.getFillPath(expressiveLinePath, path);
 
@@ -605,10 +561,78 @@ public class SeekBarWaveform {
         return thumbX;
     }
 
+    private M3ExpressiveTrack voiceTrack;
+    private float[] voiceLevels, voiceLevelsReversed, appearLevels;
+    private byte[] voiceLevelsSource;
+
+    /**
+     * Loudness levels 0..1 decoded from the raw 5-bit voice waveform (~100 samples), contrast-stretched per
+     * message: between its quiet (15th pct) and loud (95th pct) parts, then a gamma 1.8 curve. Telegram's waveform
+     * is already peak-normalised and mostly sits near the top, which is why plain heights looked uniform.
+     */
+    private float[] getVoiceLevels(boolean reverse) {
+        if (waveformBytes == null) {
+            return null;
+        }
+        if (voiceLevelsSource != waveformBytes) {
+            voiceLevelsSource = waveformBytes;
+            voiceLevels = computeVoiceLevels(waveformBytes);
+            voiceLevelsReversed = null;
+        }
+        if (voiceLevels == null || !reverse) {
+            return voiceLevels;
+        }
+        if (voiceLevelsReversed == null) {
+            int n = voiceLevels.length;
+            voiceLevelsReversed = new float[n];
+            for (int i = 0; i < n; i++) voiceLevelsReversed[i] = voiceLevels[n - 1 - i];
+        }
+        return voiceLevelsReversed;
+    }
+
+    private static float[] computeVoiceLevels(byte[] bytes) {
+        int samples = bytes.length * 8 / 5;
+        if (samples < 2) {
+            return null;
+        }
+        float[] raw = new float[samples];
+        for (int a = 0; a < samples; a++) {
+            int bitPointer = a * 5;
+            int byteNum = bitPointer / 8;
+            int byteBitOffset = bitPointer - byteNum * 8;
+            int currentByteCount = 8 - byteBitOffset;
+            int nextByteRest = 5 - currentByteCount;
+            int value = (bytes[byteNum] >> byteBitOffset) & ((2 << (Math.min(5, currentByteCount) - 1)) - 1);
+            if (nextByteRest > 0 && byteNum + 1 < bytes.length) {
+                value <<= nextByteRest;
+                value |= bytes[byteNum + 1] & ((2 << (nextByteRest - 1)) - 1);
+            }
+            raw[a] = value & 31;
+        }
+        float[] sorted = raw.clone();
+        java.util.Arrays.sort(sorted);
+        float lo = sorted[(int) (samples * 0.15f)];
+        float hi = sorted[Math.min(samples - 1, (int) (samples * 0.95f))];
+        if (hi - lo < 6) { // a flat message: keep a sensible span so it doesn't turn into noise
+            lo = Math.max(0, hi - 6);
+        }
+        float[] levels = new float[samples];
+        for (int i = 0; i < samples; i++) {
+            if (raw[i] <= 1) {
+                levels[i] = 0; // silence
+                continue;
+            }
+            float v = MathUtils.clamp((raw[i] - lo) / (hi - lo), 0f, 1f);
+            levels[i] = Math.max(0.03f, (float) Math.pow(v, 1.8));
+        }
+        return levels;
+    }
+
     private void drawExpressiveThumb(Canvas canvas, float x) {
         final float centerY = (height - dp(14)) / 2f + dp(7);
         final float halfW = AndroidUtilities.dpf2(1.5f);
-        final float halfH = Math.min(height / 2f, AndroidUtilities.dpf2(pressed ? 11 : 9));
+        final float beat = voiceTrack != null ? 1f + 0.45f * voiceTrack.getBeatPulse() : 1f;
+        final float halfH = Math.min(height / 2f, AndroidUtilities.dpf2(pressed ? 14 : 12) * beat);
         paintOuter.setColor(outerColor);
         paintOuter.setAlpha((int) (paintOuter.getAlpha() * alpha));
         AndroidUtilities.rectTmp.set(x - halfW, centerY - halfH, x + halfW, centerY + halfH);
