@@ -10,11 +10,13 @@ import android.text.TextUtils;
 import android.view.Gravity;
 import androidx.core.graphics.ColorUtils;
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.AudioWaveformGenerator;
 import org.telegram.messenger.MediaController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.UserObject;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ChatActivity;
+import org.telegram.ui.OtherSettingsActivity;
 import org.telegram.ui.Components.TranscribeButton;
 
 class ChatMessageAudio {
@@ -232,6 +234,18 @@ class ChatMessageAudio {
                 canvas.save();
             }
             canvas.translate(tx + cell.seekBarX, y);
+            // Songs / audio files: M3E wavy progress + loudness waveform, controlled by the M3E setting.
+            boolean expressive = OtherSettingsActivity.isMaterialExpressiveEnabled();
+            cell.seekBar.setExpressiveStyle(expressive);
+            float[] levels = null;
+            if (expressive) {
+                levels = AudioWaveformGenerator.get(cell.currentMessageObject);
+                if (levels == null) {
+                    AudioWaveformGenerator.request(cell.currentMessageObject, cell::invalidate);
+                }
+            }
+            cell.seekBar.setWaveformLevels(levels);
+            cell.seekBar.setPlaying(expressive && !MediaController.getInstance().isMessagePaused());
             cell.seekBar.draw(canvas);
             canvas.restore();
         }

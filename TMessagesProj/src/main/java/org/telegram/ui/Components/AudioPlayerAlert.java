@@ -643,6 +643,22 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
                 }
                 return super.onTouch(ev);
             }
+
+            @Override
+            protected void onDraw(Canvas canvas) {
+                // M3E look for the music player, controlled by the same setting as chats / video / voice.
+                boolean expressive = org.telegram.ui.OtherSettingsActivity.isMaterialExpressiveEnabled();
+                MessageObject playing = MediaController.getInstance().getPlayingMessageObject();
+                float[] levels = null;
+                if (expressive && playing != null) {
+                    levels = org.telegram.messenger.AudioWaveformGenerator.get(playing);
+                    if (levels == null) {
+                        org.telegram.messenger.AudioWaveformGenerator.request(playing, this::invalidate);
+                    }
+                }
+                setExpressiveStyle(expressive, playing != null && !MediaController.getInstance().isMessagePaused(), levels);
+                super.onDraw(canvas);
+            }
         };
         seekBarView.setLineWidth(4);
         seekBarView.setDelegate(new SeekBarView.SeekBarViewDelegate() {

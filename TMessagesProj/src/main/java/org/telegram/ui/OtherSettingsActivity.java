@@ -56,6 +56,26 @@ public class OtherSettingsActivity extends BaseFragment {
     public static final String EMBEDDED_PHOTO_PICKER = "__embedded_photo_picker__";
 
     public static final String KEY_PREMIUM_ACCESS = "easygram_premium_access";
+    public static final String KEY_MATERIAL_EXPRESSIVE = "easygram_material3_expressive";
+
+    private static volatile Boolean materialExpressiveCached;
+
+    /** Material 3 Expressive look for the video seek bar and voice message waveform. Cached: read on every draw. */
+    public static boolean isMaterialExpressiveEnabled() {
+        Boolean cached = materialExpressiveCached;
+        if (cached == null) {
+            cached = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE)
+                    .getBoolean(KEY_MATERIAL_EXPRESSIVE, false);
+            materialExpressiveCached = cached;
+        }
+        return cached;
+    }
+
+    public static void setMaterialExpressiveEnabled(boolean enabled) {
+        materialExpressiveCached = enabled;
+        ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE)
+                .edit().putBoolean(KEY_MATERIAL_EXPRESSIVE, enabled).apply();
+    }
 
     public static final String KEY_TAB_CHATS = "easygram_tab_chats";
     public static final String KEY_TAB_CONTACTS = "easygram_tab_contacts";
@@ -107,6 +127,8 @@ public class OtherSettingsActivity extends BaseFragment {
     private int adsInfoRow;
     private int showStarMessagesRow;
     private int starMessagesInfoRow;
+    private int materialExpressiveRow;
+    private int materialExpressiveInfoRow;
     private int navHeaderRow;
     private int navLabelsRow;
     private int navStartRow;
@@ -298,6 +320,8 @@ public class OtherSettingsActivity extends BaseFragment {
         adsInfoRow = rowCount++;
         showStarMessagesRow = rowCount++;
         starMessagesInfoRow = rowCount++;
+        materialExpressiveRow = rowCount++;
+        materialExpressiveInfoRow = rowCount++;
         secretMediaRow = rowCount++;
         navHeaderRow = rowCount++;
         navLabelsRow = rowCount++;
@@ -405,6 +429,13 @@ public class OtherSettingsActivity extends BaseFragment {
                 boolean showStars = preferences().getBoolean("easygram_show_star_messages", true);
                 boolean next = !showStars;
                 preferences().edit().putBoolean("easygram_show_star_messages", next).apply();
+                if (view instanceof TextCheckCell) {
+                    ((TextCheckCell) view).setChecked(next);
+                }
+                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.updateInterfaces, org.telegram.messenger.MessagesController.UPDATE_MASK_ALL);
+            } else if (position == materialExpressiveRow) {
+                boolean next = !isMaterialExpressiveEnabled();
+                setMaterialExpressiveEnabled(next);
                 if (view instanceof TextCheckCell) {
                     ((TextCheckCell) view).setChecked(next);
                 }
@@ -603,8 +634,8 @@ public class OtherSettingsActivity extends BaseFragment {
             if (position == headerRow || position == navHeaderRow || position == photoMenuHeaderRow) return 0;
             if (position == galleryRow) return 1;
             if (position == secretMediaRow) return 6;
-            if (position == premiumAccessInfoRow || position == galleryInfoRow || position == sendMediaHdInfoRow || position == storiesInfoRow || position == adsInfoRow || position == starMessagesInfoRow || position == navInfoRow || position == photoMenuInfoRow) return 2;
-            if (position == premiumAccessRow || position == sendMediaHdRow || position == disableStoriesRow || position == disableAdsRow || position == showStarMessagesRow || position == navLabelsRow) return 3;
+            if (position == premiumAccessInfoRow || position == galleryInfoRow || position == sendMediaHdInfoRow || position == storiesInfoRow || position == adsInfoRow || position == starMessagesInfoRow || position == materialExpressiveInfoRow || position == navInfoRow || position == photoMenuInfoRow) return 2;
+            if (position == premiumAccessRow || position == sendMediaHdRow || position == disableStoriesRow || position == disableAdsRow || position == showStarMessagesRow || position == materialExpressiveRow || position == navLabelsRow) return 3;
             if (position >= navStartRow && position < navEndRow) return 4;
             if (position >= photoMenuStartRow && position < photoMenuEndRow) return 5;
             return 0;
@@ -676,6 +707,8 @@ public class OtherSettingsActivity extends BaseFragment {
                         infoCell.setText(LocaleController.getString(R.string.EasygramDisableAdsInfo));
                     } else if (position == starMessagesInfoRow) {
                         infoCell.setText(LocaleController.getString(R.string.EasygramShowStarMessagesInfo));
+                    } else if (position == materialExpressiveInfoRow) {
+                        infoCell.setText(LocaleController.getString(R.string.EasygramMaterialExpressiveInfo));
                     } else if (position == navInfoRow) {
                         infoCell.setText(LocaleController.getString(R.string.EasygramNavigationBarInfo));
                     } else if (position == photoMenuInfoRow) {
@@ -726,6 +759,12 @@ public class OtherSettingsActivity extends BaseFragment {
                         checkCell.setTextAndCheck(
                                 LocaleController.getString(R.string.EasygramShowStarMessages),
                                 showStarMessages,
+                                false
+                        );
+                    } else if (position == materialExpressiveRow) {
+                        checkCell.setTextAndCheck(
+                                LocaleController.getString(R.string.EasygramMaterialExpressive),
+                                isMaterialExpressiveEnabled(),
                                 false
                         );
                     } else if (position == navLabelsRow) {

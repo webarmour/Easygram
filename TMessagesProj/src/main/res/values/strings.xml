@@ -11771,6 +11771,8 @@
     <string name="EasygramDisableAdsInfo">Disables sponsored messages in channels, ads in search, promo channels, and video ads.</string>
     <string name="EasygramShowStarMessages">Paid media thumbnails without blur</string>
     <string name="EasygramShowStarMessagesInfo">Removes additional blur and spoiler effects from paid photo and video thumbnails. Quality is limited to the thumbnail provided by Telegram; originals require purchase.</string>
+    <string name="EasygramMaterialExpressive">Use Material 3 Expressive style</string>
+    <string name="EasygramMaterialExpressiveInfo">Wavy progress line in the video player and for songs and audio files in chats, and a wavy waveform whose amplitude follows the loudness for voice messages and downloaded audio files. When off, the default Telegram look is used.</string>
     <string name="EasygramSendMediaHd">Send media in HD</string>
     <string name="EasygramSendMediaHdInfo">Applies to third-party pickers selected above.</string>
     <string name="EasygramPhotoMenu">Photo menu options</string>

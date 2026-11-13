@@ -65,6 +65,15 @@ public class SeekBarWaveform {
 
     private Path path;
     private Path alphaPath;
+
+    // Material 3 Expressive waveform: a wavy line whose amplitude follows the loudness.
+    private static Paint expressiveStrokePaint;
+    private final Path expressiveLinePath = new Path();
+    private final Path expressiveGapPath = new Path();
+    private float[] expressiveEnvelope;
+    private float expressivePhase;
+    private long expressiveLastFrame;
+    private static final float EXPRESSIVE_WAVE_SPEED = (float) (Math.PI * 2 * 0.7);
     private boolean loading;
     private long loadingStart;
     private AnimatedFloat loadingFloat = new AnimatedFloat(150, CubicBezierInterpolator.DEFAULT);
@@ -344,7 +353,12 @@ public class SeekBarWaveform {
         }
 
         final boolean reverse = delegate != null && delegate.reverseWaveform();
-        if (fromHeights != null && toHeights != null) {
+        final boolean expressiveWave = org.telegram.ui.OtherSettingsActivity.isMaterialExpressiveEnabled()
+                && (fromHeights == null || toHeights == null) && heights != null && heights.length > 1;
+        float expressiveThumbX = -1;
+        if (expressiveWave) {
+            expressiveThumbX = buildExpressivePath(totalBarsCount, appearProgress, reverse);
+        } else if (fromHeights != null && toHeights != null) {
             float t = (width - fromWidth) / (float) (toWidth - fromWidth);
             int maxlen = Math.max(fromHeights.length, toHeights.length);
             int minlen = Math.min(fromHeights.length, toHeights.length);
@@ -397,6 +411,10 @@ public class SeekBarWaveform {
         canvas.clipPath(path);
         drawFill(canvas, this.alpha);
         canvas.restore();
+
+        if (expressiveThumbX >= 0) {
+            drawExpressiveThumb(canvas, expressiveThumbX);
+        }
 
         if (exploding || explosionRate > 0) {
             canvas.restore();
@@ -473,6 +491,102 @@ public class SeekBarWaveform {
                 parentView.invalidate();
             }
         }
+    }
+
+    /**
+     * Fills {@link #path} with the outline of a wavy line: a sine carrier whose local amplitude is the
+     * loudness of that part of the message (loud = tall waves, silence = an almost flat line).
+     * Returns the x of the M3E thumb, or -1 when no thumb should be drawn.
+     */
+    private float buildExpressivePath(float totalBarsCount, float appearProgress, boolean reverse) {
+        final float barStep = AndroidUtilities.dpf2(3);
+        final int count = Math.min(heights.length, (int) Math.ceil(totalBarsCount));
+        if (expressiveEnvelope == null || expressiveEnvelope.length < count) {
+            expressiveEnvelope = new float[count];
+        }
+        // Envelope: local peak over neighbouring bars, so peaks are not lost between wave crests.
+        for (int i = 0; i < count; i++) {
+            float m = 0;
+            for (int j = Math.max(0, i - 1); j <= Math.min(count - 1, i + 1); j++) {
+                m = Math.max(m, heights[reverse ? heights.length - 1 - j : j]);
+            }
+            float bart = MathUtils.clamp(appearProgress * totalBarsCount - i, 0, 1);
+            expressiveEnvelope[i] = m * bart;
+        }
+
+        boolean playing = messageObject != null && MediaController.getInstance().isPlayingMessage(messageObject)
+                && !MediaController.getInstance().isMessagePaused();
+        long now = SystemClock.elapsedRealtime();
+        if (playing) {
+            long dt = expressiveLastFrame == 0 ? 16 : Math.min(64, now - expressiveLastFrame);
+            expressivePhase = (expressivePhase + EXPRESSIVE_WAVE_SPEED * dt / 1000f) % (float) (Math.PI * 2);
+            expressiveLastFrame = now;
+            invalidate();
+        } else {
+            expressiveLastFrame = 0;
+        }
+
+        if (expressiveStrokePaint == null) {
+            expressiveStrokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            expressiveStrokePaint.setStyle(Paint.Style.STROKE);
+            expressiveStrokePaint.setStrokeCap(Paint.Cap.ROUND);
+            expressiveStrokePaint.setStrokeJoin(Paint.Join.ROUND);
+        }
+        final float stroke = AndroidUtilities.dpf2(2.2f);
+        expressiveStrokePaint.setStrokeWidth(stroke);
+
+        final float centerY = (height - dp(14)) / 2f + dp(7);
+        final float maxAmp = AndroidUtilities.dpf2(1) * waveScaling; // heights are in dp (0..7)
+        final float minAmp = AndroidUtilities.dpf2(0.5f);
+        final float wavelength = AndroidUtilities.dpf2(9);
+        final float k = (float) (Math.PI * 2 / wavelength);
+        final float startX = AndroidUtilities.dpf2(1);
+        final float endX = Math.max(startX, (count - 1) * barStep + AndroidUtilities.dpf2(1));
+        final float step = AndroidUtilities.dpf2(0.75f);
+
+        expressiveLinePath.rewind();
+        for (float x = startX; ; x += step) {
+            if (x > endX) x = endX;
+            float pos = (x - startX) / barStep;
+            int i0 = MathUtils.clamp((int) pos, 0, count - 1);
+            int i1 = Math.min(count - 1, i0 + 1);
+            float f = pos - i0;
+            float env = expressiveEnvelope[i0] * (1f - f) + expressiveEnvelope[i1] * f;
+            float amp = env > 0.01f ? Math.max(minAmp, env * maxAmp) : 0;
+            // flat ends so the line starts/finishes on the center line
+            float edge = Math.min(1f, Math.min(x - startX, endX - x) / (wavelength / 2f));
+            float y = centerY + amp * edge * (float) Math.sin(k * (x - startX) - expressivePhase);
+            if (x == startX) {
+                expressiveLinePath.moveTo(x, y);
+            } else {
+                expressiveLinePath.lineTo(x, y);
+            }
+            if (x >= endX) break;
+        }
+        expressiveStrokePaint.getFillPath(expressiveLinePath, path);
+
+        boolean showThumb = delegate != null && delegate.isSeekBarDragAllowed() && progress > 0f && progress < 1f && messageObject != null
+                && MediaController.getInstance().isPlayingMessage(messageObject);
+        if (!showThumb) {
+            return -1;
+        }
+        float thumbX = startX + (endX - startX) * progress;
+        // cut a gap around the thumb, like M3E sliders/progress indicators
+        float gap = AndroidUtilities.dpf2(4);
+        expressiveGapPath.rewind();
+        expressiveGapPath.addRect(thumbX - gap, 0, thumbX + gap, height, Path.Direction.CW);
+        path.op(expressiveGapPath, Path.Op.DIFFERENCE);
+        return thumbX;
+    }
+
+    private void drawExpressiveThumb(Canvas canvas, float x) {
+        final float centerY = (height - dp(14)) / 2f + dp(7);
+        final float halfW = AndroidUtilities.dpf2(1.5f);
+        final float halfH = Math.min(height / 2f, AndroidUtilities.dpf2(pressed ? 11 : 9));
+        paintOuter.setColor(outerColor);
+        paintOuter.setAlpha((int) (paintOuter.getAlpha() * alpha));
+        AndroidUtilities.rectTmp.set(x - halfW, centerY - halfH, x + halfW, centerY + halfH);
+        canvas.drawRoundRect(AndroidUtilities.rectTmp, halfW, halfW, paintOuter);
     }
 
     private void addBar(Path path, float x, float h) {

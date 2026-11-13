@@ -74,6 +74,58 @@ public class SeekBar {
     private View parentView;
     private float alpha = 1f;
 
+    // Material 3 Expressive style: wavy active track, gaps around a vertical bar thumb, flat inactive track.
+    private boolean expressive;
+    private boolean playing;
+    private static Paint wavePaint;
+    private final Path wavePath = new Path();
+    private float waveAmplitudeFactor;
+    private float wavePhase;
+    private long waveLastFrameTime;
+    private static final float WAVE_SPEED_RAD_PER_SEC = (float) (Math.PI * 2 * 0.8);
+    private static final long WAVE_AMPLITUDE_ANIM_MS = 300;
+
+    public void setExpressiveStyle(boolean expressive) {
+        if (this.expressive == expressive) {
+            return;
+        }
+        this.expressive = expressive;
+        if (expressive && wavePaint == null) {
+            wavePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            wavePaint.setStyle(Paint.Style.STROKE);
+            wavePaint.setStrokeCap(Paint.Cap.ROUND);
+            wavePaint.setStrokeJoin(Paint.Join.ROUND);
+        }
+        if (parentView != null) {
+            parentView.invalidate();
+        }
+    }
+
+    private float[] waveformLevels;
+    private float waveformAppear = 1f;
+
+    /** Loudness levels (0..1) of the track; in expressive mode the whole track is drawn as a loudness wave. */
+    public void setWaveformLevels(float[] levels) {
+        if (waveformLevels != levels) {
+            if (waveformLevels == null && levels != null) {
+                waveformAppear = 0f;
+            }
+            waveformLevels = levels;
+            if (parentView != null) {
+                parentView.invalidate();
+            }
+        }
+    }
+
+    public void setPlaying(boolean playing) {
+        if (this.playing != playing) {
+            this.playing = playing;
+            if (expressive && parentView != null) {
+                parentView.invalidate();
+            }
+        }
+    }
+
     public SeekBar(View parent) {
         if (paint == null) {
             paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -200,17 +252,43 @@ public class SeekBar {
         if (alpha < 1) {
             canvas.saveLayerAlpha(0, 0, width, height, (int) (255 * alpha), Canvas.ALL_SAVE_FLAG);
         }
-        rect.set(thumbWidth / 2, height / 2 - lineHeight / 2, width - thumbWidth / 2, height / 2 + lineHeight / 2);
+        final float thumbCenterX = (pressed ? draggingThumbX : thumbX) + thumbWidth / 2f;
+        final float thumbGap = expressive ? AndroidUtilities.dp(6) : 0;
+        final float inactiveLeft = expressive ? Math.max(thumbWidth / 2f, thumbCenterX + thumbGap) : thumbWidth / 2f;
+        if (expressive) {
+            updateWaveAnimation(playing && !pressed);
+        }
+        if (expressive && waveformLevels != null && waveformLevels.length > 1) {
+            drawLoudnessTrack(canvas, thumbCenterX, thumbGap);
+            if (alpha < 1) {
+                canvas.restore();
+            }
+            updateTimestampAnimation();
+            return;
+        }
+
+        rect.set(inactiveLeft, height / 2 - lineHeight / 2, width - thumbWidth / 2, height / 2 + lineHeight / 2);
         paint.setColor(selected ? backgroundSelectedColor : backgroundColor);
-        drawProgressBar(canvas, rect, paint);
+        if (rect.right > rect.left) {
+            drawProgressBar(canvas, rect, paint);
+        }
         if (bufferedProgress > 0) {
             paint.setColor(selected ? backgroundSelectedColor : cacheColor);
-            rect.set(thumbWidth / 2, height / 2 - lineHeight / 2, thumbWidth / 2 + bufferedProgress * (width - thumbWidth), height / 2 + lineHeight / 2);
-            drawProgressBar(canvas, rect, paint);
+            rect.set(inactiveLeft, height / 2 - lineHeight / 2, thumbWidth / 2 + bufferedProgress * (width - thumbWidth), height / 2 + lineHeight / 2);
+            if (rect.right > rect.left) {
+                drawProgressBar(canvas, rect, paint);
+            }
         }
         rect.set(thumbWidth / 2, height / 2 - lineHeight / 2, thumbWidth / 2 + (pressed ? draggingThumbX : thumbX), height / 2 + lineHeight / 2);
         paint.setColor(progressColor);
-        drawProgressBar(canvas, rect, paint);
+        if (expressive) {
+            float activeRight = thumbCenterX - thumbGap;
+            if (activeRight > rect.left) {
+                drawWavyProgress(canvas, rect.left, activeRight, height / 2f, AndroidUtilities.dp(3));
+            }
+        } else {
+            drawProgressBar(canvas, rect, paint);
+        }
         paint.setColor(circleColor);
 
         int newRad = AndroidUtilities.dp(pressed ? 8 : 6);
@@ -236,7 +314,15 @@ public class SeekBar {
             }
         }
 
-        canvas.drawCircle((pressed ? draggingThumbX : thumbX) + thumbWidth / 2, height / 2, currentRadius, paint);
+        if (expressive) {
+            // M3E slider thumb: a vertical rounded bar instead of a circle.
+            float halfW = AndroidUtilities.dp(2);
+            float halfH = currentRadius * 1.35f;
+            AndroidUtilities.rectTmp.set(thumbCenterX - halfW, height / 2f - halfH, thumbCenterX + halfW, height / 2f + halfH);
+            canvas.drawRoundRect(AndroidUtilities.rectTmp, halfW, halfW, paint);
+        } else {
+            canvas.drawCircle((pressed ? draggingThumbX : thumbX) + thumbWidth / 2, height / 2, currentRadius, paint);
+        }
 
         if (alpha < 1) {
             canvas.restore();
@@ -359,6 +445,143 @@ public class SeekBar {
                 return 0;
             }
         });
+    }
+
+    /** Whole track as a wavy line whose amplitude follows loudness, with a gap around a bar thumb. */
+    private void drawLoudnessTrack(Canvas canvas, float thumbCenterX, float thumbGap) {
+        if (waveformAppear < 1f) {
+            waveformAppear = Math.min(1f, waveformAppear + 16f / 300f);
+            if (parentView != null) parentView.invalidate();
+        }
+        final float left = thumbWidth / 2f;
+        final float right = width - thumbWidth / 2f;
+        final float centerY = height / 2f;
+        final float bufferedX = left + bufferedProgress * (right - left);
+
+        // played part
+        paint.setColor(progressColor);
+        drawLoudnessSegment(canvas, left, thumbCenterX - thumbGap, left, right, centerY);
+        // buffered part
+        float inactiveLeft = thumbCenterX + thumbGap;
+        if (bufferedProgress > 0 && bufferedX > inactiveLeft) {
+            paint.setColor(selected ? backgroundSelectedColor : cacheColor);
+            drawLoudnessSegment(canvas, inactiveLeft, bufferedX, left, right, centerY);
+            inactiveLeft = bufferedX;
+        }
+        // rest of the track
+        paint.setColor(selected ? backgroundSelectedColor : backgroundColor);
+        drawLoudnessSegment(canvas, inactiveLeft, right, left, right, centerY);
+
+        // thumb (bar) + its press animation
+        int newRad = AndroidUtilities.dp(pressed ? 8 : 6);
+        if (currentRadius != newRad) {
+            currentRadius += (newRad > currentRadius ? 1 : -1) * AndroidUtilities.dp(1) * (16 / 60.0f);
+            if (Math.abs(currentRadius - newRad) < AndroidUtilities.dp(1) * (16 / 60.0f)) currentRadius = newRad;
+            if (parentView != null) parentView.invalidate();
+        }
+        paint.setColor(circleColor);
+        float halfW = AndroidUtilities.dp(2);
+        float halfH = Math.min(height / 2f, currentRadius * 1.6f);
+        AndroidUtilities.rectTmp.set(thumbCenterX - halfW, centerY - halfH, thumbCenterX + halfW, centerY + halfH);
+        canvas.drawRoundRect(AndroidUtilities.rectTmp, halfW, halfW, paint);
+    }
+
+    private void drawLoudnessSegment(Canvas canvas, float from, float to, float trackLeft, float trackRight, float centerY) {
+        final float stroke = AndroidUtilities.dp(2.2f);
+        final float half = stroke / 2f;
+        from = Math.max(from, trackLeft) + half;
+        to = Math.min(to, trackRight) - half;
+        if (to - from < 1f) {
+            return;
+        }
+        final float[] levels = waveformLevels;
+        final int n = levels.length;
+        final float maxAmp = AndroidUtilities.dp(6) * waveformAppear;
+        final float minAmp = AndroidUtilities.dp(0.5f);
+        final float wavelength = AndroidUtilities.dp(9);
+        final float k = (float) (Math.PI * 2 / wavelength);
+        final float taper = wavelength / 2f;
+        final float step = AndroidUtilities.dp(0.75f);
+        wavePaint.setColor(paint.getColor());
+        wavePaint.setStrokeWidth(stroke);
+        wavePath.rewind();
+        for (float x = from; ; x += step) {
+            if (x > to) x = to;
+            float pos = (x - trackLeft) / (trackRight - trackLeft) * (n - 1);
+            int i0 = Math.max(0, Math.min(n - 1, (int) pos));
+            int i1 = Math.min(n - 1, i0 + 1);
+            float f = pos - i0;
+            float level = levels[i0] * (1f - f) + levels[i1] * f;
+            float amp = level > 0.01f ? Math.max(minAmp, level * maxAmp) : 0;
+            float edge = Math.min(1f, Math.min(x - from, to - x) / taper);
+            // phase is anchored to the track, so the pattern doesn't jump when the thumb moves
+            float y = centerY + amp * edge * (float) Math.sin(k * (x - trackLeft) - wavePhase);
+            if (x == from) {
+                wavePath.moveTo(x, y);
+            } else {
+                wavePath.lineTo(x, y);
+            }
+            if (x >= to) break;
+        }
+        canvas.drawPath(wavePath, wavePaint);
+    }
+
+    private void updateWaveAnimation(boolean active) {
+        long now = SystemClock.elapsedRealtime();
+        long dt = waveLastFrameTime == 0 ? 16 : Math.min(64, now - waveLastFrameTime);
+        waveLastFrameTime = now;
+        float target = active ? 1f : 0f;
+        if (waveAmplitudeFactor != target) {
+            float step = dt / (float) WAVE_AMPLITUDE_ANIM_MS;
+            waveAmplitudeFactor = target > waveAmplitudeFactor
+                    ? Math.min(target, waveAmplitudeFactor + step)
+                    : Math.max(target, waveAmplitudeFactor - step);
+        }
+        if (waveAmplitudeFactor > 0f) {
+            wavePhase += WAVE_SPEED_RAD_PER_SEC * dt / 1000f;
+            if (wavePhase > Math.PI * 2) {
+                wavePhase -= (float) (Math.PI * 2);
+            }
+            if (parentView != null) {
+                parentView.invalidate();
+            }
+        } else if (!active) {
+            waveLastFrameTime = 0;
+        }
+    }
+
+    private void drawWavyProgress(Canvas canvas, float left, float right, float centerY, float thickness) {
+        float smooth = waveAmplitudeFactor * waveAmplitudeFactor * (3f - 2f * waveAmplitudeFactor);
+        float amplitude = AndroidUtilities.dp(2.5f) * smooth;
+        float half = thickness / 2f;
+        float startX = left + half;
+        float endX = right - half;
+        if (amplitude < 0.1f || endX - startX < 1f) {
+            AndroidUtilities.rectTmp.set(left, centerY - half, Math.max(left + thickness, right), centerY + half);
+            canvas.drawRoundRect(AndroidUtilities.rectTmp, half, half, paint);
+            return;
+        }
+        wavePaint.setColor(paint.getColor());
+        wavePaint.setStrokeWidth(thickness);
+        float wavelength = AndroidUtilities.dp(20);
+        float taper = wavelength / 2f;
+        float k = (float) (Math.PI * 2 / wavelength);
+        float step = AndroidUtilities.dp(1.5f);
+        wavePath.rewind();
+        wavePath.moveTo(startX, centerY);
+        for (float x = startX + step; ; x += step) {
+            if (x > endX) {
+                x = endX;
+            }
+            // Flatten both ends so the line starts at the track and meets the thumb gap cleanly.
+            float endFactor = Math.min(1f, Math.min(x - startX, endX - x) / taper);
+            float y = centerY + amplitude * endFactor * (float) Math.sin(k * (x - startX) - wavePhase);
+            wavePath.lineTo(x, y);
+            if (x >= endX) {
+                break;
+            }
+        }
+        canvas.drawPath(wavePath, wavePaint);
     }
 
     private void drawProgressBar(Canvas canvas, RectF rect, Paint paint) {

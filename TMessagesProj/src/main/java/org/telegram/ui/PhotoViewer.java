@@ -9771,6 +9771,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         videoPlayerSeekbarView = new View(containerView.getContext()) {
             @Override
             protected void onDraw(Canvas canvas) {
+                videoPlayerSeekbar.setExpressiveStyle(OtherSettingsActivity.isMaterialExpressiveEnabled());
                 videoPlayerSeekbar.setPlaying(isPlaying);
                 videoPlayerSeekbar.draw(canvas, this);
             }
@@ -9783,7 +9784,6 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         videoPlayerSeekbar.setHorizontalPadding(dp(2));
         videoPlayerSeekbar.setColors(0x33ffffff, 0x33ffffff, Color.WHITE, Color.WHITE, Color.WHITE, 0x59ffffff);
         videoPlayerSeekbar.setDelegate(seekBarDelegate);
-        videoPlayerSeekbar.setExpressiveStyle(true);
 
         videoPreviewFrame = new VideoSeekPreviewImage(containerView.getContext(), () -> {
             if (needShowOnReady) {

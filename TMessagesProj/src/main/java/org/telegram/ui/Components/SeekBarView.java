@@ -470,14 +470,51 @@ public class SeekBarView extends FrameLayout implements Theme.Colorable {
         float left = selectorWidth / 2f, right = getMeasuredWidth() - selectorWidth / 2;
         float top = centerY - AndroidUtilities.dp(lineWidthDp) / 2f, bottom = centerY + AndroidUtilities.dp(lineWidthDp) / 2f;
 
-        rect.set(left, top, right, bottom);
-        drawProgressBar(canvas, rect, innerPaint1);
-        if (bufferedProgress > 0) {
+        final boolean m3 = expressive && expressiveTrack != null && !twoSided && minProgress < 0;
+        if (m3) {
+            boolean animating = expressiveTrack.update(expressivePlaying && !pressed, expressiveLevels);
+            float thumbCenter = left + thumbX;
+            float gap = AndroidUtilities.dp(7);
+            float bufferedX = left + bufferedProgress * (right - left);
+            int bgColor = getThemedColor(Theme.key_player_progressBackground);
+            int cacheColor = getThemedColor(Theme.key_player_progressCachedBackground);
+            int fgColor = outerPaint1.getColor();
+            float inactiveLeft = thumbCenter + gap;
+            if (expressiveLevels != null) {
+                float stroke = AndroidUtilities.dp(2.5f);
+                float amp = AndroidUtilities.dp(8);
+                float wl = AndroidUtilities.dp(10);
+                expressiveTrack.drawLoudness(canvas, left, thumbCenter - gap, left, right, centerY, stroke, amp, wl, expressiveLevels, fgColor);
+                if (bufferedProgress > 0 && bufferedX > inactiveLeft) {
+                    expressiveTrack.drawLoudness(canvas, inactiveLeft, bufferedX, left, right, centerY, stroke, amp, wl, expressiveLevels, cacheColor);
+                    inactiveLeft = bufferedX;
+                }
+                expressiveTrack.drawLoudness(canvas, inactiveLeft, right, left, right, centerY, stroke, amp, wl, expressiveLevels, bgColor);
+            } else {
+                float thickness = AndroidUtilities.dp(lineWidthDp);
+                expressiveTrack.drawLine(canvas, Math.max(left, inactiveLeft), right, centerY, thickness, bgColor);
+                if (bufferedProgress > 0 && bufferedX > inactiveLeft) {
+                    expressiveTrack.drawLine(canvas, inactiveLeft, bufferedX, centerY, thickness, cacheColor);
+                }
+                if (thumbCenter - gap > left) {
+                    expressiveTrack.drawWavy(canvas, left, thumbCenter - gap, centerY, thickness, AndroidUtilities.dp(3), AndroidUtilities.dp(26), fgColor);
+                }
+            }
+            if (animating) {
+                postInvalidateOnAnimation();
+            }
+        } else {
+            rect.set(left, top, right, bottom);
+            drawProgressBar(canvas, rect, innerPaint1);
+        }
+        if (!m3 && bufferedProgress > 0) {
             innerPaint1.setColor(getThemedColor(Theme.key_player_progressCachedBackground));
             rect.set(left, top, selectorWidth / 2f + bufferedProgress * (getMeasuredWidth() - selectorWidth), bottom);
             drawProgressBar(canvas, rect, innerPaint1);
         }
-        if (twoSided) {
+        if (m3) {
+            // tracks already drawn above
+        } else if (twoSided) {
             canvas.drawRect(getMeasuredWidth() / 2 - AndroidUtilities.dp(1), getMeasuredHeight() / 2 - AndroidUtilities.dp(6), getMeasuredWidth() / 2 + AndroidUtilities.dp(1), getMeasuredHeight() / 2 + AndroidUtilities.dp(6), outerPaint1);
             if (thumbX > (getMeasuredWidth() - selectorWidth) / 2) {
                 canvas.drawRect(getMeasuredWidth() / 2, getMeasuredHeight() / 2 - AndroidUtilities.dp(1), selectorWidth / 2 + thumbX, getMeasuredHeight() / 2 + AndroidUtilities.dp(1), outerPaint1);
@@ -499,7 +536,7 @@ public class SeekBarView extends FrameLayout implements Theme.Colorable {
             }
         }
 
-        if (hoverDrawable != null) {
+        if (hoverDrawable != null && !m3) {
             int dx = thumbX + selectorWidth / 2 - AndroidUtilities.dp(16);
             int dy = y + thumbSize / 2 - AndroidUtilities.dp(16);
             hoverDrawable.setBounds(dx, dy, dx + AndroidUtilities.dp(32), dy + AndroidUtilities.dp(32));
@@ -535,7 +572,9 @@ public class SeekBarView extends FrameLayout implements Theme.Colorable {
             }
         }
 
-        if (transitionProgress < 1f) {
+        if (m3) {
+            M3ExpressiveTrack.drawThumb(canvas, thumbX + selectorWidth / 2f, centerY, AndroidUtilities.dp(2.5f), currentRadius * 1.9f, outerPaint1);
+        } else if (transitionProgress < 1f) {
             final float oldCircleProgress = 1f - Easings.easeInQuad.getInterpolation(Math.min(1f, transitionProgress * 3f));
             final float newCircleProgress = Easings.easeOutQuad.getInterpolation(transitionProgress);
             if (oldCircleProgress > 0f) {
@@ -572,6 +611,24 @@ public class SeekBarView extends FrameLayout implements Theme.Colorable {
     private float lastWidth = -1;
 
     private RectF rect = new RectF();
+
+    // Material 3 Expressive look (used by the music player): wavy / loudness track and a bar thumb.
+    private boolean expressive;
+    private boolean expressivePlaying;
+    private float[] expressiveLevels;
+    private M3ExpressiveTrack expressiveTrack;
+
+    public void setExpressiveStyle(boolean expressive, boolean playing, float[] levels) {
+        if (this.expressive != expressive || this.expressivePlaying != playing || this.expressiveLevels != levels) {
+            this.expressive = expressive;
+            this.expressivePlaying = playing;
+            this.expressiveLevels = levels;
+            if (expressive && expressiveTrack == null) {
+                expressiveTrack = new M3ExpressiveTrack();
+            }
+            invalidate();
+        }
+    }
 
     public void clearTimestamps() {
         timestamps = null;

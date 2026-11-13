@@ -164,6 +164,9 @@ public class VideoPlayerSeekBar {
 
     /** Enables the Material 3 Expressive look (wavy progress while playing). */
     public void setExpressiveStyle(boolean expressive) {
+        if (this.expressive == expressive) {
+            return;
+        }
         this.expressive = expressive;
         if (expressive && wavePaint == null) {
             wavePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
