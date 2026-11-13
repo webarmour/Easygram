@@ -425,6 +425,11 @@
     <string name="EasygramShowStarMessagesInfo">Убирает дополнительное размытие и спойлер с миниатюр платных фото и видео. Качество ограничено миниатюрой от Telegram; оригиналы доступны после покупки.</string>
     <string name="EasygramMaterialExpressive">Стилистика Material 3 Expressive</string>
     <string name="EasygramMaterialExpressiveInfo">Волнистая полоска прогресса в видеоплеере и у песен и аудиофайлов в чате, а также волнистая диаграмма голосовых и скачанных аудиофайлов, амплитуда которой повторяет громкость. При отключении используется стандартный вид Telegram.</string>
+    <string name="EasygramWidgetName">Музыкальный плеер</string>
+    <string name="EasygramWidgetNameLarge">Музыкальный плеер — большой</string>
+    <string name="EasygramWidgetDescription">Текущий трек и волна Material 3 Expressive, реагирующая на звук</string>
+    <string name="EasygramWidgetNothingPlaying">Ничего не играет</string>
+    <string name="EasygramWidgetCover">Обложка</string>
     <string name="EasygramSendMediaHd">Отправлять медиа в HD</string>
     <string name="EasygramSendMediaHdInfo">Применимо в сторонних пикерах, выбранных выше.</string>
     <string name="EasygramPhotoMenu">Меню фото в чате</string>

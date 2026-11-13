@@ -73,6 +73,14 @@ public class MusicPlayerReceiver extends BroadcastReceiver {
                 case MusicPlayerService.NOTIFY_REPEAT:
                     SharedConfig.setRepeatMode((SharedConfig.repeatMode + 1) % 3);
                     break;
+                case MusicWidgetUpdater.ACTION_SEEK: {
+                    float progress = intent.getFloatExtra(MusicWidgetUpdater.EXTRA_PROGRESS, -1f);
+                    MessageObject playing = MediaController.getInstance().getPlayingMessageObject();
+                    if (playing != null && progress >= 0f && progress <= 1f) {
+                        MediaController.getInstance().seekToProgress(playing, progress);
+                    }
+                    break;
+                }
                 case MusicPlayerService.NOTIFY_SHUFFLE:
                     if (SharedConfig.shuffleMusic) {
                         MediaController.getInstance().setPlaybackOrderType(0);
@@ -81,6 +89,8 @@ public class MusicPlayerReceiver extends BroadcastReceiver {
                     }
                     break;
             }
+            // reflect the change on the home-screen widget right away (not on its next idle check)
+            MusicWidgetUpdater.getInstance().start();
         }
     }
 }

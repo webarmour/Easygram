@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 24 static tap zones over the widget's wave: RemoteViews can't report tap coordinates, and zones added at
+     runtime (addView) get re-created by the launcher on every frame, which swallows taps during playback. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_music_seek"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal">
+    <FrameLayout
+        android:id="@+id/widget_music_seek_0"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:importantForAccessibility="no" />
+    <FrameLayout
+        android:id="@+id/widget_music_seek_1"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:importantForAccessibility="no" />
+    <FrameLayout
+        android:id="@+id/widget_music_seek_2"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:importantForAccessibility="no" />
+    <FrameLayout
+        android:id="@+id/widget_music_seek_3"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:importantForAccessibility="no" />
+    <FrameLayout
+        android:id="@+id/widget_music_seek_4"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:importantForAccessibility="no" />
+    <FrameLayout
+        android:id="@+id/widget_music_seek_5"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:importantForAccessibility="no" />
+    <FrameLayout
+        android:id="@+id/widget_music_seek_6"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:importantForAccessibility="no" />
+    <FrameLayout
+        android:id="@+id/widget_music_seek_7"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:importantForAccessibility="no" />
+    <FrameLayout
+        android:id="@+id/widget_music_seek_8"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:importantForAccessibility="no" />
+    <FrameLayout
+        android:id="@+id/widget_music_seek_9"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:importantForAccessibility="no" />
+    <FrameLayout
+        android:id="@+id/widget_music_seek_10"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:importantForAccessibility="no" />
+    <FrameLayout
+        android:id="@+id/widget_music_seek_11"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:importantForAccessibility="no" />
+    <FrameLayout
+        android:id="@+id/widget_music_seek_12"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:importantForAccessibility="no" />
+    <FrameLayout
+        android:id="@+id/widget_music_seek_13"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:importantForAccessibility="no" />
+    <FrameLayout
+        android:id="@+id/widget_music_seek_14"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:importantForAccessibility="no" />
+    <FrameLayout
+        android:id="@+id/widget_music_seek_15"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:importantForAccessibility="no" />
+    <FrameLayout
+        android:id="@+id/widget_music_seek_16"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:importantForAccessibility="no" />
+    <FrameLayout
+        android:id="@+id/widget_music_seek_17"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:importantForAccessibility="no" />
+    <FrameLayout
+        android:id="@+id/widget_music_seek_18"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:importantForAccessibility="no" />
+    <FrameLayout
+        android:id="@+id/widget_music_seek_19"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:importantForAccessibility="no" />
+    <FrameLayout
+        android:id="@+id/widget_music_seek_20"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:importantForAccessibility="no" />
+    <FrameLayout
+        android:id="@+id/widget_music_seek_21"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:importantForAccessibility="no" />
+    <FrameLayout
+        android:id="@+id/widget_music_seek_22"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:importantForAccessibility="no" />
+    <FrameLayout
+        android:id="@+id/widget_music_seek_23"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:importantForAccessibility="no" />
+</LinearLayout>

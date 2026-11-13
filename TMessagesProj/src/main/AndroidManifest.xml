@@ -722,6 +722,24 @@
             android:name=".voip.CallNotificationSoundProvider"
             android:exported="true"/>
 
+        <receiver android:name=".MusicPlayerWidgetProvider" android:exported="false"
+            android:label="@string/EasygramWidgetName">
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/music_player_widget_info" />
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+        </receiver>
+
+        <receiver android:name=".MusicPlayerWidgetLargeProvider" android:exported="false"
+            android:label="@string/EasygramWidgetNameLarge">
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/music_player_widget_large_info" />
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+        </receiver>
+
         <receiver android:name=".ChatsWidgetProvider" android:exported="false">
             <meta-data android:name="android.appwidget.provider"
                 android:resource="@xml/chats_widget_info" />

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="widget_music_surface">#FFF7F9FC</color>
+    <color name="widget_music_text">#FF1B1E23</color>
+    <color name="widget_music_text_secondary">#FF5B6470</color>
+    <color name="widget_music_button">#14000000</color>
+</resources>
