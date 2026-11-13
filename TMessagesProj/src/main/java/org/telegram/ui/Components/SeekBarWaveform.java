@@ -545,7 +545,8 @@ public class SeekBarWaveform {
         final float maxAmp = Math.min(AndroidUtilities.dpf2(11.5f), (height / 2f - 1) / 1.3f) * waveScaling;
         // mirrored "beads": the upper half of the wave reflected downwards (symmetric peaks, like the classic
         // bars), plus a thin rounded baseline so silent parts stay a visible line
-        if (!voiceTrack.buildMirroredLoudness(path, startX, endX, startX, endX, centerY, maxAmp, wavelength, levels)) {
+        // plain mirrored loudness envelope: peaks where it's loud, low where it's quiet, no flowing carrier
+        if (!voiceTrack.buildMirroredLoudness(path, startX, endX, startX, endX, centerY, maxAmp, wavelength, levels, false)) {
             return -1;
         }
         float half = stroke / 2f;

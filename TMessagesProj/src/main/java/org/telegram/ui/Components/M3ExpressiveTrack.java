@@ -131,7 +131,7 @@ public class M3ExpressiveTrack {
                 thumbDrive += (drive - thumbDrive) * (drive > thumbDrive ? 0.5f : 0.25f);
                 beatPulse += (rawPulse * 0.35f - beatPulse) * 0.12f;
                 beatEnergy += (tracker.getEnergy() - beatEnergy) * 0.06f;
-                smoothedBoost += ((0.96f + 0.06f * beatEnergy + 0.034f * beatPulse) - smoothedBoost) * 0.05f;
+                smoothedBoost += ((1f + 0.06f * beatEnergy + 0.034f * beatPulse) - smoothedBoost) * 0.05f; // never shrinks
                 bassTremble += (tracker.getBassTremble() * 0.255f - bassTremble) * 0.1f;
             } else {
                 beatPulse = tracker.getPulse();
@@ -268,6 +268,15 @@ public class M3ExpressiveTrack {
      */
     public boolean buildMirroredLoudness(Path out, float from, float to, float trackLeft, float trackRight, float centerY,
                                          float maxAmplitude, float wavelength, float[] levels) {
+        return buildMirroredLoudness(out, from, to, trackLeft, trackRight, centerY, maxAmplitude, wavelength, levels, true);
+    }
+
+    /**
+     * @param carrier true: travelling |sin| beads (music-like); false: the plain mirrored loudness envelope -
+     *                every point is exactly as tall as its loudness, nothing flows or dips (voice messages)
+     */
+    public boolean buildMirroredLoudness(Path out, float from, float to, float trackLeft, float trackRight, float centerY,
+                                         float maxAmplitude, float wavelength, float[] levels, boolean carrier) {
         out.rewind();
         if (to - from < 1f || levels == null || levels.length < 2) return false;
         int n = levels.length;
@@ -291,8 +300,8 @@ public class M3ExpressiveTrack {
             float level = levels[i0] * (1f - f) + levels[i1] * f;
             float amp = level > 0.01f ? Math.max(minAmp, level * maxAmp) : 0;
             float edge = Math.min(1f, Math.min(x - from, to - x) / taper);
-            float d = amp * edge * Math.abs((float) Math.sin(k * (x - trackLeft) - phase));
-            if (level > 0.01f) {
+            float d = carrier ? amp * edge * Math.abs((float) Math.sin(k * (x - trackLeft) - phase)) : amp * edge;
+            if (carrier && level > 0.01f) {
                 // the bass buzz shimmers the bead outline (kept positive so the shape never inverts)
                 d += Math.abs(ripple(x - trackLeft, wavelength, AndroidUtilities.dp(0.4f) + 0.15f * amp)) * edge;
             }
