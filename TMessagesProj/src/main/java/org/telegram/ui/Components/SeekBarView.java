@@ -501,7 +501,7 @@ public class SeekBarView extends FrameLayout implements Theme.Colorable {
                 }
             }
             if (animating) {
-                postInvalidateOnAnimation();
+                M3ExpressiveTrack.invalidateNextFrame(this);
             }
         } else {
             rect.set(left, top, right, bottom);
@@ -573,7 +573,8 @@ public class SeekBarView extends FrameLayout implements Theme.Colorable {
         }
 
         if (m3) {
-            M3ExpressiveTrack.drawThumb(canvas, thumbX + selectorWidth / 2f, centerY, AndroidUtilities.dp(2.5f), currentRadius * 1.9f, outerPaint1);
+            float beat = 1f + 0.45f * expressiveTrack.getBeatPulse();
+            M3ExpressiveTrack.drawThumb(canvas, thumbX + selectorWidth / 2f, centerY, AndroidUtilities.dp(2.5f), Math.min(getMeasuredHeight() / 2f, currentRadius * 1.9f * beat), outerPaint1);
         } else if (transitionProgress < 1f) {
             final float oldCircleProgress = 1f - Easings.easeInQuad.getInterpolation(Math.min(1f, transitionProgress * 3f));
             final float newCircleProgress = Easings.easeOutQuad.getInterpolation(transitionProgress);
@@ -625,6 +626,7 @@ public class SeekBarView extends FrameLayout implements Theme.Colorable {
             this.expressiveLevels = levels;
             if (expressive && expressiveTrack == null) {
                 expressiveTrack = new M3ExpressiveTrack();
+                expressiveTrack.setReactToBeat(true);
             }
             invalidate();
         }

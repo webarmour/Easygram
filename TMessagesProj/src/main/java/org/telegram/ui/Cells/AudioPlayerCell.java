@@ -353,6 +353,8 @@ public class AudioPlayerCell extends FrameLayout implements DownloadController.F
         }
 
         radialProgress.setProgressColor(getThemedColor(buttonPressed ? Theme.key_chat_inAudioSelectedProgress : Theme.key_chat_inAudioProgress));
+        radialProgress.setExpressive(org.telegram.ui.OtherSettingsActivity.isMaterialExpressiveEnabled(),
+                currentMessageObject != null && MediaController.getInstance().isPlayingMessage(currentMessageObject));
         radialProgress.draw(canvas);
 
         super.onDraw(canvas);

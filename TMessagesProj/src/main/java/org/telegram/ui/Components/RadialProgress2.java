@@ -32,6 +32,22 @@ public class RadialProgress2 {
     public RectF progressRect = new RectF();
     private View parent;
 
+    // Material 3 Expressive play/pause (morphing icon + shape-morphing container, optional beat bump)
+    private boolean expressive;
+    private boolean expressiveBeat;
+    private boolean m3WasUsed;
+    private M3PlayPauseIcon m3Icon;
+
+    public void setExpressive(boolean expressive, boolean reactToBeat) {
+        if (this.expressive != expressive || this.expressiveBeat != reactToBeat) {
+            this.expressive = expressive;
+            this.expressiveBeat = reactToBeat;
+            if (parent != null) {
+                parent.invalidate();
+            }
+        }
+    }
+
     private boolean previousCheckDrawable;
 
     private boolean drawMiniIcon;
@@ -461,50 +477,104 @@ public class RadialProgress2 {
             float scaleMini = 1.0f - 0.1f * (1.0f - circleCheckProgress);
             miniDrawCanvas.scale(scaleMini, scaleMini, centerX, centerY);
         }
-        if (drawCircle && drawBackground) {
-            if ((drawMiniIcon || circleCrossfadeColorKey >= 0) && miniDrawCanvas != null) {
-                miniDrawCanvas.drawCircle(centerX, centerY, circleRadius, circlePaint);
-            } else {
-                if (currentIcon != MediaActionDrawable.ICON_NONE || wholeAlpha != 0) {
-                    if (backgroundStroke != 0) {
-                        canvas.drawCircle(centerX, centerY, (circleRadius - AndroidUtilities.dp(3.5f)), circlePaint);
-                    } else {
-                        canvas.drawCircle(centerX, centerY, circleRadius, circlePaint);
+        final boolean useM3 = expressive
+                && (currentIcon == MediaActionDrawable.ICON_PLAY || currentIcon == MediaActionDrawable.ICON_PAUSE)
+                && backgroundStroke == 0;
+        if (useM3) {
+            if (m3Icon == null) {
+                m3Icon = new M3PlayPauseIcon();
+            }
+            // same target as the stock path: the offscreen canvas when a mini badge / crossfade is drawn on top
+            final Canvas target = (drawMiniIcon || circleCrossfadeColorKey >= 0) && miniDrawCanvas != null ? miniDrawCanvas : canvas;
+            m3Icon.setPause(currentIcon == MediaActionDrawable.ICON_PAUSE, m3WasUsed);
+            boolean animating = m3Icon.update();
+            float pulse = 0f;
+            if (expressiveBeat && currentIcon == MediaActionDrawable.ICON_PAUSE) {
+                org.telegram.messenger.MusicBeatTracker tracker = org.telegram.messenger.MusicBeatTracker.getInstance();
+                tracker.markInterest();
+                pulse = tracker.getPulse();
+                animating = true;
+            }
+            float m3Scale = 1f + 0.08f * pulse;
+            if (drawCircle && drawBackground && (currentIcon != MediaActionDrawable.ICON_NONE || wholeAlpha != 0)) {
+                m3Icon.drawContainer(target, centerX, centerY, circleRadius, m3Scale, circlePaint);
+            }
+            int iconColor = color;
+            if (overlayImageView.hasBitmapImage()) {
+                // album cover clipped to the morphing M3E shape, dimmed, with a light icon on top
+                float coverAlpha = overlayImageView.getCurrentAlpha();
+                android.graphics.Path shape = m3Icon.buildContainerPath(centerX, centerY, circleRadius, m3Scale);
+                target.save();
+                target.clipPath(shape);
+                float r = circleRadius * m3Scale * 1.06f;
+                overlayImageView.setRoundRadius(0);
+                overlayImageView.setImageCoords(centerX - r, centerY - r, r * 2, r * 2);
+                overlayImageView.setAlpha(wholeAlpha * overrideAlpha * overlayImageAlpha);
+                overlayImageView.draw(target);
+                overlayImageView.setRoundRadius(circleRadius);
+                target.drawPath(shape, overlayPaint);
+                target.restore();
+                iconColor = androidx.core.graphics.ColorUtils.blendARGB(color, 0xffffffff, coverAlpha);
+            }
+            if (iconScale != 1f) {
+                canvas.save();
+                canvas.scale(iconScale, iconScale, centerX, centerY);
+            }
+            int iconSize = circleRadius;
+            if (maxIconSize > 0 && iconSize > maxIconSize) {
+                iconSize = maxIconSize;
+            }
+            m3Icon.drawIcon(target, centerX, centerY, iconSize * 0.46f * m3Scale, iconColor, (int) (255 * wholeAlpha * overrideAlpha));
+            if (animating && parent != null) {
+                M3ExpressiveTrack.invalidateNextFrame(parent);
+            }
+        } else {
+            if (drawCircle && drawBackground) {
+                if ((drawMiniIcon || circleCrossfadeColorKey >= 0) && miniDrawCanvas != null) {
+                    miniDrawCanvas.drawCircle(centerX, centerY, circleRadius, circlePaint);
+                } else {
+                    if (currentIcon != MediaActionDrawable.ICON_NONE || wholeAlpha != 0) {
+                        if (backgroundStroke != 0) {
+                            canvas.drawCircle(centerX, centerY, (circleRadius - AndroidUtilities.dp(3.5f)), circlePaint);
+                        } else {
+                            canvas.drawCircle(centerX, centerY, circleRadius, circlePaint);
+                        }
                     }
                 }
             }
-        }
-        if (overlayImageView.hasBitmapImage()) {
-            overlayImageView.setAlpha(wholeAlpha * overrideAlpha * overlayImageAlpha);
+            if (overlayImageView.hasBitmapImage()) {
+                overlayImageView.setAlpha(wholeAlpha * overrideAlpha * overlayImageAlpha);
 
-            if ((drawMiniIcon || circleCrossfadeColorKey >= 0) && miniDrawCanvas != null) {
-                overlayImageView.draw(miniDrawCanvas);
-                miniDrawCanvas.drawCircle(centerX, centerY, circleRadius, overlayPaint);
-            } else {
-                overlayImageView.draw(canvas);
-                canvas.drawCircle(centerX, centerY, circleRadius, overlayPaint);
+                if ((drawMiniIcon || circleCrossfadeColorKey >= 0) && miniDrawCanvas != null) {
+                    overlayImageView.draw(miniDrawCanvas);
+                    miniDrawCanvas.drawCircle(centerX, centerY, circleRadius, overlayPaint);
+                } else {
+                    overlayImageView.draw(canvas);
+                    canvas.drawCircle(centerX, centerY, circleRadius, overlayPaint);
+                }
             }
-        }
-        int iconSize = circleRadius;
-        if (maxIconSize > 0 && iconSize > maxIconSize) {
-            iconSize = maxIconSize;
-        }
-        if (iconScale != 1f) {
-            canvas.save();
-            canvas.scale(iconScale, iconScale, centerX, centerY);
-        }
-        mediaActionDrawable.setBounds(centerX - iconSize, centerY - iconSize, centerX + iconSize, centerY + iconSize);
-        mediaActionDrawable.setHasOverlayImage(overlayImageView.hasBitmapImage());
-        if ((drawMiniIcon || circleCrossfadeColorKey >= 0)) {
-            if (miniDrawCanvas != null) {
-                mediaActionDrawable.draw(miniDrawCanvas);
+            int iconSize = circleRadius;
+            if (maxIconSize > 0 && iconSize > maxIconSize) {
+                iconSize = maxIconSize;
+            }
+            if (iconScale != 1f) {
+                canvas.save();
+                canvas.scale(iconScale, iconScale, centerX, centerY);
+            }
+            mediaActionDrawable.setBounds(centerX - iconSize, centerY - iconSize, centerX + iconSize, centerY + iconSize);
+            mediaActionDrawable.setHasOverlayImage(overlayImageView.hasBitmapImage());
+            if ((drawMiniIcon || circleCrossfadeColorKey >= 0)) {
+                if (miniDrawCanvas != null) {
+                    mediaActionDrawable.draw(miniDrawCanvas);
+                } else {
+                    mediaActionDrawable.draw(canvas);
+                }
             } else {
+                mediaActionDrawable.setOverrideAlpha(overrideAlpha);
                 mediaActionDrawable.draw(canvas);
             }
-        } else {
-            mediaActionDrawable.setOverrideAlpha(overrideAlpha);
-            mediaActionDrawable.draw(canvas);
         }
+        m3WasUsed = useM3;
         if (restore != Integer.MIN_VALUE && miniDrawCanvas != null) {
             miniDrawCanvas.restoreToCount(restore);
         }

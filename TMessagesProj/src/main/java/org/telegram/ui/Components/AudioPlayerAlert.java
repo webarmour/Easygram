@@ -986,7 +986,7 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
 
         buttons[2] = playButton = new ImageView(context);
         playButton.setScaleType(ImageView.ScaleType.CENTER);
-        playButton.setImageDrawable(playPauseDrawable = new PlayPauseDrawable(28));
+        playButton.setImageDrawable(playPauseDrawable = new M3PlayPauseDrawable(28, true));
         playPauseDrawable.setPause(!MediaController.getInstance().isMessagePaused(), false);
         ThemeBind.colorFilter(playButton, Theme.key_player_button, resourcesProvider, PorterDuff.Mode.MULTIPLY);
         ThemeBind.selectorBackground(playButton, Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector), 1, dp(24)), null, ThemeBind.of(Theme.key_listSelector), resourcesProvider);

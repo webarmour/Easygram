@@ -4514,6 +4514,22 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         return currentSavedMusicList;
     }
 
+    public boolean isCurrentAudioPlayer(VideoPlayer player) {
+        return player != null && player == audioPlayer;
+    }
+
+    /** Audible position of the audio player in ms (accounts for output latency), or -1. Main thread. */
+    public long getAudioPlayerPositionMs() {
+        if (audioPlayer == null) {
+            return -1;
+        }
+        try {
+            return audioPlayer.getCurrentPosition();
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
     public boolean isPlayingMessage(MessageObject messageObject) {
         if (messageObject != null && messageObject.isRepostPreview) {
             return false;

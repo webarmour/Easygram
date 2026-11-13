@@ -13082,6 +13082,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                 if (drawPhotoImage && currentMessageObject != null && currentMessageObject.hasMediaSpoilers() && currentMessageObject.isSensitive() && (!currentMessageObject.isMediaSpoilersRevealed || mediaSpoilerRevealProgress != 0 && mediaSpoilerRevealProgress < 1)) {
                     radialProgress.iconScale *= mediaSpoilerRevealProgress;
                 }
+                radialProgress.setExpressive(org.telegram.ui.OtherSettingsActivity.isMaterialExpressiveEnabled(), false);
                 drawVoiceOnce(canvas, seekBarWaveform == null ? 1f : 1f - seekBarWaveform.explosionRate, () -> radialProgress.draw(canvas));
             }
 
@@ -23005,6 +23006,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         if (drawPhotoImage && currentMessageObject != null && currentMessageObject.hasMediaSpoilers() && currentMessageObject.isSensitive() && (!currentMessageObject.isMediaSpoilersRevealed || mediaSpoilerRevealProgress != 0 && mediaSpoilerRevealProgress < 1)) {
             radialProgress.iconScale *= mediaSpoilerRevealProgress;
         }
+        radialProgress.setExpressive(false, false);
         radialProgress.draw(canvas);
 
         if (withPeriod) {

@@ -202,6 +202,7 @@ class ChatMessageAudio {
         if (cell.drawPhotoImage && cell.currentMessageObject != null && cell.currentMessageObject.hasMediaSpoilers() && cell.currentMessageObject.isSensitive() && (!cell.currentMessageObject.isMediaSpoilersRevealed || cell.mediaSpoilerRevealProgress != 0 && cell.mediaSpoilerRevealProgress < 1)) {
             cell.radialProgress.iconScale *= cell.mediaSpoilerRevealProgress;
         }
+        cell.radialProgress.setExpressive(OtherSettingsActivity.isMaterialExpressiveEnabled(), true);
         cell.radialProgress.draw(canvas);
 
         canvas.save();

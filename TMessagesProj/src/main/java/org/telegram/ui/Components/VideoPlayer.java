@@ -1820,7 +1820,122 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
         }
     }
 
+    private static final java.util.concurrent.atomic.AtomicInteger BEAT_GENERATION = new java.util.concurrent.atomic.AtomicInteger();
+
     private class VisualizerBufferSink implements TeeAudioProcessor.AudioBufferSink {
+
+        // ---- Beat tracking for the M3E UI (independent of the stock visualizer's buffer limits) ----
+        private static final int BEAT_FFT_SIZE = 1024;
+        private final FourierTransform.FFT beatFft = new FourierTransform.FFT(BEAT_FFT_SIZE, 44100);
+        private final float[] beatMono = new float[BEAT_FFT_SIZE];
+        private int beatFill;
+        private int beatSampleRate = 44100, beatChannels = 2, beatEncoding = androidx.media3.common.C.ENCODING_PCM_16BIT;
+
+        /** Down-mixes any-size PCM chunk to mono, runs an FFT per 1024 samples, reports bass + level. */
+        private long beatFramesSinceFlush;
+        private int beatGeneration = -1;
+
+        private void skipBeat(ByteBuffer input) {
+            int bytesPerSample = beatEncoding == androidx.media3.common.C.ENCODING_PCM_FLOAT ? 4 : 2;
+            beatFramesSinceFlush += input.remaining() / (bytesPerSample * Math.max(1, beatChannels));
+            beatFill = 0;
+        }
+
+        private void analyzeBeat(ByteBuffer input) {
+            ByteBuffer buf = input.duplicate().order(ByteOrder.LITTLE_ENDIAN);
+            final boolean isFloat = beatEncoding == androidx.media3.common.C.ENCODING_PCM_FLOAT;
+            final int bytesPerSample = isFloat ? 4 : 2;
+            final int channels = Math.max(1, beatChannels);
+            final int frameBytes = bytesPerSample * channels;
+            if (beatEncoding != androidx.media3.common.C.ENCODING_PCM_16BIT && !isFloat) {
+                skipBeat(input); // unusual formats: keep the timeline, no analysis
+                return;
+            }
+            while (buf.remaining() >= frameBytes) {
+                float sum = 0;
+                for (int c = 0; c < channels; c++) {
+                    sum += isFloat ? buf.getFloat() : buf.getShort() / 32768f;
+                }
+                beatMono[beatFill++] = sum / channels;
+                beatFramesSinceFlush++;
+                if (beatFill == BEAT_FFT_SIZE) {
+                    beatFill = 0;
+                    processBeatWindow();
+                }
+            }
+        }
+
+        // beat tracking state (audio thread)
+        private final org.telegram.messenger.DrumOnsetDetector drumDetector = new org.telegram.messenger.DrumOnsetDetector();
+        private float[] beatLogMag;
+        private long beatPrevWindowTimeMs = -1;
+        private float beatBassMaxLevel = 1e-3f, beatRmsMax = 1e-3f;
+
+        private float bandLevel(float[] re, float[] im, float binHz, float fromHz, float toHz) {
+            int from = Math.max(1, (int) (fromHz / binHz));
+            int to = Math.max(from, Math.min(re.length - 1, (int) Math.ceil(toHz / binHz)));
+            float sum = 0;
+            for (int i = from; i <= to; i++) {
+                sum += (float) Math.sqrt(re[i] * re[i] + im[i] * im[i]);
+            }
+            // log compression makes the flux independent of the absolute loudness of the track
+            return (float) Math.log1p(sum / (to - from + 1));
+        }
+
+        /**
+         * One analysis window: band levels -> {@link org.telegram.messenger.DrumOnsetDetector} (kick / snare /
+         * hat hits), plus a continuous bass + loudness level.
+         */
+        private void processBeatWindow() {
+            float sumSq = 0;
+            for (int i = 0; i < BEAT_FFT_SIZE; i++) {
+                sumSq += beatMono[i] * beatMono[i];
+            }
+            float rms = (float) Math.sqrt(sumSq / BEAT_FFT_SIZE);
+            beatFft.forward(beatMono);
+            float[] re = beatFft.getSpectrumReal();
+            float[] im = beatFft.getSpectrumImaginary();
+            float binHz = beatSampleRate / (float) BEAT_FFT_SIZE;
+
+            float bass = bandLevel(re, im, binHz, 40, 160); // for the continuous level
+
+            // log-magnitude spectrum up to ~12.5 kHz for the per-bin onset detector
+            int bins = Math.min(re.length, (int) (12500 / binHz) + 2);
+            if (beatLogMag == null || beatLogMag.length != bins) {
+                beatLogMag = new float[bins];
+            }
+            for (int i = 0; i < bins; i++) {
+                beatLogMag[i] = (float) Math.log1p(Math.sqrt(re[i] * re[i] + im[i] * im[i]));
+            }
+
+            // media time of the window centre since the last flush
+            final long windowTimeMs = (beatFramesSinceFlush - BEAT_FFT_SIZE / 2) * 1000L / Math.max(1, beatSampleRate);
+            // the detector picks peaks with one window of look-ahead: its hits belong to the previous window
+            final long offsetMs = beatPrevWindowTimeMs >= 0 ? beatPrevWindowTimeMs : windowTimeMs;
+            beatPrevWindowTimeMs = windowTimeMs;
+            float[] hits = drumDetector.process(windowTimeMs, beatLogMag, binHz);
+            final float kick = hits[org.telegram.messenger.DrumOnsetDetector.KICK];
+            final float snare = hits[org.telegram.messenger.DrumOnsetDetector.SNARE];
+            final float hat = hits[org.telegram.messenger.DrumOnsetDetector.HAT];
+
+            // continuous level: bass + loudness relative to slowly decaying maxima
+            beatBassMaxLevel = Math.max(bass, beatBassMaxLevel * 0.996f);
+            beatRmsMax = Math.max(rms, beatRmsMax * 0.996f);
+            float bassNorm = Math.max(0f, Math.min(1f, bass / beatBassMaxLevel));
+            // bass tremble uses the ABSOLUTE low-end level (log1p of mean 40-160 Hz magnitude): measured on real
+            // tracks a quiet / filtered bass sits around 4.4-4.6, a heavy 808 / saw bass at 5.0-5.5. Relative-to-peak
+            // normalisation made it fire at full strength on the very first notes of a track.
+            float tb = Math.max(0f, Math.min(1f, (bass - 4.7f) / (5.15f - 4.7f)));
+            final float bassLevel = tb * tb * (3f - 2f * tb);
+            float level = 0.55f * bassNorm + 0.45f * (rms / beatRmsMax);
+            level = Math.max(0f, Math.min(1f, level));
+
+            final float lv = level;
+            // the tracker plays results out in sync with the player's audible position
+            // (ExoPlayer decodes in bursts, well ahead of what is heard)
+            final int generation = beatGeneration;
+            org.telegram.messenger.AndroidUtilities.runOnUIThread(() -> org.telegram.messenger.MusicBeatTracker.getInstance().enqueue(generation, offsetMs, lv, bassLevel, kick, snare, hat));
+        }
 
         private final int BUFFER_SIZE = 1024;
         private final int MAX_BUFFER_SIZE = BUFFER_SIZE * 8;
@@ -1836,6 +1951,22 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
 
         @Override
         public void flush(int sampleRateHz, int channelCount, int encoding) {
+            beatSampleRate = sampleRateHz > 0 ? sampleRateHz : 44100;
+            beatChannels = channelCount > 0 ? channelCount : 2;
+            beatEncoding = encoding;
+            beatFill = 0;
+            beatFramesSinceFlush = 0;
+            drumDetector.reset();
+            beatPrevWindowTimeMs = -1;
+            // globally unique: every track gets a new VideoPlayer, so a per-player counter would repeat and let
+            // late results of the previous track block the new one's queue
+            final int generation = BEAT_GENERATION.incrementAndGet();
+            beatGeneration = generation;
+            // stream (re)started (start / seek): the tracker anchors its timeline to the player position now
+            // the previous track's player also flushes while being released (after the new one started),
+            // so the tracker only accepts resets coming from the current audio player
+            final VideoPlayer source = VideoPlayer.this;
+            org.telegram.messenger.AndroidUtilities.runOnUIThread(() -> org.telegram.messenger.MusicBeatTracker.getInstance().onStreamReset(source, generation));
 
         }
 
@@ -1847,6 +1978,15 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
             if (audioVisualizerDelegate == null) {
                 return;
             }
+            // M3E beat tracking: every PCM frame must be counted to keep the media timeline exact,
+            // the (heavier) analysis only runs while some M3E element wants it.
+            if (buffer != AudioProcessor.EMPTY_BUFFER) {
+                if (org.telegram.messenger.MusicBeatTracker.getInstance().isActive()) {
+                    analyzeBeat(buffer);
+                } else {
+                    skipBeat(buffer);
+                }
+            }
             if (buffer == AudioProcessor.EMPTY_BUFFER || !mixedPlayWhenReady) {
                 audioUpdateHandler.postDelayed(() -> {
                     audioUpdateHandler.removeCallbacksAndMessages(null);
@@ -1855,7 +1995,8 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
                 return;
             }
 
-            if (!audioVisualizerDelegate.needUpdate()) {
+            final boolean needVisualizer = audioVisualizerDelegate.needUpdate();
+            if (!needVisualizer) {
                 return;
             }
 

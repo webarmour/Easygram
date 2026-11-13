@@ -411,7 +411,7 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
         playButton = new ImageView(context);
         playButton.setScaleType(ImageView.ScaleType.CENTER);
         ThemeBind.colorFilter(playButton, Theme.key_inappPlayerPlayPause, resourcesProvider, PorterDuff.Mode.MULTIPLY);
-        playButton.setImageDrawable(playPauseDrawable = new PlayPauseDrawable(16));
+        playButton.setImageDrawable(playPauseDrawable = new M3PlayPauseDrawable(16, true));
         playButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_inappPlayerPlayPause) & 0x19ffffff, 1, dp(14)));
         addView(playButton, LayoutHelper.createFrame(36, 36, Gravity.TOP | Gravity.LEFT));
         playButton.setOnClickListener(v -> {
@@ -2692,11 +2692,43 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
                 final float bottom = getMeasuredHeight();
                 final float top = bottom - dpf2(2);
 
-                progressPaint.setColor(getThemedColor(Theme.key_telegram_color));
-                canvas.drawRoundRect(left, top, p, bottom, dpf2(1), dpf2(1), progressPaint);
+                if (org.telegram.ui.OtherSettingsActivity.isMaterialExpressiveEnabled()) {
+                    drawExpressiveProgress(canvas, playingMessageObject);
+                } else {
+                    progressPaint.setColor(getThemedColor(Theme.key_telegram_color));
+                    canvas.drawRoundRect(left, top, p, bottom, dpf2(1), dpf2(1), progressPaint);
+                }
             }
         }
         wasDraw = true;
+    }
+
+    private M3ExpressiveTrack expressiveTrack;
+
+    /** M3E progress at the bottom edge: travelling wavy progress, flat track, gap and a bar thumb. */
+    private void drawExpressiveProgress(Canvas canvas, MessageObject playing) {
+        if (expressiveTrack == null) {
+            expressiveTrack = new M3ExpressiveTrack();
+            expressiveTrack.setReactToBeat(true);
+        }
+        boolean isPlaying = !MediaController.getInstance().isMessagePaused();
+        boolean animating = expressiveTrack.update(isPlaying, null);
+
+        final int color = getThemedColor(Theme.key_telegram_color);
+        final int trackColor = Theme.multAlpha(color, 0.28f);
+        // roomy insets: away from the screen edges and from the title/controls above
+        final float left = dpf2(16), right = getMeasuredWidth() - dpf2(16);
+        final float centerY = getMeasuredHeight() - dpf2(4.5f);
+        final float x = lerp(left, right, playing.audioProgress);
+        final float gap = dpf2(5);
+        expressiveTrack.drawLine(canvas, x + gap, right, centerY, dpf2(2), trackColor);
+        expressiveTrack.drawWavy(canvas, left, x - gap, centerY, dpf2(2), dpf2(1.5f), dpf2(18), color);
+        progressPaint.setColor(color);
+        float halfH = dpf2(3.5f) * (1f + 0.4f * expressiveTrack.getBeatPulse());
+        M3ExpressiveTrack.drawThumb(canvas, x, centerY, dpf2(1.5f), Math.min(halfH, dpf2(4.5f)), progressPaint);
+        if (animating) {
+            M3ExpressiveTrack.invalidateNextFrame(this);
+        }
     }
 
     boolean drawOverlay;

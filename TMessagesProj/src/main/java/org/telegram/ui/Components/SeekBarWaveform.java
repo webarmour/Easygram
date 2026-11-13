@@ -72,6 +72,11 @@ public class SeekBarWaveform {
     private final Path expressiveGapPath = new Path();
     private float[] expressiveEnvelope;
     private float expressivePhase;
+    private float expressiveBoost = 1f;
+    private float[] envelopeHeights;
+    private int envelopeCount;
+    private boolean envelopeReverse;
+    private float envelopeAppear = -1;
     private long expressiveLastFrame;
     private static final float EXPRESSIVE_WAVE_SPEED = (float) (Math.PI * 2 * 0.7);
     private boolean loading;
@@ -353,8 +358,10 @@ public class SeekBarWaveform {
         }
 
         final boolean reverse = delegate != null && delegate.reverseWaveform();
+        // `heights` always matches the current width (see setSize), so the continuous wave needs no
+        // from/to interpolation; the width animation after sending (transcribe button) stays M3E.
         final boolean expressiveWave = org.telegram.ui.OtherSettingsActivity.isMaterialExpressiveEnabled()
-                && (fromHeights == null || toHeights == null) && heights != null && heights.length > 1;
+                && heights != null && heights.length > 1;
         float expressiveThumbX = -1;
         if (expressiveWave) {
             expressiveThumbX = buildExpressivePath(totalBarsCount, appearProgress, reverse);
@@ -503,27 +510,46 @@ public class SeekBarWaveform {
         final int count = Math.min(heights.length, (int) Math.ceil(totalBarsCount));
         if (expressiveEnvelope == null || expressiveEnvelope.length < count) {
             expressiveEnvelope = new float[count];
+            envelopeHeights = null;
         }
         // Envelope: local peak over neighbouring bars, so peaks are not lost between wave crests.
-        for (int i = 0; i < count; i++) {
+        // Recomputed only when the data / appear animation changes, not on every animation frame.
+        final boolean envelopeValid = envelopeHeights == heights && envelopeCount == count
+                && envelopeReverse == reverse && envelopeAppear == appearProgress;
+        envelopeHeights = heights;
+        envelopeCount = count;
+        envelopeReverse = reverse;
+        envelopeAppear = appearProgress;
+        for (int i = 0; i < count && !envelopeValid; i++) {
             float m = 0;
             for (int j = Math.max(0, i - 1); j <= Math.min(count - 1, i + 1); j++) {
                 m = Math.max(m, heights[reverse ? heights.length - 1 - j : j]);
             }
             float bart = MathUtils.clamp(appearProgress * totalBarsCount - i, 0, 1);
-            expressiveEnvelope[i] = m * bart;
+            // contrast curve: quiet parts get noticeably flatter, loud parts keep full height
+            expressiveEnvelope[i] = 7f * (float) Math.pow(m / 7f, 1.6f) * bart;
         }
 
         boolean playing = messageObject != null && MediaController.getInstance().isPlayingMessage(messageObject)
                 && !MediaController.getInstance().isMessagePaused();
         long now = SystemClock.elapsedRealtime();
+        float audioBoostTarget = 1f;
         if (playing) {
+            // driven by the audio: travels only while there's sound, widens a bit on loudness / bass hits
+            org.telegram.messenger.MusicBeatTracker tracker = org.telegram.messenger.MusicBeatTracker.getInstance();
+            tracker.markInterest();
+            float energy = tracker.getEnergy(), pulse = tracker.getPulse();
             long dt = expressiveLastFrame == 0 ? 16 : Math.min(64, now - expressiveLastFrame);
-            expressivePhase = (expressivePhase + EXPRESSIVE_WAVE_SPEED * dt / 1000f) % (float) (Math.PI * 2);
+            expressivePhase = (expressivePhase + EXPRESSIVE_WAVE_SPEED * M3ExpressiveTrack.audioSpeed(energy, pulse) * dt / 1000f) % (float) (Math.PI * 2);
             expressiveLastFrame = now;
-            invalidate();
+            audioBoostTarget = M3ExpressiveTrack.audioBoost(energy, pulse);
+            M3ExpressiveTrack.invalidateNextFrame(parentView);
         } else {
             expressiveLastFrame = 0;
+        }
+        expressiveBoost += (audioBoostTarget - expressiveBoost) * 0.35f;
+        if (Math.abs(expressiveBoost - audioBoostTarget) > 0.002f) {
+            M3ExpressiveTrack.invalidateNextFrame(parentView);
         }
 
         if (expressiveStrokePaint == null) {
@@ -536,8 +562,8 @@ public class SeekBarWaveform {
         expressiveStrokePaint.setStrokeWidth(stroke);
 
         final float centerY = (height - dp(14)) / 2f + dp(7);
-        final float maxAmp = AndroidUtilities.dpf2(1) * waveScaling; // heights are in dp (0..7)
-        final float minAmp = AndroidUtilities.dpf2(0.5f);
+        final float maxAmp = AndroidUtilities.dpf2(1) * waveScaling * expressiveBoost; // heights are in dp (0..7)
+        final float minAmp = AndroidUtilities.dpf2(0.3f);
         final float wavelength = AndroidUtilities.dpf2(9);
         final float k = (float) (Math.PI * 2 / wavelength);
         final float startX = AndroidUtilities.dpf2(1);
