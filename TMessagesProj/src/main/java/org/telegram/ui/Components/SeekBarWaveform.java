@@ -516,6 +516,7 @@ public class SeekBarWaveform {
         if (voiceTrack == null) {
             voiceTrack = new M3ExpressiveTrack();
             voiceTrack.setReactToBeat(true);
+            voiceTrack.setCalm(true); // voice: gentle, smooth response (music / widget keep the lively one)
         }
         boolean playing = messageObject != null && MediaController.getInstance().isPlayingMessage(messageObject)
                 && !MediaController.getInstance().isMessagePaused();
@@ -539,13 +540,18 @@ public class SeekBarWaveform {
         final float endX = Math.max(startX + 1, (count - 1) * barStep + AndroidUtilities.dpf2(1));
         // denser than before (7 dp per wave instead of 9) so loudness changes read at a glance
         final float wavelength = AndroidUtilities.dpf2(7);
-        // use (almost) the full height of the 30 dp area: with the audio boost (up to ~1.27x) and the stroke the
-        // peaks just reach the edges, so loud peaks and quiet parts are far apart
-        final float maxAmp = Math.min(AndroidUtilities.dpf2(10.5f), (height / 2f - stroke) / 1.3f) * waveScaling;
-        if (!voiceTrack.buildLoudnessLine(expressiveLinePath, startX, endX, startX, endX, centerY, maxAmp, wavelength, levels)) {
+        // use (almost) the full height of the 30 dp area: with the audio boost (up to ~1.27x) the mirrored peaks
+        // just reach the edges, so loud peaks and quiet parts are far apart
+        final float maxAmp = Math.min(AndroidUtilities.dpf2(11.5f), (height / 2f - 1) / 1.3f) * waveScaling;
+        // mirrored "beads": the upper half of the wave reflected downwards (symmetric peaks, like the classic
+        // bars), plus a thin rounded baseline so silent parts stay a visible line
+        if (!voiceTrack.buildMirroredLoudness(path, startX, endX, startX, endX, centerY, maxAmp, wavelength, levels)) {
             return -1;
         }
-        expressiveStrokePaint.getFillPath(expressiveLinePath, path);
+        float half = stroke / 2f;
+        expressiveLinePath.rewind();
+        expressiveLinePath.addRoundRect(startX - half, centerY - half, endX + half, centerY + half, half, half, Path.Direction.CW);
+        path.op(expressiveLinePath, Path.Op.UNION);
 
         boolean showThumb = delegate != null && delegate.isSeekBarDragAllowed() && progress > 0f && progress < 1f && messageObject != null
                 && MediaController.getInstance().isPlayingMessage(messageObject);
@@ -630,9 +636,11 @@ public class SeekBarWaveform {
 
     private void drawExpressiveThumb(Canvas canvas, float x) {
         final float centerY = (height - dp(14)) / 2f + dp(7);
-        final float halfW = AndroidUtilities.dpf2(1.5f);
-        final float beat = voiceTrack != null ? 1f + 0.45f * voiceTrack.getBeatPulse() : 1f;
-        final float halfH = Math.min(height / 2f, AndroidUtilities.dpf2(pressed ? 14 : 12) * beat);
+        // same resting size as the music bubble's thumb (SeekBar: 6 dp radius * 1.6, 8 dp when pressed; 2 dp half-width)
+        final float halfW = AndroidUtilities.dpf2(2f);
+        // follows the voice: grows with how loud the speech is right now and bumps on sharp sounds
+        final float beat = voiceTrack != null ? 1f + 0.4f * voiceTrack.getThumbDrive() : 1f;
+        final float halfH = Math.min(height / 2f, AndroidUtilities.dpf2(pressed ? 8 * 1.6f : 6 * 1.6f) * beat);
         paintOuter.setColor(outerColor);
         paintOuter.setAlpha((int) (paintOuter.getAlpha() * alpha));
         AndroidUtilities.rectTmp.set(x - halfW, centerY - halfH, x + halfW, centerY + halfH);

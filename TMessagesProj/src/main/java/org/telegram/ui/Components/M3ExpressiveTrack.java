@@ -42,6 +42,21 @@ public class M3ExpressiveTrack {
     }
 
     private float smoothedBoost = 1f;
+
+    // "calm" response (voice messages only): small, slow amplitude changes and a steady drift instead of
+    // beat-driven jumps. Music / player / widget keep the default (lively) response.
+    private boolean calm;
+    private float calmSpeed = 0.5f;
+    private float thumbDrive; // calm mode: fast drive for the thumb only (voice loudness + onsets)
+
+    /** Calm mode: 0..~1 fast-reacting drive meant for the thumb, so it visibly follows the voice. */
+    public float getThumbDrive() {
+        return calm ? thumbDrive : beatPulse;
+    }
+
+    public void setCalm(boolean calm) {
+        this.calm = calm;
+    }
     // bass "buzz": a small sawtooth ripple riding on the wave, running fast, sized by the bass level
     private float bassTremble;
     private float ripplePhase;
@@ -109,13 +124,25 @@ public class M3ExpressiveTrack {
         if (reactToBeat && active) {
             org.telegram.messenger.MusicBeatTracker tracker = org.telegram.messenger.MusicBeatTracker.getInstance();
             tracker.markInterest();
-            beatPulse = tracker.getPulse();
-            beatEnergy = tracker.getEnergy();
-            smoothedBoost += (audioBoost(beatEnergy, beatPulse) - smoothedBoost) * 0.35f;
-            bassTremble += (tracker.getBassTremble() - bassTremble) * 0.4f;
+            if (calm) {
+                // heavily low-passed: syllables / plosives no longer make the wave jump
+                float rawPulse = tracker.getPulse(), rawEnergy = tracker.getEnergy();
+                float drive = Math.min(1f, 0.55f * rawEnergy + 0.6f * rawPulse);
+                thumbDrive += (drive - thumbDrive) * (drive > thumbDrive ? 0.5f : 0.25f);
+                beatPulse += (rawPulse * 0.35f - beatPulse) * 0.12f;
+                beatEnergy += (tracker.getEnergy() - beatEnergy) * 0.06f;
+                smoothedBoost += ((0.96f + 0.06f * beatEnergy + 0.034f * beatPulse) - smoothedBoost) * 0.05f;
+                bassTremble += (tracker.getBassTremble() * 0.255f - bassTremble) * 0.1f;
+            } else {
+                beatPulse = tracker.getPulse();
+                beatEnergy = tracker.getEnergy();
+                smoothedBoost += (audioBoost(beatEnergy, beatPulse) - smoothedBoost) * 0.35f;
+                bassTremble += (tracker.getBassTremble() - bassTremble) * 0.4f;
+            }
             needInvalidate = true;
         } else {
             bassTremble += (0f - bassTremble) * 0.25f;
+            thumbDrive += (0f - thumbDrive) * 0.25f;
             beatPulse += (0f - beatPulse) * 0.2f;
             beatEnergy += (1f - beatEnergy) * 0.2f;
             smoothedBoost += (1f - smoothedBoost) * 0.2f;
@@ -128,7 +155,14 @@ public class M3ExpressiveTrack {
         }
         if (amplitudeFactor > 0f) {
             // the wave travels faster in loud passages and gets a kick on every beat
-            float speed = reactToBeat ? audioSpeed(beatEnergy, beatPulse) : 1f;
+            float speed;
+            if (reactToBeat && calm) {
+                // steady drift that only slowly follows the loudness
+                calmSpeed += ((0.3f + 0.3f * beatEnergy) - calmSpeed) * 0.04f;
+                speed = calmSpeed;
+            } else {
+                speed = reactToBeat ? audioSpeed(beatEnergy, beatPulse) : 1f;
+            }
             phase = (phase + WAVE_SPEED_RAD_PER_SEC * speed * dt / 1000f) % (float) (Math.PI * 2);
             ripplePhase = (ripplePhase + RIPPLE_HZ * dt / 1000f) % 1f;
             needInvalidate = true;
@@ -225,6 +259,55 @@ public class M3ExpressiveTrack {
         }
         return true;
     }
+
+    /**
+     * Mirrored variant of {@link #buildLoudnessLine}: a closed, filled shape symmetric around centerY whose
+     * half-height is amp * |sin| - the upper half of the wave reflected downwards, so every peak appears above
+     * and below at the same time (reads like classic waveform bars, with the same audio reactivity).
+     * {@code out} gets the shape; callers usually union it with a thin baseline for silent parts.
+     */
+    public boolean buildMirroredLoudness(Path out, float from, float to, float trackLeft, float trackRight, float centerY,
+                                         float maxAmplitude, float wavelength, float[] levels) {
+        out.rewind();
+        if (to - from < 1f || levels == null || levels.length < 2) return false;
+        int n = levels.length;
+        float maxAmp = maxAmplitude * levelsAppear * amplitudeBoost();
+        float minAmp = AndroidUtilities.dp(0.5f);
+        // |sin| repeats every half period: use the full wavelength for the carrier so bead spacing = wavelength / 2
+        float k = (float) (Math.PI * 2 / wavelength);
+        float taper = wavelength / 4f;
+        float step = Math.min(AndroidUtilities.dp(0.75f), wavelength / 16f);
+        int count = (int) Math.ceil((to - from) / step) + 1;
+        if (mirrorBuf == null || mirrorBuf.length < count * 2) {
+            mirrorBuf = new float[count * 2 + 16];
+        }
+        int m = 0;
+        for (int i = 0; i < count; i++) {
+            float x = Math.min(to, from + i * step);
+            float pos = (x - trackLeft) / (trackRight - trackLeft) * (n - 1);
+            int i0 = Math.max(0, Math.min(n - 1, (int) pos));
+            int i1 = Math.min(n - 1, i0 + 1);
+            float f = pos - i0;
+            float level = levels[i0] * (1f - f) + levels[i1] * f;
+            float amp = level > 0.01f ? Math.max(minAmp, level * maxAmp) : 0;
+            float edge = Math.min(1f, Math.min(x - from, to - x) / taper);
+            float d = amp * edge * Math.abs((float) Math.sin(k * (x - trackLeft) - phase));
+            if (level > 0.01f) {
+                // the bass buzz shimmers the bead outline (kept positive so the shape never inverts)
+                d += Math.abs(ripple(x - trackLeft, wavelength, AndroidUtilities.dp(0.4f) + 0.15f * amp)) * edge;
+            }
+            mirrorBuf[m++] = x;
+            mirrorBuf[m++] = d;
+        }
+        int points = m / 2;
+        out.moveTo(mirrorBuf[0], centerY - mirrorBuf[1]);
+        for (int i = 1; i < points; i++) out.lineTo(mirrorBuf[i * 2], centerY - mirrorBuf[i * 2 + 1]);
+        for (int i = points - 1; i >= 0; i--) out.lineTo(mirrorBuf[i * 2], centerY + mirrorBuf[i * 2 + 1]);
+        out.close();
+        return true;
+    }
+
+    private float[] mirrorBuf;
 
     /** M3E slider thumb: vertical rounded bar. */
     public static void drawThumb(Canvas canvas, float centerX, float centerY, float halfWidth, float halfHeight, Paint paint) {

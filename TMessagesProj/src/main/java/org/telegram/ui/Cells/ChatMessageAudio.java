@@ -384,13 +384,16 @@ class ChatMessageAudio {
 
     void drawVoiceDuration(Canvas canvas, int timeAudioX, float yoffset) {
         canvas.save();
-        canvas.translate(timeAudioX, dp(44) + cell.namesOffset + cell.getMediaOffsetY() + yoffset);
+        // M3E: the wave is centred on the play button, so the duration moves down to leave room for its peaks and
+        // starts exactly where the wave starts (wave line begins 13 dp after seekBarX; timeAudioX = seekBarX + 10 dp)
+        boolean m3e = cell.documentAttachType == ChatMessageCell.DOCUMENT_ATTACH_TYPE_AUDIO && OtherSettingsActivity.isMaterialExpressiveEnabled();
+        canvas.translate(timeAudioX + (m3e ? dp(3) : 0), dp(44) + cell.namesOffset + cell.getMediaOffsetY() + yoffset + (m3e ? dp(6) : 0));
         cell.durationLayout.draw(canvas);
         canvas.restore();
 
         if (cell.currentMessageObject.type != MessageObject.TYPE_TEXT && cell.currentMessageObject.isContentUnread()) {
             Theme.chat_docBackPaint.setColor(cell.getThemedColor(cell.currentMessageObject.isOutOwner() ? Theme.key_chat_outVoiceSeekbarFill : Theme.key_chat_inVoiceSeekbarFill));
-            canvas.drawCircle(timeAudioX + cell.timeWidthAudio + dp(6), dp(51) + cell.namesOffset + cell.getMediaOffsetY(), dp(3), Theme.chat_docBackPaint);
+            canvas.drawCircle(timeAudioX + cell.timeWidthAudio + dp(6) + (m3e ? dp(3) : 0), dp(51) + cell.namesOffset + cell.getMediaOffsetY() + (m3e ? dp(6) : 0), dp(3), Theme.chat_docBackPaint);
         }
     }
 }

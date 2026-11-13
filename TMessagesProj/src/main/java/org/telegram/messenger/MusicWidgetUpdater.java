@@ -252,11 +252,13 @@ public class MusicWidgetUpdater {
             author = message.getMusicAuthor();
         } else {
             title = LocaleController.getString(R.string.EasygramWidgetNothingPlaying);
-            // literal on purpose: AppName can be overridden by Telegram's downloaded language pack ("Telegram")
-            author = "Easygram";
+            author = null; // empty state: only "Nothing is playing", no second line
         }
         views.setTextViewText(R.id.widget_music_title, TextUtils.isEmpty(title) ? "—" : title);
         views.setTextViewText(R.id.widget_music_author, author == null ? "" : author);
+        views.setViewVisibility(R.id.widget_music_author, hasMessage ? android.view.View.VISIBLE : android.view.View.GONE);
+        // empty state: no progress bar (and no seek zones) either
+        views.setViewVisibility(R.id.widget_music_wave_container, hasMessage ? android.view.View.VISIBLE : android.view.View.GONE);
         views.setTextColor(R.id.widget_music_title, colors.text);
         views.setTextColor(R.id.widget_music_author, colors.textSecondary);
         int coverPx = compact ? 160 : Math.max(240, Math.min(600, (int) (Math.max(120, heightDp - 190) * 2.2f)));
