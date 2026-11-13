@@ -11833,6 +11833,9 @@
     <string name="MessageArchiveDeleted">Deleted</string>
     <string name="MessageArchiveEditedAndDeleted">Edited and deleted</string>
     <string name="MessageArchiveEmpty">No saved versions</string>
+    <string name="MessageArchiveOriginal">Original</string>
+    <string name="MessageArchiveVersion">Version %1$d</string>
+    <string name="MessageArchiveOpenMedia">Open media</string>
     <string name="WidgetStopped">Widget stopped</string>
     <string name="WidgetLoading">Loading widget…</string>
     <string name="WidgetLoadFailed">Widget failed to load</string>

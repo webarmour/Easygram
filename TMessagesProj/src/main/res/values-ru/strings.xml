@@ -441,4 +441,7 @@
     <string name="MessageArchiveDeleted">Удалено</string>
     <string name="MessageArchiveEditedAndDeleted">Изменено и удалено</string>
     <string name="MessageArchiveEmpty">Сохранённых версий нет</string>
+    <string name="MessageArchiveOriginal">Исходная версия</string>
+    <string name="MessageArchiveVersion">Версия %1$d</string>
+    <string name="MessageArchiveOpenMedia">Открыть медиа</string>
 </resources>

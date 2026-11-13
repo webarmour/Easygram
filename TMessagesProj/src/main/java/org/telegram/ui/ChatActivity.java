@@ -34598,6 +34598,126 @@ public class ChatActivity extends BaseFragment implements
         MediaController.saveFile(path, getParentActivity(), messageObject.isVideo() ? 1 : 0, null, null);
     }
 
+    private void showMessageHistoryDialog(ArrayList<TLRPC.Message> rawVersions, long archiveDialogId) {
+        // Storage returns newest first; also drop rows that differ only in non-text data (views, reactions...).
+        ArrayList<TLRPC.Message> versions = new ArrayList<>();
+        for (int i = rawVersions.size() - 1; i >= 0; i--) {
+            TLRPC.Message version = rawVersions.get(i);
+            if (!versions.isEmpty()) {
+                TLRPC.Message prev = versions.get(versions.size() - 1);
+                boolean sameText = TextUtils.equals(prev.message == null ? "" : prev.message, version.message == null ? "" : version.message);
+                boolean sameMedia = (prev.media == null) == (version.media == null)
+                        && (prev.media == null || prev.media.getClass() == version.media.getClass());
+                if (sameText && sameMedia && prev.edit_date == version.edit_date) {
+                    versions.set(versions.size() - 1, version);
+                    continue;
+                }
+            }
+            versions.add(version);
+        }
+
+        Context context = getParentActivity();
+        AlertDialog[] dialogRef = new AlertDialog[1];
+        int addedColor = getThemedColor(Theme.key_color_green);
+        int removedColor = getThemedColor(Theme.key_text_RedRegular);
+        int grayColor = getThemedColor(Theme.key_dialogTextGray3);
+        int textColor = getThemedColor(Theme.key_dialogTextBlack);
+        int linkColor = getThemedColor(Theme.key_dialogTextBlue);
+
+        LinearLayout list = new LinearLayout(context);
+        list.setOrientation(LinearLayout.VERTICAL);
+        list.setPadding(dp(24), dp(4), dp(24), dp(8));
+
+        for (int i = 0; i < versions.size(); i++) {
+            TLRPC.Message version = versions.get(i);
+            if (i > 0) {
+                View divider = new View(context);
+                divider.setBackgroundColor(Theme.multAlpha(grayColor, 0.25f));
+                list.addView(divider, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 1, 0, 10, 0, 10));
+            }
+
+            StringBuilder header = new StringBuilder();
+            header.append(i == 0 ? getString(R.string.MessageArchiveOriginal) : LocaleController.formatString(R.string.MessageArchiveVersion, i + 1));
+            header.append(" · ").append(LocaleController.formatDateTime(version.edit_date != 0 ? version.edit_date : version.date, false));
+            if (version.localArchiveDeleted && i == versions.size() - 1) {
+                header.append(" · ").append(getString(R.string.MessageArchiveDeleted));
+            }
+            TextView headerView = new TextView(context);
+            headerView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
+            headerView.setTypeface(AndroidUtilities.bold());
+            headerView.setTextColor(grayColor);
+            headerView.setText(header);
+            list.addView(headerView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 0, 0, 4));
+
+            TextView bodyView = new TextView(context);
+            bodyView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
+            bodyView.setTextColor(textColor);
+            bodyView.setLineSpacing(dp(2), 1f);
+            bodyView.setTextIsSelectable(true);
+            CharSequence body;
+            String text = version.message == null ? "" : version.message;
+            if (i == 0) {
+                body = TextUtils.isEmpty(text) ? "—" : text;
+            } else {
+                String prevText = versions.get(i - 1).message;
+                if (TextUtils.equals(prevText == null ? "" : prevText, text)) {
+                    body = TextUtils.isEmpty(text) ? "—" : text;
+                } else {
+                    body = MessageHistoryDiff.build(prevText, text, addedColor, removedColor);
+                }
+            }
+            body = Emoji.replaceEmoji(body, bodyView.getPaint().getFontMetricsInt(), false);
+            bodyView.setText(body);
+            list.addView(bodyView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+            if (version.media instanceof TLRPC.TL_messageMediaPhoto || version.media instanceof TLRPC.TL_messageMediaDocument) {
+                TextView mediaView = new TextView(context);
+                mediaView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+                mediaView.setTypeface(AndroidUtilities.bold());
+                mediaView.setTextColor(linkColor);
+                mediaView.setText(getString(R.string.MessageArchiveOpenMedia));
+                mediaView.setPadding(0, dp(6), 0, dp(2));
+                mediaView.setOnClickListener(v -> {
+                    MessageObject archivedMessage = new MessageObject(currentAccount, version, false, false);
+                    PhotoViewer.getInstance().setParentActivity(ChatActivity.this, themeDelegate);
+                    if (PhotoViewer.getInstance().openPhoto(archivedMessage, archiveDialogId, 0, 0, photoViewerProvider, false)) {
+                        PhotoViewer.getInstance().setParentChatActivity(ChatActivity.this);
+                        if (dialogRef[0] != null) {
+                            dialogRef[0].dismiss();
+                        }
+                    }
+                });
+                list.addView(mediaView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT));
+            }
+        }
+
+        // The dialog is vertically centered, so to keep its bottom (OK button) above the chat input
+        // field the whole dialog must leave room for the input field (plus a gap) at both edges.
+        int inputHeight = chatActivityEnterView != null && chatActivityEnterView.getVisibility() == View.VISIBLE
+                ? chatActivityEnterView.getMeasuredHeight() : 0;
+        int bottomReserve = Math.max(inputHeight, dp(56)) + AndroidUtilities.navigationBarHeight + dp(16);
+        int dialogChrome = dp(140); // title + buttons + paddings
+        android.widget.ScrollView scrollView = new android.widget.ScrollView(context) {
+            @Override
+            protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+                int maxHeight = Math.max(dp(160), AndroidUtilities.displaySize.y - 2 * bottomReserve - dialogChrome);
+                int specSize = MeasureSpec.getSize(heightMeasureSpec);
+                if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.UNSPECIFIED || specSize > maxHeight) {
+                    heightMeasureSpec = MeasureSpec.makeMeasureSpec(maxHeight, MeasureSpec.AT_MOST);
+                }
+                super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+            }
+        };
+        scrollView.addView(list, new android.widget.ScrollView.LayoutParams(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+        dialogRef[0] = new AlertDialog.Builder(context, themeDelegate)
+                .setTitle(getString(R.string.MessageArchiveHistory))
+                .setView(scrollView)
+                .setPositiveButton(getString(R.string.OK), null)
+                .create();
+        showDialog(dialogRef[0]);
+    }
+
     private void processSelectedOption(int option) {
         if (selectedObject == null || getParentActivity() == null) {
             return;
@@ -34619,35 +34739,7 @@ public class ChatActivity extends BaseFragment implements
                                 .show();
                         return;
                     }
-                    CharSequence[] labels = new CharSequence[versions.size()];
-                    for (int i = 0; i < versions.size(); i++) {
-                        TLRPC.Message version = versions.get(i);
-                        StringBuilder label = new StringBuilder(LocaleController.formatDateTime(version.edit_date != 0 ? version.edit_date : version.date, false));
-                        if (version.localArchiveDeleted) {
-                            label.append(" · ").append(getString(R.string.MessageArchiveDeleted));
-                        }
-                        label.append("\n").append(TextUtils.isEmpty(version.message) ? "—" : version.message);
-                        labels[i] = label;
-                    }
-                    new AlertDialog.Builder(getParentActivity(), themeDelegate)
-                            .setTitle(getString(R.string.MessageArchiveHistory))
-                            .setItems(labels, (dialog, which) -> {
-                                TLRPC.Message version = versions.get(which);
-                                if (version.media instanceof TLRPC.TL_messageMediaPhoto || version.media instanceof TLRPC.TL_messageMediaDocument) {
-                                    MessageObject archivedMessage = new MessageObject(currentAccount, version, false, false);
-                                    PhotoViewer.getInstance().setParentActivity(ChatActivity.this, themeDelegate);
-                                    if (PhotoViewer.getInstance().openPhoto(archivedMessage, archiveDialogId, 0, 0, photoViewerProvider, false)) {
-                                        PhotoViewer.getInstance().setParentChatActivity(ChatActivity.this);
-                                        return;
-                                    }
-                                }
-                                new AlertDialog.Builder(getParentActivity(), themeDelegate)
-                                        .setTitle(getString(R.string.MessageArchiveHistory))
-                                        .setMessage(TextUtils.isEmpty(version.message) ? "—" : version.message)
-                                        .setPositiveButton(getString(R.string.OK), null)
-                                        .show();
-                            })
-                            .show();
+                    showMessageHistoryDialog(versions, archiveDialogId);
                 });
                 break;
             }
