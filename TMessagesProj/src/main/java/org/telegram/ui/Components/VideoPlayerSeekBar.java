@@ -85,6 +85,17 @@ public class VideoPlayerSeekBar {
     private AnimatedFloat animateThumbLoopBackProgress;
     private float loopBackWasThumbX;
 
+    // Material 3 Expressive style: wavy active track, gap around a vertical bar thumb, flat inactive track.
+    private boolean expressive;
+    private boolean playing;
+    private static Paint wavePaint;
+    private final Path wavePath = new Path();
+    private float waveAmplitudeFactor;
+    private float wavePhase;
+    private long waveLastFrameTime;
+    private static final float WAVE_SPEED_RAD_PER_SEC = (float) (Math.PI * 2 * 0.8);
+    private static final long WAVE_AMPLITUDE_ANIM_MS = 300;
+
     public VideoPlayerSeekBar(View parent) {
         if (paint == null) {
             paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -149,6 +160,29 @@ public class VideoPlayerSeekBar {
             }
         }
         return false;
+    }
+
+    /** Enables the Material 3 Expressive look (wavy progress while playing). */
+    public void setExpressiveStyle(boolean expressive) {
+        this.expressive = expressive;
+        if (expressive && wavePaint == null) {
+            wavePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            wavePaint.setStyle(Paint.Style.STROKE);
+            wavePaint.setStrokeCap(Paint.Cap.ROUND);
+            wavePaint.setStrokeJoin(Paint.Join.ROUND);
+        }
+        if (parentView != null) {
+            parentView.invalidate();
+        }
+    }
+
+    public void setPlaying(boolean playing) {
+        if (this.playing != playing) {
+            this.playing = playing;
+            if (expressive && parentView != null) {
+                parentView.invalidate();
+            }
+        }
     }
 
     public void setColors(int background, int cache, int progress, int circle, int selected, int smallLineColor) {
@@ -369,10 +403,22 @@ public class VideoPlayerSeekBar {
             loopBack = 0;
         }
 
+        final float trackLeft = rect.left;
+        final float progressRight = horizontalPadding + AndroidUtilities.lerp(thumbWidth / 2f + (pressed ? draggingThumbX : currentThumbX), (parentView.getWidth() - horizontalPadding * 2f) * getProgress(), transitionProgress);
+        final float expressiveFactor = expressive ? 1f - transitionProgress : 0f;
+        // half of the bar thumb + gap between the thumb and the tracks
+        final float thumbGap = AndroidUtilities.dp(6) * expressiveFactor;
+        if (expressive) {
+            updateWaveAnimation(playing && !pressed && transitionProgress < 1f);
+            rect.left = Math.max(trackLeft, progressRight + thumbGap);
+        }
+
         // background
         rect.right = horizontalPadding + AndroidUtilities.lerp(width - thumbWidth / 2f, parentView.getWidth() - horizontalPadding * 2f, transitionProgress);
         setPaintColor(selected ? backgroundSelectedColor : backgroundColor, 1f - transitionProgress);
-        drawProgressBar(canvas, rect, paint);
+        if (rect.right > rect.left) {
+            drawProgressBar(canvas, rect, paint);
+        }
 
         if (bufferedAnimationValue != 1f) {
             bufferedAnimationValue += 16 / 100f;
@@ -388,21 +434,23 @@ public class VideoPlayerSeekBar {
             if (animateFromBufferedProgress > 0) {
                 rect.right = horizontalPadding + AndroidUtilities.lerp(thumbWidth / 2f + animateFromBufferedProgress * (width - thumbWidth), parentView.getWidth() - horizontalPadding * 2f, transitionProgress);
                 setPaintColor(selected ? backgroundSelectedColor : cacheColor, (1f - transitionProgress) * (1f - bufferedAnimationValue));
-                drawProgressBar(canvas, rect, paint);
+                if (rect.right > rect.left) drawProgressBar(canvas, rect, paint);
             }
             if (bufferedProgress > 0) {
                 rect.right = horizontalPadding + AndroidUtilities.lerp(thumbWidth / 2f + bufferedProgress * (width - thumbWidth), parentView.getWidth() - horizontalPadding * 2f, transitionProgress);
                 setPaintColor(selected ? backgroundSelectedColor : cacheColor, 1f - transitionProgress);
-                drawProgressBar(canvas, rect, paint);
+                if (rect.right > rect.left) drawProgressBar(canvas, rect, paint);
             }
         } else {
             float currentBufferedProgress = animateFromBufferedProgress * (1f - bufferedAnimationValue) + bufferedProgress * bufferedAnimationValue;
             if (currentBufferedProgress > 0) {
                 rect.right = horizontalPadding + AndroidUtilities.lerp(thumbWidth / 2f + currentBufferedProgress * (width - thumbWidth), parentView.getWidth() - horizontalPadding * 2f, transitionProgress);
                 setPaintColor(selected ? backgroundSelectedColor : cacheColor, 1f - transitionProgress);
-                drawProgressBar(canvas, rect, paint);
+                if (rect.right > rect.left) drawProgressBar(canvas, rect, paint);
             }
         }
+
+        rect.left = trackLeft;
 
         int newRad = AndroidUtilities.dp(pressed ? 8 : 6);
         if (currentRadius != newRad) {
@@ -449,18 +497,34 @@ public class VideoPlayerSeekBar {
         }
 
         // progress
-        rect.right = horizontalPadding + AndroidUtilities.lerp(thumbWidth / 2f + (pressed ? draggingThumbX : currentThumbX), (parentView.getWidth() - horizontalPadding * 2f) * getProgress(), transitionProgress);
+        rect.right = progressRight;
         if (transitionProgress > 0f && rect.width() > 0) {
             // progress stroke
             strokePaint.setAlpha((int) (transitionProgress * 255 * 0.2f));
             drawProgressBar(canvas, rect, strokePaint);
         }
         setPaintColor(ColorUtils.blendARGB(progressColor, smallLineColor, transitionProgress), 1f);
-        drawProgressBar(canvas, rect, paint);
+        if (expressive) {
+            float activeRight = progressRight - thumbGap;
+            if (activeRight > rect.left) {
+                drawWavyProgress(canvas, rect.left, activeRight, rect.centerY(), rect.height(), expressiveFactor);
+            }
+        } else {
+            drawProgressBar(canvas, rect, paint);
+        }
 
-        // circle
+        // thumb
         setPaintColor(ColorUtils.blendARGB(circleColor, getProgress() == 0 ? Color.TRANSPARENT : smallLineColor, transitionProgress), 1f - transitionProgress);
-        canvas.drawCircle(rect.right, rect.centerY(), circleRadius * (1f - loopBack), paint);
+        if (expressive) {
+            // M3E slider thumb: a vertical rounded bar instead of a circle.
+            float scale = 1f - loopBack;
+            float halfW = AndroidUtilities.dp(2) * scale;
+            float halfH = circleRadius * 1.5f * scale;
+            AndroidUtilities.rectTmp.set(progressRight - halfW, rect.centerY() - halfH, progressRight + halfW, rect.centerY() + halfH);
+            canvas.drawRoundRect(AndroidUtilities.rectTmp, halfW, halfW, paint);
+        } else {
+            canvas.drawCircle(rect.right, rect.centerY(), circleRadius * (1f - loopBack), paint);
+        }
 
         drawTimestampLabel(canvas);
     }
@@ -470,6 +534,62 @@ public class VideoPlayerSeekBar {
     private final float TIMESTAMP_GAP = 1f;
     private static float[] tmpRadii;
     private static Path tmpPath;
+
+    private void updateWaveAnimation(boolean active) {
+        long now = SystemClock.elapsedRealtime();
+        long dt = waveLastFrameTime == 0 ? 16 : Math.min(64, now - waveLastFrameTime);
+        waveLastFrameTime = now;
+        float target = active ? 1f : 0f;
+        if (waveAmplitudeFactor != target) {
+            float step = dt / (float) WAVE_AMPLITUDE_ANIM_MS;
+            waveAmplitudeFactor = target > waveAmplitudeFactor
+                    ? Math.min(target, waveAmplitudeFactor + step)
+                    : Math.max(target, waveAmplitudeFactor - step);
+        }
+        if (waveAmplitudeFactor > 0f) {
+            wavePhase += WAVE_SPEED_RAD_PER_SEC * dt / 1000f;
+            if (wavePhase > Math.PI * 2) {
+                wavePhase -= (float) (Math.PI * 2);
+            }
+            parentView.invalidate();
+        } else if (!active) {
+            waveLastFrameTime = 0;
+        }
+    }
+
+    private void drawWavyProgress(Canvas canvas, float left, float right, float centerY, float thickness, float expressiveFactor) {
+        float smooth = waveAmplitudeFactor * waveAmplitudeFactor * (3f - 2f * waveAmplitudeFactor);
+        float amplitude = AndroidUtilities.dp(3) * smooth * expressiveFactor;
+        wavePaint.setColor(paint.getColor());
+        wavePaint.setStrokeWidth(thickness);
+        float half = thickness / 2f;
+        float startX = left + half;
+        float endX = right - half;
+        if (amplitude < 0.1f || endX - startX < 1f) {
+            AndroidUtilities.rectTmp.set(left, centerY - half, right, centerY + half);
+            canvas.drawRoundRect(AndroidUtilities.rectTmp, half, half, paint);
+            return;
+        }
+        float wavelength = AndroidUtilities.dp(24);
+        float taper = wavelength / 2f;
+        float k = (float) (Math.PI * 2 / wavelength);
+        float step = AndroidUtilities.dp(1.5f);
+        wavePath.rewind();
+        wavePath.moveTo(startX, centerY);
+        for (float x = startX + step; ; x += step) {
+            if (x > endX) {
+                x = endX;
+            }
+            // Flatten both ends so the line starts at the track and meets the thumb gap cleanly.
+            float endFactor = Math.min(1f, Math.min(x - startX, endX - x) / taper);
+            float y = centerY + amplitude * endFactor * (float) Math.sin(k * (x - startX) - wavePhase);
+            wavePath.lineTo(x, y);
+            if (x >= endX) {
+                break;
+            }
+        }
+        canvas.drawPath(wavePath, wavePaint);
+    }
 
     private void drawProgressBar(Canvas canvas, RectF rect, Paint paint) {
         float radius = AndroidUtilities.dp(AndroidUtilities.lerp(2, 1, transitionProgress));
