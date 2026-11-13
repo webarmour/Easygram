@@ -1204,7 +1204,7 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
             avatars.setStyle(currentStyle);
             avatars.setLayoutParams(LayoutHelper.createFrame(108, getStyleHeight(), Gravity.LEFT | Gravity.TOP));
         }
-        frameLayout.setLayoutParams(LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, getStyleHeight(), Gravity.TOP | Gravity.LEFT, 0, 0, 0, 0));
+        frameLayout.setLayoutParams(LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, getContentHeight(), Gravity.TOP | Gravity.LEFT, 0, 0, 0, 0));
         if (topPadding > 0 && topPadding != AndroidUtilities.dp2(getStyleHeight())) {
             setTopPadding(AndroidUtilities.dp2(getStyleHeight()));
         }
@@ -1630,7 +1630,18 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
     float speakerAmplitude;
     float micAmplitude;
 
+    /** Extra room under the music bar's content for the M3E wavy progress, so it isn't pressed against it. */
+    private static final int M3E_PROGRESS_EXTRA_DP = 6;
+
     public int getStyleHeight() {
+        if (currentStyle == STYLE_AUDIO_PLAYER && org.telegram.ui.OtherSettingsActivity.isMaterialExpressiveEnabled()) {
+            return 36 + M3E_PROGRESS_EXTRA_DP;
+        }
+        return currentStyle == STYLE_INACTIVE_GROUP_CALL ? 48 : 36;
+    }
+
+    /** Height of the content row (buttons, title); the M3E extra space below it belongs to the progress. */
+    private int getContentHeight() {
         return currentStyle == STYLE_INACTIVE_GROUP_CALL ? 48 : 36;
     }
 
@@ -2718,6 +2729,8 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
         final int trackColor = Theme.multAlpha(color, 0.28f);
         // roomy insets: away from the screen edges and from the title/controls above
         final float left = dpf2(16), right = getMeasuredWidth() - dpf2(16);
+        // same distance from the bottom edge as before; the bar is M3E_PROGRESS_EXTRA_DP taller, so the wave ends up
+        // that much further below the content row (see getStyleHeight)
         final float centerY = getMeasuredHeight() - dpf2(4.5f);
         final float x = lerp(left, right, playing.audioProgress);
         final float gap = dpf2(5);
