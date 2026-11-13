@@ -129,6 +129,10 @@ public class MusicWidgetUpdater {
         }
         MediaController mc = MediaController.getInstance();
         MessageObject message = mc.getPlayingMessageObject();
+        // songs only: voice messages / round videos never show up in the widget (it stays in the empty state)
+        if (message != null && !message.isMusic()) {
+            message = null;
+        }
         boolean hasMessage = message != null;
         boolean playing = hasMessage && !mc.isMessagePaused();
         boolean night = (context.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
@@ -280,13 +284,14 @@ public class MusicWidgetUpdater {
 
         int flags = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
         ComponentName receiver = new ComponentName(context, MusicPlayerReceiver.class);
-        views.setOnClickPendingIntent(R.id.widget_music_prev, PendingIntent.getBroadcast(context, 101,
-                new Intent(MusicPlayerService.NOTIFY_PREVIOUS).setComponent(receiver), flags));
-        views.setOnClickPendingIntent(R.id.widget_music_next, PendingIntent.getBroadcast(context, 102,
-                new Intent(MusicPlayerService.NOTIFY_NEXT).setComponent(receiver), flags));
         Intent open = new Intent(context, LaunchActivity.class).setAction(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
                 .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         PendingIntent openApp = PendingIntent.getActivity(context, 104, open, flags);
+        // without a song (nothing / a voice message playing) the controls must not drive the voice playlist
+        views.setOnClickPendingIntent(R.id.widget_music_prev, hasMessage ? PendingIntent.getBroadcast(context, 101,
+                new Intent(MusicPlayerService.NOTIFY_PREVIOUS).setComponent(receiver), flags) : openApp);
+        views.setOnClickPendingIntent(R.id.widget_music_next, hasMessage ? PendingIntent.getBroadcast(context, 102,
+                new Intent(MusicPlayerService.NOTIFY_NEXT).setComponent(receiver), flags) : openApp);
         views.setOnClickPendingIntent(R.id.widget_music_play, hasMessage
                 ? PendingIntent.getBroadcast(context, 103, new Intent(playing ? MusicPlayerService.NOTIFY_PAUSE : MusicPlayerService.NOTIFY_PLAY).setComponent(receiver), flags)
                 : openApp);
