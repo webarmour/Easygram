@@ -102,7 +102,7 @@ jobs:
         id: apk
         run: |
           set -euo pipefail
-          apk=TMessagesProj_App/build/outputs/apk/afat/release/app.apk
+          apk=$(find TMessagesProj_App/build/outputs/apk/afat/release -maxdepth 1 -name "*.apk" -print -quit)
           aapt=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n1)
           apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n1)
           "$aapt" dump badging "$apk" | grep -q "package: name='io.github.webarmour.easygram' versionCode='${{ steps.update.outputs.version_code }}9'"

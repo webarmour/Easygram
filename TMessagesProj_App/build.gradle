@@ -173,7 +173,11 @@ android {
 
     applicationVariants.all { variant ->
         variant.outputs.all { output ->
-            outputFileName = "app.apk"
+            if (variant.buildType.name == "debug") {
+                outputFileName = "Easygram Beta ${APP_VERSION_NAME}-${APP_VERSION_CODE}.apk"
+            } else {
+                outputFileName = "Easygram v${APP_VERSION_NAME}-${APP_VERSION_CODE}.apk"
+            }
             output.versionCodeOverride = defaultConfig.versionCode * 10 + variant.productFlavors.get(0).abiVersionCode
         }
     }
