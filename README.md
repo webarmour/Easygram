@@ -2,7 +2,7 @@
   <img src="TMessagesProj/src/main/res/mipmap-xxxhdpi/ic_easygram_bloom_blue_dark_round.png" alt="Иконка Easygram" width="144" height="144">
 </p>
 
-<h1 align="center">Easygram</h1>
+<h1 align="center">easygram</h1>
 
 <p align="center"><a href="README_EN.md">English</a> · Русский</p>
 
