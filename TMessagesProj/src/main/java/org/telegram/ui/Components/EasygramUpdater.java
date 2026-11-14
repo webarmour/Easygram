@@ -258,7 +258,7 @@ public final class EasygramUpdater {
                     downloaded = false;
                     onUi(activity, () -> {
                         render();
-                        if (manual) info(activity, "Обновления Easygram", "Установлена актуальная версия.");
+                        if (manual) info(activity, "Обновления easygram", "Установлена актуальная версия.");
                     });
                     return;
                 }
@@ -332,7 +332,7 @@ public final class EasygramUpdater {
     private static void install(Activity activity, File apk) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                 && !activity.getPackageManager().canRequestPackageInstalls()) {
-            info(activity, "Разрешение на установку", "Разреши Easygram устанавливать приложения, затем снова открой проверку обновлений. Файл уже скачан.");
+            info(activity, "Разрешение на установку", "Разреши easygram устанавливать приложения, затем снова открой проверку обновлений. Файл уже скачан.");
             Intent settings = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                     Uri.parse("package:" + activity.getPackageName()));
             try { activity.startActivity(settings); }

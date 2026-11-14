@@ -3448,14 +3448,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             } else {
                 statusDrawable = new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(null, dp(26));
                 statusDrawable.center = true;
-                logoDrawable = context.getResources().getDrawable(R.drawable.telegram_logo_2).mutate();
-                logoDrawable.setBounds(0, dp(2), logoDrawable.getIntrinsicWidth(), dp(2) + logoDrawable.getIntrinsicHeight());
-                // a new drawable (also when the view is recreated after a theme switch made elsewhere): remember its tint, the
-                // theme hook only recolors when the color differs from the last one applied
-                logoDrawable.setColorFilter(lastLogoDrawableColor = getThemedColor(Theme.key_telegram_color_dialogsLogo), PorterDuff.Mode.MULTIPLY);
-                SpannableStringBuilder ssb = new SpannableStringBuilder(getString(R.string.AppName));
-                ssb.setSpan(new ImageSpan(logoDrawable), 0, ssb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                actionBar.setTitle(ssb, statusDrawable);
+                setDialogsLogoTitle(context);
                 updateStatus(UserConfig.getInstance(currentAccount).getCurrentUser(), false);
             }
             if (folderId == 0) {
@@ -6956,6 +6949,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     @Override
     public void onResume() {
         super.onResume();
+        // the "easygram / Telegram" title switch may have been changed in settings
+        if (logoDrawable != null && logoIsEasygram != OtherSettingsActivity.isEasygramTitleEnabled() && getContext() != null) {
+            setDialogsLogoTitle(getContext());
+        }
         if (dialogStoriesCell != null) {
             dialogStoriesCell.onResume();
         }
@@ -14172,6 +14169,77 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     private int lastLogoDrawableColor;
+    private boolean logoIsEasygram;
+
+    /** Main chat list title: the "easygram" wordmark (default) or the original Telegram logo, see settings. */
+    private void setDialogsLogoTitle(Context context) {
+        logoIsEasygram = OtherSettingsActivity.isEasygramTitleEnabled();
+        if (logoIsEasygram) {
+            logoDrawable = new EasygramLogoDrawable(context.getResources().getDrawable(R.drawable.telegram_logo_2).getIntrinsicHeight());
+        } else {
+            logoDrawable = context.getResources().getDrawable(R.drawable.telegram_logo_2).mutate();
+        }
+        logoDrawable.setBounds(0, dp(2), logoDrawable.getIntrinsicWidth(), dp(2) + logoDrawable.getIntrinsicHeight());
+        // a new drawable (also when the view is recreated after a theme switch made elsewhere): remember its tint, the
+        // theme hook only recolors when the color differs from the last one applied
+        logoDrawable.setColorFilter(lastLogoDrawableColor = getThemedColor(Theme.key_telegram_color_dialogsLogo), PorterDuff.Mode.MULTIPLY);
+        SpannableStringBuilder ssb = new SpannableStringBuilder(logoIsEasygram ? "easygram" : "Telegram");
+        ssb.setSpan(new ImageSpan(logoDrawable), 0, ssb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        actionBar.setTitle(ssb, statusDrawable);
+    }
+
+    /**
+     * "easygram" wordmark drawn as text, sized like the Telegram logo vector (same height and baseline, matching
+     * x-height) so it sits in the title exactly where the logo did. White, tinted by a colour filter like the logo.
+     */
+    private static class EasygramLogoDrawable extends Drawable {
+        private static final String TEXT = "easygram";
+        private final android.text.TextPaint paint = new android.text.TextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final int width, height;
+        private final float baseline;
+
+        EasygramLogoDrawable(int logoHeight) {
+            height = logoHeight;
+            paint.setColor(0xFFFFFFFF);
+            paint.setTypeface(AndroidUtilities.bold());
+            // the logo's lowercase letters are ~57 % of its height tall; Roboto's x-height is ~0.53 of the text size
+            paint.setTextSize(logoHeight * 1.08f);
+            baseline = logoHeight * 0.787f; // the logo's baseline
+            width = (int) Math.ceil(paint.measureText(TEXT));
+        }
+
+        @Override
+        public void draw(@NonNull Canvas canvas) {
+            android.graphics.Rect b = getBounds();
+            canvas.drawText(TEXT, b.left, b.top + baseline, paint);
+        }
+
+        @Override
+        public int getIntrinsicWidth() {
+            return width;
+        }
+
+        @Override
+        public int getIntrinsicHeight() {
+            return height;
+        }
+
+        @Override
+        public void setAlpha(int alpha) {
+            paint.setAlpha(alpha);
+        }
+
+        @Override
+        public void setColorFilter(@Nullable ColorFilter colorFilter) {
+            paint.setColorFilter(colorFilter);
+            invalidateSelf();
+        }
+
+        @Override
+        public int getOpacity() {
+            return PixelFormat.TRANSLUCENT;
+        }
+    }
     private int lastPremiumStarColor;
 
     private void updateStatusColors() {

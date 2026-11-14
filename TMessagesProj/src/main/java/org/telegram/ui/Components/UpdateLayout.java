@@ -58,7 +58,7 @@ public class UpdateLayout extends IUpdateLayout {
                     : ready ? MediaActionDrawable.ICON_UPDATE : MediaActionDrawable.ICON_DOWNLOAD, true, true);
             updateLayoutIcon.setProgress(downloading ? percent / 100.0f : 0, true);
             updateTextView.setText(downloading ? "Скачивание " + percent + "%"
-                    : ready ? "Установить Easygram" : "Обновить Easygram", true);
+                    : ready ? "Установить easygram" : "Обновить easygram", true);
             updateSizeTextView.setText(null, true);
             if (updateLayout.getTag() == null) {
                 updateLayout.setVisibility(View.VISIBLE);

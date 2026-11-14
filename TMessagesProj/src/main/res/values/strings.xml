@@ -3,8 +3,8 @@
 
     <string name="EasygramVideoMessagesTitle">Video Messages</string>
     <string name="EasygramVideoMessagesInfo">Customize video messages to your liking</string>
-    <string name="EasygramVersion">Easygram %1$s</string>
-    <string name="EasygramBetaVersion">Easygram Beta %1$s</string>
+    <string name="EasygramVersion">easygram %1$s</string>
+    <string name="EasygramBetaVersion">easygram beta %1$s</string>
 
     <string name="RVHeaderMode">Recording mode</string>
     <string name="RVHeaderCamera">Camera</string>
@@ -127,14 +127,14 @@
     <string name="RVSave">Save</string>
     <string name="RVCancel">Cancel</string>
     <string name="RVResetConfirm">Reset recording settings?</string>
-    <string name="RVResetInfo">All CustomRecorder settings will return to Easygram defaults.</string>
+    <string name="RVResetInfo">All CustomRecorder settings will return to easygram defaults.</string>
     <string name="RVResetAction">Reset</string>
     <string name="RVDurationCapInfo">At 640 × 640 and 2 Mbps, the maximum duration is limited to 30 seconds to reduce the risk of exceeding 10 MB. </string>
     <string name="RVDurationDefaultInfo">The maximum video message duration is 60 seconds. </string>
     <string name="RVDurationSizeInfo">A duration limit does not guarantee a file under 10 MB. In testing, Telegram may display larger video messages as square videos. If needed, reduce the resolution, video or audio bitrate, or maximum duration.</string>
 
-    <string name="AppName">Easygram</string>
-    <string name="AppNameBeta">Easygram Beta</string>
+    <string name="AppName">easygram</string>
+    <string name="AppNameBeta">easygram beta</string>
     <string name="LanguageName">English</string>
     <string name="English">English</string>
     <string name="LanguageNameInEnglish">English</string>
@@ -5936,9 +5936,9 @@
     <string name="BioLimitTitle">Bio</string>
     <string name="BioLimitSubtitle">Add more symbols and use links in your bio.</string>
     <string name="AppIcon">App Icon</string>
-    <string name="AppIconDefault">Easygram Dark</string>
-    <string name="AppIconBloomLight">Easygram Light</string>
-    <string name="AppIconBloomMono">Easygram Mono</string>
+    <string name="AppIconDefault">easygram Dark</string>
+    <string name="AppIconBloomLight">easygram Light</string>
+    <string name="AppIconBloomMono">easygram Mono</string>
     <string name="AppIconVintage">Vintage</string>
     <string name="AppIconAqua">Aqua</string>
     <string name="AppIconPremium">Premium</string>
@@ -11743,14 +11743,14 @@
     <string name="CreateManagedBotUsernameCheckFailed">Couldn\'t check this username. Please try again.</string>
     <!-- EASYGRAM_UPDATER_STRINGS_START -->
     <string name="EasygramCheckUpdates">Check for updates</string>
-    <string name="EasygramCheckUpdatesInfo">Download the latest Easygram version</string>
+    <string name="EasygramCheckUpdatesInfo">Download the latest easygram version</string>
     <!-- EASYGRAM_UPDATER_STRINGS_END -->
     <string name="EasygramSupportAuthor">Support the developer</string>
-    <string name="EasygramSupportAuthorInfo">Support Easygram development</string>
-    <string name="EasygramSupportAuthorDescription">If you enjoy Easygram, you can support its development with a donation. Thank you for your support!\n\nOpen Boosty using the button below or scan the QR code.</string>
+    <string name="EasygramSupportAuthorInfo">Support easygram development</string>
+    <string name="EasygramSupportAuthorDescription">If you enjoy easygram, you can support its development with a donation. Thank you for your support!\n\nOpen Boosty using the button below or scan the QR code.</string>
     <string name="EasygramSupportOnBoosty">Support on Boosty</string>
     <string name="EasygramOther">Advanced</string>
-    <string name="EasygramOtherInfo">Easygram features</string>
+    <string name="EasygramOtherInfo">easygram features</string>
     <string name="EasygramSecretMedia">Secret media tools</string>
     <string name="EasygramSecretMediaInfo">Work in progress</string>
     <string name="EasygramPremiumAccess">Access to premium functions</string>
@@ -11771,6 +11771,8 @@
     <string name="EasygramDisableAdsInfo">Disables sponsored messages in channels, ads in search, promo channels, and video ads.</string>
     <string name="EasygramShowStarMessages">Paid media thumbnails without blur</string>
     <string name="EasygramShowStarMessagesInfo">Removes additional blur and spoiler effects from paid photo and video thumbnails. Quality is limited to the thumbnail provided by Telegram; originals require purchase.</string>
+    <string name="EasygramTitleInChats">easygram name in chat list</string>
+    <string name="EasygramTitleInChatsInfo">The title above the chat list shows easygram. When off, Telegram is shown.</string>
     <string name="EasygramMaterialExpressive">Use Material 3 Expressive style</string>
     <string name="EasygramMiniPlayerDetailedWave">Detailed waveform in mini player</string>
     <string name="EasygramMaterialExpressiveInfo">Wavy progress line in the video player and for songs and audio files in chats, and a wavy waveform whose amplitude follows the loudness for voice messages and downloaded audio files. When off, the default Telegram look is used.</string>

@@ -65,7 +65,7 @@ public class OtherSettingsActivity extends BaseFragment {
         Boolean cached = materialExpressiveCached;
         if (cached == null) {
             cached = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE)
-                    .getBoolean(KEY_MATERIAL_EXPRESSIVE, false);
+                    .getBoolean(KEY_MATERIAL_EXPRESSIVE, true); // on by default; an explicit choice is stored and kept
             materialExpressiveCached = cached;
         }
         return cached;
@@ -75,6 +75,14 @@ public class OtherSettingsActivity extends BaseFragment {
         materialExpressiveCached = enabled;
         ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE)
                 .edit().putBoolean(KEY_MATERIAL_EXPRESSIVE, enabled).apply();
+    }
+
+    public static final String KEY_EASYGRAM_TITLE = "easygram_title_in_chats";
+
+    /** Chat list title: "easygram" (default) or the original "Telegram" logo. */
+    public static boolean isEasygramTitleEnabled() {
+        return ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE)
+                .getBoolean(KEY_EASYGRAM_TITLE, true);
     }
 
     public static final String KEY_MINI_PLAYER_DETAILED_WAVE = "easygram_mini_player_detailed_wave";
@@ -150,6 +158,8 @@ public class OtherSettingsActivity extends BaseFragment {
     private int adsInfoRow;
     private int showStarMessagesRow;
     private int starMessagesInfoRow;
+    private int easygramTitleRow;
+    private int easygramTitleInfoRow;
     private int materialExpressiveRow;
     private int miniPlayerDetailedWaveRow;
     private int materialExpressiveInfoRow;
@@ -344,6 +354,8 @@ public class OtherSettingsActivity extends BaseFragment {
         adsInfoRow = rowCount++;
         showStarMessagesRow = rowCount++;
         starMessagesInfoRow = rowCount++;
+        easygramTitleRow = rowCount++;
+        easygramTitleInfoRow = rowCount++;
         materialExpressiveRow = rowCount++;
         // sub-option of M3E: only shown while it is on
         miniPlayerDetailedWaveRow = isMaterialExpressiveEnabled() ? rowCount++ : -1;
@@ -459,6 +471,12 @@ public class OtherSettingsActivity extends BaseFragment {
                     ((TextCheckCell) view).setChecked(next);
                 }
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.updateInterfaces, org.telegram.messenger.MessagesController.UPDATE_MASK_ALL);
+            } else if (position == easygramTitleRow) {
+                boolean next = !isEasygramTitleEnabled();
+                preferences().edit().putBoolean(KEY_EASYGRAM_TITLE, next).apply();
+                if (view instanceof TextCheckCell) {
+                    ((TextCheckCell) view).setChecked(next);
+                }
             } else if (position == materialExpressiveRow) {
                 boolean next = !isMaterialExpressiveEnabled();
                 setMaterialExpressiveEnabled(next);
@@ -675,8 +693,8 @@ public class OtherSettingsActivity extends BaseFragment {
             if (position == headerRow || position == navHeaderRow || position == photoMenuHeaderRow) return 0;
             if (position == galleryRow) return 1;
             if (position == secretMediaRow) return 6;
-            if (position == premiumAccessInfoRow || position == galleryInfoRow || position == sendMediaHdInfoRow || position == storiesInfoRow || position == adsInfoRow || position == starMessagesInfoRow || position == materialExpressiveInfoRow || position == navInfoRow || position == photoMenuInfoRow) return 2;
-            if (position == premiumAccessRow || position == sendMediaHdRow || position == disableStoriesRow || position == disableAdsRow || position == showStarMessagesRow || position == materialExpressiveRow || position == miniPlayerDetailedWaveRow || position == navLabelsRow) return 3;
+            if (position == premiumAccessInfoRow || position == galleryInfoRow || position == sendMediaHdInfoRow || position == storiesInfoRow || position == adsInfoRow || position == starMessagesInfoRow || position == materialExpressiveInfoRow || position == easygramTitleInfoRow || position == navInfoRow || position == photoMenuInfoRow) return 2;
+            if (position == premiumAccessRow || position == sendMediaHdRow || position == disableStoriesRow || position == disableAdsRow || position == showStarMessagesRow || position == materialExpressiveRow || position == easygramTitleRow || position == miniPlayerDetailedWaveRow || position == navLabelsRow) return 3;
             if (position >= navStartRow && position < navEndRow) return 4;
             if (position >= photoMenuStartRow && position < photoMenuEndRow) return 5;
             return 0;
@@ -748,6 +766,8 @@ public class OtherSettingsActivity extends BaseFragment {
                         infoCell.setText(LocaleController.getString(R.string.EasygramDisableAdsInfo));
                     } else if (position == starMessagesInfoRow) {
                         infoCell.setText(LocaleController.getString(R.string.EasygramShowStarMessagesInfo));
+                    } else if (position == easygramTitleInfoRow) {
+                        infoCell.setText(LocaleController.getString(R.string.EasygramTitleInChatsInfo));
                     } else if (position == materialExpressiveInfoRow) {
                         infoCell.setText(LocaleController.getString(R.string.EasygramMaterialExpressiveInfo));
                     } else if (position == navInfoRow) {
@@ -800,6 +820,12 @@ public class OtherSettingsActivity extends BaseFragment {
                         checkCell.setTextAndCheck(
                                 LocaleController.getString(R.string.EasygramShowStarMessages),
                                 showStarMessages,
+                                false
+                        );
+                    } else if (position == easygramTitleRow) {
+                        checkCell.setTextAndCheck(
+                                LocaleController.getString(R.string.EasygramTitleInChats),
+                                isEasygramTitleEnabled(),
                                 false
                         );
                     } else if (position == materialExpressiveRow) {
