@@ -1,0 +1,125 @@
+easygram
+========
+
+easygram is a modified version of Telegram for Android
+(https://github.com/DrKLO/Telegram), Copyright Nikolai Kudashov and
+Telegram for Android contributors, licensed under the GNU General Public
+License v. 2 or later (see LICENSE).
+
+Modifications and additions: Copyright webarmour, 2026.
+They are distributed under the same license (GNU GPL v. 2 or later).
+
+The full history of every change, with dates, is in the git history of
+this repository (https://github.com/webarmour/Easygram).
+
+
+Files added by easygram
+-----------------------
+Files that are not part of Telegram for Android carry an easygram copyright
+header ("This file is part of easygram ..."). Images and data files that
+cannot hold a comment (PNG icons and previews, updates/*.json) are
+easygram's own as well.
+
+TMessagesProj/src/main/java/org/telegram/ui/Components/UpdateLayout.java is
+based on Telegram's UpdateLayout (TMessagesProj_AppStandalone) and keeps
+Telegram's copyright next to easygram's.
+
+
+Telegram for Android files modified by easygram
+-----------------------------------------------
+These files are Telegram's code with changes made by easygram. To keep
+merges with upstream simple, the changes are not marked inside the files;
+`git diff` against upstream/master shows them exactly.
+
+  README.md
+  TMessagesProj/build.gradle
+  TMessagesProj/config/debug/AndroidManifest.xml
+  TMessagesProj/config/debug/AndroidManifest_SDK23.xml
+  TMessagesProj/config/release/AndroidManifest.xml
+  TMessagesProj/config/release/AndroidManifest_SDK23.xml
+  TMessagesProj/src/main/AndroidManifest.xml
+  TMessagesProj/src/main/java/org/telegram/messenger/BuildVars.java
+  TMessagesProj/src/main/java/org/telegram/messenger/DatabaseMigrationHelper.java
+  TMessagesProj/src/main/java/org/telegram/messenger/FileLoader.java
+  TMessagesProj/src/main/java/org/telegram/messenger/ImageLoader.java
+  TMessagesProj/src/main/java/org/telegram/messenger/LiteMode.java
+  TMessagesProj/src/main/java/org/telegram/messenger/MediaController.java
+  TMessagesProj/src/main/java/org/telegram/messenger/MessageObject.java
+  TMessagesProj/src/main/java/org/telegram/messenger/MessagesController.java
+  TMessagesProj/src/main/java/org/telegram/messenger/MessagesStorage.java
+  TMessagesProj/src/main/java/org/telegram/messenger/MusicPlayerReceiver.java
+  TMessagesProj/src/main/java/org/telegram/messenger/MusicPlayerService.java
+  TMessagesProj/src/main/java/org/telegram/messenger/NotificationCenter.java
+  TMessagesProj/src/main/java/org/telegram/messenger/SendMessagesHelper.java
+  TMessagesProj/src/main/java/org/telegram/messenger/SharedConfig.java
+  TMessagesProj/src/main/java/org/telegram/messenger/UserConfig.java
+  TMessagesProj/src/main/java/org/telegram/messenger/video/VideoAds.java
+  TMessagesProj/src/main/java/org/telegram/tgnet/ConnectionsManager.java
+  TMessagesProj/src/main/java/org/telegram/tgnet/TLRPC.java
+  TMessagesProj/src/main/java/org/telegram/ui/ActionBar/ActionBarPopupWindow.java
+  TMessagesProj/src/main/java/org/telegram/ui/Adapters/DialogsSearchAdapter.java
+  TMessagesProj/src/main/java/org/telegram/ui/CallLogActivity.java
+  TMessagesProj/src/main/java/org/telegram/ui/Cells/AudioPlayerCell.java
+  TMessagesProj/src/main/java/org/telegram/ui/Cells/ChatMessageAudio.java
+  TMessagesProj/src/main/java/org/telegram/ui/Cells/ChatMessageCell.java
+  TMessagesProj/src/main/java/org/telegram/ui/Cells/GroupMedia.java
+  TMessagesProj/src/main/java/org/telegram/ui/Cells/PhotoAttachPhotoCell.java
+  TMessagesProj/src/main/java/org/telegram/ui/Cells/SharedAudioCell.java
+  TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
+  TMessagesProj/src/main/java/org/telegram/ui/Components/AlertsCreator.java
+  TMessagesProj/src/main/java/org/telegram/ui/Components/AudioPlayerAlert.java
+  TMessagesProj/src/main/java/org/telegram/ui/Components/ChatActivityEnterView.java
+  TMessagesProj/src/main/java/org/telegram/ui/Components/ChatAttachAlert.java
+  TMessagesProj/src/main/java/org/telegram/ui/Components/ChatAttachAlertDocumentLayout.java
+  TMessagesProj/src/main/java/org/telegram/ui/Components/ChatAttachAlertPhotoLayout.java
+  TMessagesProj/src/main/java/org/telegram/ui/Components/Crop/CropView.java
+  TMessagesProj/src/main/java/org/telegram/ui/Components/FragmentContextView.java
+  TMessagesProj/src/main/java/org/telegram/ui/Components/InstantCameraView.java
+  TMessagesProj/src/main/java/org/telegram/ui/Components/InstantCameraViewBase.java
+  TMessagesProj/src/main/java/org/telegram/ui/Components/QRCodeBottomSheet.java
+  TMessagesProj/src/main/java/org/telegram/ui/Components/RadialProgress2.java
+  TMessagesProj/src/main/java/org/telegram/ui/Components/SeekBar.java
+  TMessagesProj/src/main/java/org/telegram/ui/Components/SeekBarView.java
+  TMessagesProj/src/main/java/org/telegram/ui/Components/SeekBarWaveform.java
+  TMessagesProj/src/main/java/org/telegram/ui/Components/VideoPlayer.java
+  TMessagesProj/src/main/java/org/telegram/ui/Components/VideoPlayerSeekBar.java
+  TMessagesProj/src/main/java/org/telegram/ui/Components/blur3/drawable/color/impl/BlurredBackgroundProviderImpl.java
+  TMessagesProj/src/main/java/org/telegram/ui/Components/glass/GlassTabView.java
+  TMessagesProj/src/main/java/org/telegram/ui/ContactsActivity.java
+  TMessagesProj/src/main/java/org/telegram/ui/DialogsActivity.java
+  TMessagesProj/src/main/java/org/telegram/ui/IntroActivity.java
+  TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
+  TMessagesProj/src/main/java/org/telegram/ui/LauncherIconController.java
+  TMessagesProj/src/main/java/org/telegram/ui/MainTabsActivity.java
+  TMessagesProj/src/main/java/org/telegram/ui/MainTabsLayout.java
+  TMessagesProj/src/main/java/org/telegram/ui/PhotoViewer.java
+  TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
+  TMessagesProj/src/main/java/org/telegram/ui/RoundVideoSettingsActivity.java
+  TMessagesProj/src/main/java/org/telegram/ui/SecretMediaViewer.java
+  TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java
+  TMessagesProj/src/main/java/org/telegram/ui/TopicsFragment.java
+  TMessagesProj/src/main/java/org/telegram/ui/Wallet/WalletCardProjection.java
+  TMessagesProj/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+  TMessagesProj/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+  TMessagesProj/src/main/res/mipmap-hdpi/ic_launcher.png
+  TMessagesProj/src/main/res/mipmap-hdpi/ic_launcher_round.png
+  TMessagesProj/src/main/res/mipmap-mdpi/ic_launcher.png
+  TMessagesProj/src/main/res/mipmap-mdpi/ic_launcher_round.png
+  TMessagesProj/src/main/res/mipmap-xhdpi/ic_launcher.png
+  TMessagesProj/src/main/res/mipmap-xhdpi/ic_launcher_round.png
+  TMessagesProj/src/main/res/mipmap-xxhdpi/ic_launcher.png
+  TMessagesProj/src/main/res/mipmap-xxhdpi/ic_launcher_round.png
+  TMessagesProj/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+  TMessagesProj/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
+  TMessagesProj/src/main/res/raw/tg_keep.xml
+  TMessagesProj/src/main/res/values-night/styles.xml
+  TMessagesProj/src/main/res/values-ru/strings.xml
+  TMessagesProj/src/main/res/values-v21/styles.xml
+  TMessagesProj/src/main/res/values-v31/styles.xml
+  TMessagesProj/src/main/res/values/strings.xml
+  TMessagesProj/src/main/res/values/styles.xml
+  TMessagesProj_App/build.gradle
+  TMessagesProj_App/google-services.json
+  TMessagesProj_App/src/main/java/org/telegram/messenger/ApplicationLoaderImpl.java
+  TMessagesProj_Modules/media
+  gradle.properties
