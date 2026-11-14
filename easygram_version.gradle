@@ -1,0 +1,44 @@
+/*
+ * This file is part of easygram, a fork of Telegram for Android.
+ * It is licensed under GNU GPL v. 2 or later.
+ * You should have received a copy of the license in this archive (see LICENSE).
+ *
+ * Copyright webarmour, 2026.
+ */
+
+// Automatic versionCode: EASYGRAM_VERSION_BASE + first-parent commits since EASYGRAM_VERSION_ANCHOR
+// (easygram_version.properties). Applied from the root build.gradle; overrides APP_VERSION_CODE for all modules,
+// so nothing has to be bumped by hand. Uncommitted changes build with the code of the current commit.
+
+def easygramVersionProps = new Properties()
+rootProject.file('easygram_version.properties').withInputStream { easygramVersionProps.load(it) }
+def easygramVersionBase = Integer.parseInt(easygramVersionProps.getProperty('EASYGRAM_VERSION_BASE').trim())
+def easygramVersionAnchor = easygramVersionProps.getProperty('EASYGRAM_VERSION_ANCHOR').trim()
+
+def easygramCommitsSinceAnchor = {
+    try {
+        def process = ['git', 'rev-list', '--first-parent', '--count', "${easygramVersionAnchor}..HEAD"]
+                .execute(null, rootProject.rootDir)
+        def out = process.text.trim()
+        if (process.waitFor() == 0 && out ==~ /\d+/) {
+            return Integer.parseInt(out)
+        }
+        logger.warn("easygram: can't count commits since ${easygramVersionAnchor} (shallow clone? not a git checkout?), versionCode = base")
+    } catch (Exception e) {
+        logger.warn("easygram: git is not available (${e.message}), versionCode = base")
+    }
+    return 0
+}
+
+def easygramVersionCode = String.valueOf(easygramVersionBase + easygramCommitsSinceAnchor())
+
+allprojects {
+    ext.APP_VERSION_CODE = easygramVersionCode
+}
+
+tasks.register('easygramVersionCode') {
+    description = 'Prints the automatic easygram versionCode base (the APK/AAB versionCode is this * 10 + ABI code).'
+    doLast {
+        println easygramVersionCode
+    }
+}

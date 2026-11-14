@@ -122,4 +122,5 @@ merges with upstream simple, the changes are not marked inside the files;
   TMessagesProj_App/google-services.json
   TMessagesProj_App/src/main/java/org/telegram/messenger/ApplicationLoaderImpl.java
   TMessagesProj_Modules/media
+  build.gradle
   gradle.properties

@@ -58,15 +58,6 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git merge --no-edit --no-ff upstream/master
-
-          current=$(sed -n 's/^APP_VERSION_CODE=//p' gradle.properties)
-          [[ "$current" =~ ^[0-9]+$ ]]
-          stable_max=$(gh api repos/${GITHUB_REPOSITORY}/releases --paginate \
-            --jq '[.[] | select(.draft == false and .prerelease == false) | .tag_name | capture("^[vV]?(?<name>[0-9]+(\\.[0-9]+){1,3})-(?<code>[0-9]+)$") | .code | tonumber] | max // 0')
-          next=$((current + 1))
-          if (( stable_max >= next )); then next=$((stable_max + 1)); fi
-          sed -i "s/^APP_VERSION_CODE=.*/APP_VERSION_CODE=${next}/" gradle.properties
-          echo "version_code=$next" >> "$GITHUB_OUTPUT"
           echo 'changed=true' >> "$GITHUB_OUTPUT"
 
       - name: Verify release credentials are configured
@@ -99,6 +90,25 @@ jobs:
           printf 'sdk.dir=%s\nEASYGRAM_RELEASE_KEYSTORE=%s\nEASYGRAM_RELEASE_STORE_PASSWORD=%s\nEASYGRAM_RELEASE_KEY_ALIAS=%s\nEASYGRAM_RELEASE_KEY_PASSWORD=%s\nTELEGRAM_API_ID=%s\nTELEGRAM_API_HASH=%s\n' \
             "$ANDROID_HOME" "$RUNNER_TEMP/easygram-release.keystore" "$STORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" "$TELEGRAM_API_ID" "$TELEGRAM_API_HASH" > local.properties
 
+      - name: Compute version code
+        if: steps.update.outputs.changed == 'true'
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # automatic: base + commits since the anchor (easygram_version.properties); the merge commit raised it by 1
+          code=$(./gradlew -q easygramVersionCode --no-daemon | tail -n1)
+          [[ "$code" =~ ^[0-9]+$ ]]
+          stable_max=$(gh api repos/${GITHUB_REPOSITORY}/releases --paginate \
+            --jq '[.[] | select(.draft == false and .prerelease == false) | .tag_name | capture("^[vV]?(?<name>[0-9]+(\\.[0-9]+){1,3})-(?<code>[0-9]+)$") | .code | tonumber] | max // 0')
+          if (( code <= stable_max )); then
+            echo "versionCode $code is not above the last release $stable_max: raise EASYGRAM_VERSION_BASE in easygram_version.properties" >&2
+            exit 1
+          fi
+          echo "version_code=$code" >> "$GITHUB_OUTPUT"
+
       - name: Build stable APK
         if: steps.update.outputs.changed == 'true'
         run: ./gradlew :TMessagesProj_App:assembleAfatRelease --no-daemon --stacktrace
@@ -111,18 +121,17 @@ jobs:
           apk=$(find TMessagesProj_App/build/outputs/apk/afat/release -maxdepth 1 -name "*.apk" -print -quit)
           aapt=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n1)
           apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n1)
-          "$aapt" dump badging "$apk" | grep -q "package: name='io.github.webarmour.easygram' versionCode='${{ steps.update.outputs.version_code }}9'"
+          "$aapt" dump badging "$apk" | grep -q "package: name='io.github.webarmour.easygram' versionCode='${{ steps.version.outputs.version_code }}9'"
           "$apksigner" verify "$apk"
           echo "sha256=$(sha256sum "$apk" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
           echo "apk=$apk" >> "$GITHUB_OUTPUT"
 
-      - name: Commit merge and release version
+      - name: Push merge
         if: steps.update.outputs.changed == 'true'
         id: commit
         run: |
           set -euo pipefail
-          git add gradle.properties
-          git commit -m "Prepare Easygram ${{ steps.update.outputs.version_code }} release"
+          # the versionCode comes from the commit count, so the merge commit is pushed as it is (no version commit)
           git push origin HEAD:easygram-dev
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
@@ -133,7 +142,7 @@ jobs:
         run: |
           set -euo pipefail
           version_name=$(sed -n 's/^APP_VERSION_NAME=//p' gradle.properties)
-          tag="v${version_name}-${{ steps.update.outputs.version_code }}"
+          tag="v${version_name}-${{ steps.version.outputs.version_code }}"
           gh release create "$tag" "${{ steps.apk.outputs.apk }}" \
             --repo "$GITHUB_REPOSITORY" --target "${{ steps.commit.outputs.sha }}" \
             --title "Easygram $tag" --notes "Telegram upstream обновлён до текущего master."

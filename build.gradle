@@ -53,3 +53,4 @@ subprojects {
         }
     }
 }
+apply from: rootProject.file("easygram_version.gradle")
