@@ -9192,24 +9192,124 @@ public class MessagesStorage extends BaseController {
         });
     }
 
-    private void appendArchivedDeletedMessages(TLRPC.TL_messages_messages result, long dialogId, long topicId, int maxId, int count,
-                                               ArrayList<Long> usersToLoad, ArrayList<Long> chatsToLoad, ArrayList<Long> animatedEmojiToLoad) throws Exception {
-        int minId = Integer.MAX_VALUE;
+    /**
+     * Merges messages that were deleted remotely (but are still kept in message_archive) into a
+     * loaded page of a server response. Runs synchronously on the storage queue, after any
+     * pending putMessages() of the same response, so the archived copies never reach messages_v2.
+     */
+    public void appendArchivedDeletedMessagesSync(TLRPC.messages_Messages result, long dialogId, long topicId, int loadType, int maxId, int count) {
+        if (result == null || result.messages == null || dialogId == 0 || DialogObject.isEncryptedDialog(dialogId)) {
+            return;
+        }
+        CountDownLatch countDownLatch = new CountDownLatch(1);
+        Runnable runnable = () -> {
+            try {
+                ArrayList<Long> usersToLoad = new ArrayList<>();
+                ArrayList<Long> chatsToLoad = new ArrayList<>();
+                ArrayList<Long> animatedEmojiToLoad = new ArrayList<>();
+                boolean reachedOldest = loadType == 0 && countPositive(result.messages) < count;
+                if (appendArchivedDeletedMessages(result, dialogId, topicId, loadType, maxId, count, reachedOldest, usersToLoad, chatsToLoad, animatedEmojiToLoad) > 0) {
+                    for (TLRPC.User user : result.users) {
+                        usersToLoad.remove(user.id);
+                    }
+                    for (TLRPC.Chat chat : result.chats) {
+                        chatsToLoad.remove(chat.id);
+                    }
+                    if (!usersToLoad.isEmpty()) {
+                        getUsersInternal(usersToLoad, result.users);
+                    }
+                    if (!chatsToLoad.isEmpty()) {
+                        getChatsInternal(TextUtils.join(",", chatsToLoad), result.chats);
+                    }
+                }
+            } catch (Exception e) {
+                checkSQLException(e);
+            } finally {
+                countDownLatch.countDown();
+            }
+        };
+        if (Thread.currentThread() == storageQueue) {
+            runnable.run();
+            return;
+        }
+        storageQueue.postRunnable(runnable);
+        try {
+            countDownLatch.await();
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }
+
+    private static int countPositive(ArrayList<TLRPC.Message> messages) {
+        int n = 0;
+        for (TLRPC.Message message : messages) {
+            if (message.id > 0) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    private boolean hasCachedMessagesAbove(long dialogId, long topicId, int mid) throws Exception {
+        SQLiteCursor cursor = database.queryFinalized(topicId == 0
+                ? String.format(Locale.US, "SELECT 1 FROM messages_v2 WHERE uid = %d AND mid > %d LIMIT 1", dialogId, mid)
+                : String.format(Locale.US, "SELECT 1 FROM messages_topics WHERE uid = %d AND topic_id = %d AND mid > %d LIMIT 1", dialogId, topicId, mid));
+        try {
+            return cursor.next();
+        } finally {
+            cursor.dispose();
+        }
+    }
+
+    /**
+     * Page coverage (so consecutive pages never leave gaps between them):
+     *  load_type 0 (older than maxId / newest page): [minLoaded, maxId)
+     *  load_type 1 (newer than maxId):              (maxId, maxLoaded]
+     *  around (2,3,4):                              [minLoaded, maxLoaded]
+     * The upper side is opened up when nothing newer is cached, the lower side when the
+     * page reached the start of history.
+     */
+    private int appendArchivedDeletedMessages(TLRPC.messages_Messages result, long dialogId, long topicId, int loadType, int maxId, int count, boolean reachedOldest,
+                                              ArrayList<Long> usersToLoad, ArrayList<Long> chatsToLoad, ArrayList<Long> animatedEmojiToLoad) throws Exception {
+        int minLoaded = Integer.MAX_VALUE;
+        int maxLoaded = 0;
         for (TLRPC.Message message : result.messages) {
             if (message.id > 0) {
-                minId = Math.min(minId, message.id);
+                minLoaded = Math.min(minLoaded, message.id);
+                maxLoaded = Math.max(maxLoaded, message.id);
                 File cachedMedia = FileLoader.getInstance(currentAccount).getPathToMessage(message, false);
                 if (cachedMedia != null && cachedMedia.isFile()) {
                     archiveDownloadedMedia(dialogId, message.id, cachedMedia);
                 }
             }
         }
-        int lowerBound = minId == Integer.MAX_VALUE ? 1 : minId;
-        int upperBound = maxId > 0 ? maxId : Integer.MAX_VALUE;
+        boolean empty = maxLoaded == 0;
+        long lowerBound;
+        long upperBound;
+        if (loadType == 0) {
+            upperBound = maxId > 0 ? (long) maxId - 1 : Integer.MAX_VALUE;
+            lowerBound = empty || reachedOldest ? 1 : minLoaded;
+        } else if (loadType == 1) {
+            lowerBound = (long) maxId + 1;
+            upperBound = empty || !hasCachedMessagesAbove(dialogId, topicId, maxLoaded) ? Integer.MAX_VALUE : maxLoaded;
+        } else {
+            lowerBound = empty ? 1 : minLoaded;
+            upperBound = empty || !hasCachedMessagesAbove(dialogId, topicId, maxLoaded) ? Integer.MAX_VALUE : maxLoaded;
+        }
+        if (lowerBound > upperBound) {
+            return 0;
+        }
+        boolean bounded = !empty && lowerBound >= minLoaded && upperBound <= maxLoaded;
+        int limit = bounded ? 500 : Math.max(1, count);
         String topicFilter = topicId == 0 ? "" : " AND a.topic_id = " + topicId;
         SQLiteCursor archiveCursor = database.queryFinalized(String.format(Locale.US,
-                "SELECT a.data FROM message_archive a WHERE a.uid = %d AND a.deleted = 1 AND a.mid >= %d AND a.mid < %d%s AND a.id = (SELECT MAX(b.id) FROM message_archive b WHERE b.uid = a.uid AND b.mid = a.mid) ORDER BY a.mid DESC LIMIT %d",
-                dialogId, lowerBound, upperBound, topicFilter, Math.max(1, count)));
+                "SELECT a.data FROM message_archive a WHERE a.uid = %d AND a.deleted = 1 AND a.mid >= %d AND a.mid <= %d%s AND a.id = (SELECT MAX(b.id) FROM message_archive b WHERE b.uid = a.uid AND b.mid = a.mid) ORDER BY a.mid DESC LIMIT %d",
+                dialogId, lowerBound, upperBound, topicFilter, limit));
+        HashSet<Integer> presentIds = new HashSet<>();
+        for (TLRPC.Message existing : result.messages) {
+            presentIds.add(existing.id);
+        }
+        int added = 0;
         try {
             while (archiveCursor.next()) {
                 NativeByteBuffer data = archiveCursor.byteBufferValue(0);
@@ -9221,14 +9321,7 @@ public class MessagesStorage extends BaseController {
                 if (message == null || message instanceof TLRPC.TL_messageEmpty || message.out) {
                     continue;
                 }
-                boolean alreadyPresent = false;
-                for (TLRPC.Message existing : result.messages) {
-                    if (existing.id == message.id) {
-                        alreadyPresent = true;
-                        break;
-                    }
-                }
-                if (!alreadyPresent) {
+                if (presentIds.add(message.id)) {
                     restoreArchivedMedia(dialogId, message.id);
                     message.dialog_id = dialogId;
                     message.unread = false;
@@ -9236,15 +9329,19 @@ public class MessagesStorage extends BaseController {
                     MessageObject.markAsArchivedDeleted(message);
                     result.messages.add(message);
                     addUsersAndChatsFromMessage(message, usersToLoad, chatsToLoad, animatedEmojiToLoad);
+                    added++;
                 }
             }
         } finally {
             archiveCursor.dispose();
         }
-        result.messages.sort((left, right) -> {
-            int dateOrder = Integer.compare(right.date, left.date);
-            return dateOrder != 0 ? dateOrder : Integer.compare(right.id, left.id);
-        });
+        if (added > 0) {
+            result.messages.sort((left, right) -> {
+                int dateOrder = Integer.compare(right.date, left.date);
+                return dateOrder != 0 ? dateOrder : Integer.compare(right.id, left.id);
+            });
+        }
+        return added;
     }
 
     private void restoreArchivedMedia(long dialogId, int messageId) throws Exception {
@@ -10296,8 +10393,8 @@ public class MessagesStorage extends BaseController {
             } else {
                 loadReplyMessages(replyMessageOwners, dialogReplyMessagesIds, usersToLoad, chatsToLoad, mode);
             }
-            if (mode == 0 && (load_type == 0 || load_type == 2)) {
-                appendArchivedDeletedMessages(res, dialogId, threadMessageId, max_id, count, usersToLoad, chatsToLoad, animatedEmojiToLoad);
+            if (mode == 0 && !DialogObject.isEncryptedDialog(dialogId)) {
+                appendArchivedDeletedMessages(res, dialogId, threadMessageId, load_type, max_id, count, false, usersToLoad, chatsToLoad, animatedEmojiToLoad);
             }
             if (!usersToLoad.isEmpty()) {
                 getUsersInternal(usersToLoad, res.users);

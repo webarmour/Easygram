@@ -12039,7 +12039,7 @@ public class MessagesController extends BaseController implements NotificationCe
                 final boolean includePeers = true;
                 for (int a = 0, N = messagesRes.messages.size(); a < N; a++) {
                     TLRPC.Message message = messagesRes.messages.get(a);
-                    if (message.id < 0) {
+                    if (message.id < 0 || message.localArchiveDeleted) {
                         continue;
                     }
                     if (includePeers) {
@@ -12116,6 +12116,23 @@ public class MessagesController extends BaseController implements NotificationCe
             }
             if (mode == ChatActivity.MODE_SAVED) {
                 getSavedMessagesController().update(threadMessageId, messagesRes);
+            }
+            if (mode == ChatActivity.MODE_DEFAULT && !DialogObject.isEncryptedDialog(dialogId) && needProcess) {
+                // server pages don't contain remotely deleted messages, merge the kept copies back in
+                getMessagesStorage().appendArchivedDeletedMessagesSync(messagesRes, dialogId, threadMessageId, load_type, max_id, count);
+                for (int a = 0; a < messagesRes.users.size(); a++) {
+                    TLRPC.User u = messagesRes.users.get(a);
+                    if (usersDict.indexOfKey(u.id) < 0) {
+                        usersDict.put(u.id, u);
+                    }
+                }
+                for (int a = 0; a < messagesRes.chats.size(); a++) {
+                    TLRPC.Chat c = messagesRes.chats.get(a);
+                    if (chatsDict.indexOfKey(c.id) < 0) {
+                        chatsDict.put(c.id, c);
+                    }
+                }
+                size = messagesRes.messages.size();
             }
         }
 
