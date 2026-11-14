@@ -180,6 +180,19 @@ android {
         }
     }
 
+    // App Bundle: human-readable name like the APKs (AGP has no outputFileName for bundles, so the final signed
+    // bundle task's output file is renamed): "EasygramBundle v13.2.3-7305.aab"
+    // (afterEvaluate: AGP sets the default bundle path when it configures the task, this runs after it)
+    afterEvaluate {
+        tasks.matching { it.name.startsWith("sign") && it.name.endsWith("Bundle") && it.hasProperty("finalBundleFile") }.configureEach { task ->
+            def original = task.finalBundleFile.get().asFile
+            def name = task.name.toLowerCase().contains("debug")
+                    ? "EasygramBundle Beta ${APP_VERSION_NAME}-${APP_VERSION_CODE}.aab"
+                    : "EasygramBundle v${APP_VERSION_NAME}-${APP_VERSION_CODE}.aab"
+            task.finalBundleFile.set(new File(original.parentFile, name))
+        }
+    }
+
     variantFilter { variant ->
         def names = variant.flavors*.name
         if (variant.buildType.name != "release" && !names.contains("afat")) {
