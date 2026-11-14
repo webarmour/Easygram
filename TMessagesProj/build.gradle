@@ -296,3 +296,5 @@ task checkVisibility {
 }
 
 preBuild.dependsOn checkVisibility
+
+apply from: rootProject.file("easygram_abis.gradle")

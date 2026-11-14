@@ -1,0 +1,30 @@
+// Easygram: which CPU architectures (ABIs) are built and packaged.
+//
+// Applied at the end of TMessagesProj/build.gradle (native code, CMake) and TMessagesProj_App/build.gradle (packaging),
+// so both modules always agree. Every ABI costs a full native build (~9.7k C/C++ files), so only what is needed:
+//   debug   - arm64-v8a: all real phones; much faster native build, smaller APK, faster install
+//   release - armeabi-v7a + arm64-v8a: x86 / x86_64 are only emulators and rare Chromebooks
+//
+// Override in local.properties or with -P, comma separated, e.g.:
+//   EASYGRAM_DEBUG_ABIS=arm64-v8a,x86_64            (debug on an x86_64 emulator as well)
+//   EASYGRAM_RELEASE_ABIS=armeabi-v7a,arm64-v8a,x86,x86_64   (all four, as upstream)
+
+def easygramLocalProps = new Properties()
+def easygramLocalPropsFile = rootProject.file('local.properties')
+if (easygramLocalPropsFile.exists()) {
+    easygramLocalPropsFile.withInputStream { easygramLocalProps.load(it) }
+}
+
+def easygramAbiProp = { String name, String defaultValue ->
+    def value = project.findProperty(name) ?: easygramLocalProps.getProperty(name)
+    def list = (value ?: defaultValue).toString().split(',')*.trim().findAll { !it.isEmpty() }
+    return list.isEmpty() ? defaultValue.split(',') as List : list
+}
+
+def easygramDebugAbis = easygramAbiProp('EASYGRAM_DEBUG_ABIS', 'arm64-v8a')
+def easygramReleaseAbis = easygramAbiProp('EASYGRAM_RELEASE_ABIS', 'armeabi-v7a,arm64-v8a')
+
+android.buildTypes.all { buildType ->
+    buildType.ndk.abiFilters.clear()
+    buildType.ndk.abiFilters.addAll(buildType.name == 'debug' ? easygramDebugAbis : easygramReleaseAbis)
+}

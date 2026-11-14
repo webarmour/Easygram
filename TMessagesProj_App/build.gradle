@@ -134,18 +134,14 @@ android {
 
     productFlavors {
         bundleAfat {
-            ndk {
-                abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
-            }
+            // ABIs: see easygram_abis.gradle (flavor filters would be merged with the build type ones)
             ext {
                 abiVersionCode = 1
             }
             buildConfigField "boolean", "BUNDLE", "true"
         }
         afat {
-            ndk {
-                abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
-            }
+            // ABIs: see easygram_abis.gradle (flavor filters would be merged with the build type ones)
             sourceSets.debug {
                 manifest.srcFile '../TMessagesProj/config/debug/AndroidManifest_SDK23.xml'
             }
@@ -219,3 +215,5 @@ android {
 }
 
 apply plugin: 'com.google.gms.google-services'
+
+apply from: rootProject.file("easygram_abis.gradle")
