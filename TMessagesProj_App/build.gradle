@@ -163,6 +163,8 @@ android {
         afatDebug.manifest.srcFile 'config/analytics/AndroidManifest.xml'
         afatRelease.manifest.srcFile 'config/analytics/AndroidManifest.xml'
         bundleAfatRelease.manifest.srcFile 'config/analytics/AndroidManifest.xml'
+        // App Bundle = Google Play build: removes the APK-install permission used by the GitHub updater
+        bundleAfat.manifest.srcFile 'config/play/AndroidManifest.xml'
     }
 
     defaultConfig.versionCode = Integer.parseInt(APP_VERSION_CODE)

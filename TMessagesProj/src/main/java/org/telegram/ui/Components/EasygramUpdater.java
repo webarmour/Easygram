@@ -229,6 +229,7 @@ public final class EasygramUpdater {
     /** Called on LaunchActivity.onResume() and from SettingsActivity. */
     public static void check(Activity activity, boolean manual) {
         if (activity == null || activity.isFinishing()) return;
+        if (org.telegram.messenger.EasygramBuild.isPlayStore()) return; // Google Play updates the app itself
         Context app = activity.getApplicationContext();
         SharedPreferences prefs = app.getSharedPreferences("easygram_updater", Context.MODE_PRIVATE);
         if (!manual && System.currentTimeMillis() - prefs.getLong("checked_at", 0) < CHECK_INTERVAL_MS) {

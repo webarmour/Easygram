@@ -816,6 +816,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         items.add(SettingCell.Factory.of(8, IconBackgroundColors.CYAN.top, IconBackgroundColors.CYAN.bottom, R.drawable.settings_devices, getString(R.string.SettingsDevices), getString(R.string.SettingsDevicesInfo)));
         items.add(SettingCell.Factory.of(9, IconBackgroundColors.ORANGE_DEEP.top, IconBackgroundColors.ORANGE_DEEP.bottom, R.drawable.settings_power, getString(R.string.SettingsPowerSaving), getString(R.string.SettingsPowerSavingInfo)));
         items.add(SettingCell.Factory.of(10, IconBackgroundColors.PURPLE.top, IconBackgroundColors.PURPLE.bottom, R.drawable.settings_language, getString(R.string.SettingsLanguage), LocaleController.getCurrentLanguageName()));
+        if (!org.telegram.messenger.EasygramBuild.isPlayStore()) // Play build: updates only through Google Play
         items.add(SettingCell.Factory.of(101, IconBackgroundColors.BLUE.top, IconBackgroundColors.BLUE.bottom, R.drawable.settings_features, getString(R.string.EasygramCheckUpdates), getString(R.string.EasygramCheckUpdatesInfo)));
         items.add(SettingCell.Factory.of(102, 0xFFF06292, 0xFFD81B60, R.drawable.settings_support_heart, getString(R.string.EasygramSupportAuthor), getString(R.string.EasygramSupportAuthorInfo)));
 

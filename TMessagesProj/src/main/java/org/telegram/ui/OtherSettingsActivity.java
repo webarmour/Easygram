@@ -81,6 +81,9 @@ public class OtherSettingsActivity extends BaseFragment {
 
     /** Chat list title: "easygram" (default) or the original "Telegram" logo. */
     public static boolean isEasygramTitleEnabled() {
+        if (org.telegram.messenger.EasygramBuild.isPlayStore()) {
+            return true; // Play build: never the Telegram logo (the switch is hidden there)
+        }
         return ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE)
                 .getBoolean(KEY_EASYGRAM_TITLE, true);
     }
@@ -354,8 +357,13 @@ public class OtherSettingsActivity extends BaseFragment {
         adsInfoRow = rowCount++;
         showStarMessagesRow = rowCount++;
         starMessagesInfoRow = rowCount++;
-        easygramTitleRow = rowCount++;
-        easygramTitleInfoRow = rowCount++;
+        if (org.telegram.messenger.EasygramBuild.isPlayStore()) {
+            easygramTitleRow = -1;
+            easygramTitleInfoRow = -1;
+        } else {
+            easygramTitleRow = rowCount++;
+            easygramTitleInfoRow = rowCount++;
+        }
         materialExpressiveRow = rowCount++;
         // sub-option of M3E: only shown while it is on
         miniPlayerDetailedWaveRow = isMaterialExpressiveEnabled() ? rowCount++ : -1;

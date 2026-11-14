@@ -8,6 +8,11 @@ import org.telegram.ui.Components.EasygramUpdater;
 import org.telegram.ui.IUpdateLayout;
 
 public class ApplicationLoaderImpl extends ApplicationLoader {
+    {
+        // runs before Application.onCreate: the App Bundle flavor is the Google Play build
+        EasygramBuild.playStore = BuildConfig.BUNDLE;
+    }
+
     @Override
     protected String onGetApplicationId() {
         return BuildConfig.APPLICATION_ID;
@@ -15,6 +20,6 @@ public class ApplicationLoaderImpl extends ApplicationLoader {
 
     @Override
     public IUpdateLayout takeUpdateLayout(Activity activity, ViewGroup sideMenuContainer) {
-        return EasygramUpdater.attach(activity, sideMenuContainer);
+        return EasygramBuild.isPlayStore() ? null : EasygramUpdater.attach(activity, sideMenuContainer);
     }
 }
