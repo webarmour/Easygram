@@ -77,6 +77,29 @@ public class OtherSettingsActivity extends BaseFragment {
                 .edit().putBoolean(KEY_MATERIAL_EXPRESSIVE, enabled).apply();
     }
 
+    public static final String KEY_MINI_PLAYER_DETAILED_WAVE = "easygram_mini_player_detailed_wave";
+    private static volatile Boolean miniPlayerDetailedWaveCached;
+
+    /** M3E mini player (top bar): loudness waveform like in the chat / full player instead of the plain wave. */
+    public static boolean isMiniPlayerDetailedWaveEnabled() {
+        if (!isMaterialExpressiveEnabled()) {
+            return false;
+        }
+        Boolean cached = miniPlayerDetailedWaveCached;
+        if (cached == null) {
+            cached = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE)
+                    .getBoolean(KEY_MINI_PLAYER_DETAILED_WAVE, false);
+            miniPlayerDetailedWaveCached = cached;
+        }
+        return cached;
+    }
+
+    public static void setMiniPlayerDetailedWaveEnabled(boolean enabled) {
+        miniPlayerDetailedWaveCached = enabled;
+        ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE)
+                .edit().putBoolean(KEY_MINI_PLAYER_DETAILED_WAVE, enabled).apply();
+    }
+
     public static final String KEY_TAB_CHATS = "easygram_tab_chats";
     public static final String KEY_TAB_CONTACTS = "easygram_tab_contacts";
     public static final String KEY_TAB_CALLS = "easygram_tab_calls";
@@ -128,6 +151,7 @@ public class OtherSettingsActivity extends BaseFragment {
     private int showStarMessagesRow;
     private int starMessagesInfoRow;
     private int materialExpressiveRow;
+    private int miniPlayerDetailedWaveRow;
     private int materialExpressiveInfoRow;
     private int navHeaderRow;
     private int navLabelsRow;
@@ -321,6 +345,8 @@ public class OtherSettingsActivity extends BaseFragment {
         showStarMessagesRow = rowCount++;
         starMessagesInfoRow = rowCount++;
         materialExpressiveRow = rowCount++;
+        // sub-option of M3E: only shown while it is on
+        miniPlayerDetailedWaveRow = isMaterialExpressiveEnabled() ? rowCount++ : -1;
         materialExpressiveInfoRow = rowCount++;
         secretMediaRow = rowCount++;
         navHeaderRow = rowCount++;
@@ -439,7 +465,22 @@ public class OtherSettingsActivity extends BaseFragment {
                 if (view instanceof TextCheckCell) {
                     ((TextCheckCell) view).setChecked(next);
                 }
+                updateRows();
+                if (adapter != null) {
+                    if (next) {
+                        adapter.notifyItemInserted(miniPlayerDetailedWaveRow);
+                    } else {
+                        adapter.notifyItemRemoved(materialExpressiveRow + 1);
+                    }
+                    adapter.notifyItemChanged(materialExpressiveRow); // divider under the M3E switch
+                }
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.updateInterfaces, org.telegram.messenger.MessagesController.UPDATE_MASK_ALL);
+            } else if (position == miniPlayerDetailedWaveRow) {
+                boolean next = !isMiniPlayerDetailedWaveEnabled();
+                setMiniPlayerDetailedWaveEnabled(next);
+                if (view instanceof TextCheckCell) {
+                    ((TextCheckCell) view).setChecked(next);
+                }
             } else if (position == navLabelsRow) {
                 boolean next = !preferences().getBoolean(KEY_HIDE_NAV_LABELS, false);
                 preferences().edit().putBoolean(KEY_HIDE_NAV_LABELS, next).apply();
@@ -635,7 +676,7 @@ public class OtherSettingsActivity extends BaseFragment {
             if (position == galleryRow) return 1;
             if (position == secretMediaRow) return 6;
             if (position == premiumAccessInfoRow || position == galleryInfoRow || position == sendMediaHdInfoRow || position == storiesInfoRow || position == adsInfoRow || position == starMessagesInfoRow || position == materialExpressiveInfoRow || position == navInfoRow || position == photoMenuInfoRow) return 2;
-            if (position == premiumAccessRow || position == sendMediaHdRow || position == disableStoriesRow || position == disableAdsRow || position == showStarMessagesRow || position == materialExpressiveRow || position == navLabelsRow) return 3;
+            if (position == premiumAccessRow || position == sendMediaHdRow || position == disableStoriesRow || position == disableAdsRow || position == showStarMessagesRow || position == materialExpressiveRow || position == miniPlayerDetailedWaveRow || position == navLabelsRow) return 3;
             if (position >= navStartRow && position < navEndRow) return 4;
             if (position >= photoMenuStartRow && position < photoMenuEndRow) return 5;
             return 0;
@@ -765,6 +806,12 @@ public class OtherSettingsActivity extends BaseFragment {
                         checkCell.setTextAndCheck(
                                 LocaleController.getString(R.string.EasygramMaterialExpressive),
                                 isMaterialExpressiveEnabled(),
+                                miniPlayerDetailedWaveRow != -1
+                        );
+                    } else if (position == miniPlayerDetailedWaveRow) {
+                        checkCell.setTextAndCheck(
+                                LocaleController.getString(R.string.EasygramMiniPlayerDetailedWave),
+                                isMiniPlayerDetailedWaveEnabled(),
                                 false
                         );
                     } else if (position == navLabelsRow) {

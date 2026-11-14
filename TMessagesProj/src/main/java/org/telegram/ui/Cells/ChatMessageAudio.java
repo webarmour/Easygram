@@ -292,6 +292,8 @@ class ChatMessageAudio {
 
     void drawTranscribeButton(Canvas canvas, float transcribeAlpha, float playingRoundAlpha, int seekBarX) {
         canvas.save();
+        // M3E voice wave is drawn 7 dp lower (centred on the play button), keep the button centred on its horizon
+        int m3eShift = cell.documentAttachType == ChatMessageCell.DOCUMENT_ATTACH_TYPE_AUDIO && org.telegram.ui.OtherSettingsActivity.isMaterialExpressiveEnabled() ? dp(7) : 0;
         int backgroundWidth = cell.getCurrentBackgroundRight() - cell.getCurrentBackgroundLeft() + dp(cell.pinnedBottom ? 6 : 0);
         int seekBarWidth = backgroundWidth - dp(92 + (cell.hasLinkPreview ? 10 : 0) + 36);
         if (cell.transcribeButton == null) {
@@ -334,7 +336,7 @@ class ChatMessageAudio {
                 1f - cell.getVideoTranscriptionProgress()
             );
             transcribeY = AndroidUtilities.lerp(
-                cell.seekBarY + dp(3),
+                cell.seekBarY + dp(3) + m3eShift,
                 cell.sideStartY - dp(32 + 8),
                 1f - cell.getVideoTranscriptionProgress()
             );
@@ -356,7 +358,7 @@ class ChatMessageAudio {
             y = AndroidUtilities.lerp(y, dp(44) + cell.namesOffset + cell.getMediaOffsetY() - dp(1.7f), cell.getVideoTranscriptionProgress());
             y += dp(1.7f);
             transcribeY = AndroidUtilities.lerp(
-                cell.seekBarY + dp(3),
+                cell.seekBarY + dp(3) + m3eShift,
                 y - dp(12) - (cell.currentMessageObject.isOutOwner() ? 0 : dp(28) * playingRoundAlpha),
                 1f - cell.getVideoTranscriptionProgress()
             );

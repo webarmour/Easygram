@@ -597,7 +597,8 @@ public class SeekBarWaveform {
         return voiceLevelsReversed;
     }
 
-    private static float[] computeVoiceLevels(byte[] bytes) {
+    /** Same per-message contrast-stretched levels the M3E chat waveform uses (for the mini player). */
+    public static float[] computeVoiceLevels(byte[] bytes) {
         int samples = bytes.length * 8 / 5;
         if (samples < 2) {
             return null;

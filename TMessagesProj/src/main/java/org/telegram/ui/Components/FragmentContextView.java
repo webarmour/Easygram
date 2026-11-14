@@ -17,6 +17,7 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.Dialog;
 import android.content.Context;
@@ -27,6 +28,7 @@ import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Matrix;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.RectF;
@@ -763,6 +765,11 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
                     lastFragment.getOrCreateStoryViewer(player.currentAccount).open(player.currentAccount, getContext(), story, null);
                 }
             } else if (currentStyle == STYLE_AUDIO_PLAYER) {
+                if (m3eCollapsedTarget) {
+                    // collapsed M3E player: the first tap only brings the title back for a moment
+                    peekM3eTitle();
+                    return;
+                }
                 MessageObject messageObject = MediaController.getInstance().getPlayingMessageObject();
                 if (fragment != null && messageObject != null) {
                     if (messageObject.isMusic()) {
@@ -1184,6 +1191,9 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
             return;
         }
         checkCreateView();
+        if (style != STYLE_AUDIO_PLAYER) {
+            resetM3eCollapse();
+        }
         if (currentStyle == STYLE_ACTIVE_GROUP_CALL || currentStyle == STYLE_CONNECTING_GROUP_CALL) {
             Theme.getFragmentContextViewWavesDrawable().removeParent(this);
             capsuleBlobDrawable.stop();
@@ -1418,6 +1428,7 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
         visible = false;
         notificationsLocker.unlock();
         topPadding = 0;
+        AndroidUtilities.cancelRunOnUIThread(m3eCollapseRunnable);
 
         removeObservers();
         if (!isLocation) {
@@ -1994,6 +2005,8 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
                 playPauseDrawable.setPause(true, !create);
                 playButton.setContentDescription(getString(R.string.AccActionPause));
             }
+            final boolean trackChanged = lastMessageObject != messageObject || prevStyle != STYLE_AUDIO_PLAYER;
+            updateM3eCollapse(trackChanged, create);
             if (lastMessageObject != messageObject || prevStyle != STYLE_AUDIO_PLAYER) {
                 lastMessageObject = messageObject;
                 SpannableStringBuilder stringBuilder;
@@ -2716,6 +2729,153 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
 
     private M3ExpressiveTrack expressiveTrack;
 
+    private final Path miniWavePath = new Path();
+    private final Paint miniWaveFillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private byte[] miniVoiceLevelsSource;
+    private float[] miniVoiceLevels;
+
+    /** Loudness levels for the detailed mini player wave, or null while they are not available (plain wave then). */
+    private float[] getMiniPlayerLevels(MessageObject playing, boolean voice) {
+        if (voice) {
+            byte[] waveform = playing.getWaveform();
+            if (waveform != miniVoiceLevelsSource) {
+                miniVoiceLevelsSource = waveform;
+                miniVoiceLevels = waveform != null ? SeekBarWaveform.computeVoiceLevels(waveform) : null;
+            }
+            return miniVoiceLevels;
+        }
+        float[] levels = org.telegram.messenger.AudioWaveformGenerator.get(playing);
+        if (levels == null) {
+            org.telegram.messenger.AudioWaveformGenerator.request(playing, this::invalidate);
+        }
+        return levels;
+    }
+
+    /**
+     * Voice: the chat bubble's filled mirrored envelope. Music: the full player's loudness line.
+     * Played part in the accent colour, the rest in the track colour, a gap around the thumb.
+     */
+    private void drawMiniPlayerLoudness(Canvas canvas, float[] levels, boolean voice, float left, float right, float x, float gap,
+                                        float centerY, float c, int color, int trackColor) {
+        if (voice) {
+            // collapsed there is the whole content row; expanded only the strip under it
+            final float maxAmp = lerp(dpf2(3.5f), dpf2(10f), c);
+            if (!expressiveTrack.buildMirroredLoudness(miniWavePath, left, right, left, right, centerY, maxAmp, dpf2(7), levels, false)) {
+                return;
+            }
+            final float stroke = dpf2(2);
+            AndroidUtilities.rectTmp.set(left - stroke / 2f, centerY - stroke / 2f, right + stroke / 2f, centerY + stroke / 2f);
+            miniWaveFillPaint.setStyle(Paint.Style.FILL);
+            for (int i = 0; i < 2; i++) {
+                canvas.save();
+                if (i == 0) {
+                    canvas.clipRect(left - stroke, 0, x - gap, getMeasuredHeight());
+                } else {
+                    canvas.clipRect(x + gap, 0, right + stroke, getMeasuredHeight());
+                }
+                miniWaveFillPaint.setColor(i == 0 ? color : trackColor);
+                canvas.drawPath(miniWavePath, miniWaveFillPaint);
+                // thin baseline so silent parts stay a visible line, as in the chat
+                canvas.drawRoundRect(AndroidUtilities.rectTmp, stroke / 2f, stroke / 2f, miniWaveFillPaint);
+                canvas.restore();
+            }
+        } else {
+            final float stroke = dpf2(2);
+            final float maxAmp = lerp(dpf2(3f), dpf2(8f), c);
+            final float wavelength = dpf2(10);
+            expressiveTrack.drawLoudness(canvas, left, x - gap, left, right, centerY, stroke, maxAmp, wavelength, levels, color);
+            expressiveTrack.drawLoudness(canvas, x + gap, right, left, right, centerY, stroke, maxAmp, wavelength, levels, trackColor);
+        }
+    }
+
+    /** M3E music bar: how long the title stays visible before it slides away and the wave takes its place. */
+    private static final long M3E_TITLE_PEEK_MS = 1000;
+    private static final long M3E_COLLAPSE_ANIM_MS = 320;
+
+    /** 0 - title shown, wave at the bottom edge; 1 - title slid up, the wave sits in its place. */
+    private float m3eCollapse;
+    private boolean m3eCollapsedTarget;
+    private ValueAnimator m3eCollapseAnimator;
+    private final Runnable m3eCollapseRunnable = () -> setM3eCollapsed(true, true);
+
+    /** Called from checkPlayer: collapse 1 s after playback (re)starts, show the title for 1 s on every track change. */
+    private void updateM3eCollapse(boolean trackChanged, boolean create) {
+        if (!org.telegram.ui.OtherSettingsActivity.isMaterialExpressiveEnabled()) {
+            resetM3eCollapse();
+            return;
+        }
+        final boolean playing = !MediaController.getInstance().isMessagePaused();
+        if (!playing) {
+            // paused: no wave to look at, bring the title back
+            AndroidUtilities.cancelRunOnUIThread(m3eCollapseRunnable);
+            setM3eCollapsed(false, !create);
+            return;
+        }
+        if (trackChanged || !m3eCollapsedTarget) {
+            if (trackChanged) {
+                setM3eCollapsed(false, !create);
+            }
+            AndroidUtilities.cancelRunOnUIThread(m3eCollapseRunnable);
+            AndroidUtilities.runOnUIThread(m3eCollapseRunnable, M3E_TITLE_PEEK_MS);
+        }
+    }
+
+    /** Tap on the collapsed bar: show the title for a moment, then collapse again. */
+    private void peekM3eTitle() {
+        setM3eCollapsed(false, true);
+        AndroidUtilities.cancelRunOnUIThread(m3eCollapseRunnable);
+        if (!MediaController.getInstance().isMessagePaused()) {
+            AndroidUtilities.runOnUIThread(m3eCollapseRunnable, M3E_TITLE_PEEK_MS);
+        }
+    }
+
+    private void resetM3eCollapse() {
+        AndroidUtilities.cancelRunOnUIThread(m3eCollapseRunnable);
+        setM3eCollapsed(false, false);
+    }
+
+    private void setM3eCollapsed(boolean collapsed, boolean animated) {
+        if (collapsed && (currentStyle != STYLE_AUDIO_PLAYER || !org.telegram.ui.OtherSettingsActivity.isMaterialExpressiveEnabled())) {
+            return;
+        }
+        if (m3eCollapsedTarget == collapsed && (m3eCollapseAnimator != null || m3eCollapse == (collapsed ? 1f : 0f))) {
+            return;
+        }
+        m3eCollapsedTarget = collapsed;
+        if (m3eCollapseAnimator != null) {
+            m3eCollapseAnimator.cancel();
+            m3eCollapseAnimator = null;
+        }
+        final float target = collapsed ? 1f : 0f;
+        if (!animated) {
+            applyM3eCollapse(target);
+            return;
+        }
+        m3eCollapseAnimator = ValueAnimator.ofFloat(m3eCollapse, target);
+        m3eCollapseAnimator.addUpdateListener(a -> applyM3eCollapse((float) a.getAnimatedValue()));
+        m3eCollapseAnimator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                if (m3eCollapseAnimator == animation) {
+                    m3eCollapseAnimator = null;
+                }
+            }
+        });
+        m3eCollapseAnimator.setDuration(M3E_COLLAPSE_ANIM_MS);
+        m3eCollapseAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
+        m3eCollapseAnimator.start();
+    }
+
+    private void applyM3eCollapse(float value) {
+        m3eCollapse = value;
+        if (titleTextView != null) {
+            // slides up out of the bar (clipped by it) and fades, leaving the row to the wave
+            titleTextView.setTranslationY(-dp(getContentHeight()) * 0.6f * value);
+            titleTextView.setAlpha(1f - value);
+        }
+        invalidate();
+    }
+
     /** M3E progress at the bottom edge: travelling wavy progress, flat track, gap and a bar thumb. */
     private void drawExpressiveProgress(Canvas canvas, MessageObject playing) {
         if (expressiveTrack == null) {
@@ -2723,22 +2883,41 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
             expressiveTrack.setReactToBeat(true);
         }
         boolean isPlaying = !MediaController.getInstance().isMessagePaused();
-        boolean animating = expressiveTrack.update(isPlaying, null);
+        // optional detailed look: the same loudness waveform as in the chat bubble (voice) / full player (music)
+        final boolean voice = playing.isVoice() || playing.isRoundVideo();
+        final float[] levels = org.telegram.ui.OtherSettingsActivity.isMiniPlayerDetailedWaveEnabled() ? getMiniPlayerLevels(playing, voice) : null;
+        expressiveTrack.setCalm(levels != null && voice); // voice in chats reacts gently, keep it the same here
+        boolean animating = expressiveTrack.update(isPlaying, levels);
 
         final int color = getThemedColor(Theme.key_telegram_color);
         final int trackColor = Theme.multAlpha(color, 0.28f);
-        // roomy insets: away from the screen edges and from the title/controls above
-        final float left = dpf2(16), right = getMeasuredWidth() - dpf2(16);
-        // same distance from the bottom edge as before; the bar is M3E_PROGRESS_EXTRA_DP taller, so the wave ends up
-        // that much further below the content row (see getStyleHeight)
-        final float centerY = getMeasuredHeight() - dpf2(4.5f);
+        final float c = m3eCollapse;
+        // expanded: roomy insets, away from the screen edges and from the title/controls above.
+        // collapsed: the wave takes the title's place, between the play button and the buttons on the right
+        float left = dpf2(16), right = getMeasuredWidth() - dpf2(16);
+        if (c > 0f && titleTextView != null) {
+            float collapsedLeft = titleTextView.getLeft() + dpf2(6);
+            float collapsedRight = Math.max(collapsedLeft + dpf2(24), titleTextView.getRight() - titleTextView.getPaddingRight() - dpf2(6));
+            left = lerp(left, collapsedLeft, c);
+            right = lerp(right, collapsedRight, c);
+        }
+        // expanded: same distance from the bottom edge as before; the bar is M3E_PROGRESS_EXTRA_DP taller, so the
+        // wave ends up that much further below the content row (see getStyleHeight).
+        // collapsed: centred on the content row, level with the play button
+        final float centerY = lerp(getMeasuredHeight() - dpf2(4.5f), dp(getContentHeight()) / 2f, c);
         final float x = lerp(left, right, playing.audioProgress);
         final float gap = dpf2(5);
-        expressiveTrack.drawLine(canvas, x + gap, right, centerY, dpf2(2), trackColor);
-        expressiveTrack.drawWavy(canvas, left, x - gap, centerY, dpf2(2), dpf2(1.5f), dpf2(18), color);
+        if (levels != null) {
+            drawMiniPlayerLoudness(canvas, levels, voice, left, right, x, gap, centerY, c, color, trackColor);
+        } else {
+            final float amplitude = lerp(dpf2(1.5f), dpf2(3f), c);
+            final float wavelength = lerp(dpf2(18), dpf2(22), c);
+            expressiveTrack.drawLine(canvas, x + gap, right, centerY, dpf2(2), trackColor);
+            expressiveTrack.drawWavy(canvas, left, x - gap, centerY, dpf2(2), amplitude, wavelength, color);
+        }
         progressPaint.setColor(color);
-        float halfH = dpf2(3.5f) * (1f + 0.4f * expressiveTrack.getBeatPulse());
-        M3ExpressiveTrack.drawThumb(canvas, x, centerY, dpf2(1.5f), Math.min(halfH, dpf2(4.5f)), progressPaint);
+        float halfH = lerp(dpf2(3.5f), dpf2(6f), c) * (1f + 0.4f * expressiveTrack.getBeatPulse());
+        M3ExpressiveTrack.drawThumb(canvas, x, centerY, dpf2(1.5f), Math.min(halfH, lerp(dpf2(4.5f), dpf2(8f), c)), progressPaint);
         if (animating) {
             M3ExpressiveTrack.invalidateNextFrame(this);
         }
