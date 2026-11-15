@@ -13087,7 +13087,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                 if (drawPhotoImage && currentMessageObject != null && currentMessageObject.hasMediaSpoilers() && currentMessageObject.isSensitive() && (!currentMessageObject.isMediaSpoilersRevealed || mediaSpoilerRevealProgress != 0 && mediaSpoilerRevealProgress < 1)) {
                     radialProgress.iconScale *= mediaSpoilerRevealProgress;
                 }
-                radialProgress.setExpressive(org.telegram.ui.OtherSettingsActivity.isMaterialExpressiveEnabled(), false);
+                radialProgress.setExpressive(org.telegram.ui.OtherSettingsActivity.isM3eVoiceEnabled(), false);
                 drawVoiceOnce(canvas, seekBarWaveform == null ? 1f : 1f - seekBarWaveform.explosionRate, () -> radialProgress.draw(canvas));
             }
 
@@ -13112,8 +13112,9 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             canvas.save();
             if (!(documentAttachType == DOCUMENT_ATTACH_TYPE_ROUND && hasLinkPreview)) {
                 if (useSeekBarWaveform) {
-                    // M3E voice wave: its centre (15 dp into the 30 dp area) sits on the play button's centre (22 dp)
-                    float m3eShift = documentAttachType == DOCUMENT_ATTACH_TYPE_AUDIO && org.telegram.ui.OtherSettingsActivity.isMaterialExpressiveEnabled() ? dp(7) : 0;
+                    // M3E voice wave: 1 dp lower than the stock bars' area, so the wave and the duration under it take the
+                    // same place as the stock waveform + duration (same paddings as the original voice message)
+                    float m3eShift = documentAttachType == DOCUMENT_ATTACH_TYPE_AUDIO && org.telegram.ui.OtherSettingsActivity.isM3eVoiceEnabled() ? dp(1) : 0;
                     canvas.translate(seekBarX + dp(13) - seekBarWaveformTranslateX, seekBarY + yoffset + m3eShift);
                     seekBarWaveform.setAlpha(isRoundVideo ? CubicBezierInterpolator.EASE_IN.getInterpolation(getVideoTranscriptionProgress()) : 1f);
                     seekBarWaveform.draw(canvas, this);

@@ -2885,7 +2885,7 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
         boolean isPlaying = !MediaController.getInstance().isMessagePaused();
         // optional detailed look: the same loudness waveform as in the chat bubble (voice) / full player (music)
         final boolean voice = playing.isVoice() || playing.isRoundVideo();
-        final float[] levels = org.telegram.ui.OtherSettingsActivity.isMiniPlayerDetailedWaveEnabled() ? getMiniPlayerLevels(playing, voice) : null;
+        final float[] levels = org.telegram.ui.OtherSettingsActivity.isMiniPlayerDetailedWaveEnabled(voice) ? getMiniPlayerLevels(playing, voice) : null;
         expressiveTrack.setCalm(levels != null && voice); // voice in chats reacts gently, keep it the same here
         boolean animating = expressiveTrack.update(isPlaying, levels);
 

@@ -351,7 +351,7 @@ public class SeekBarWaveform {
         final boolean reverse = delegate != null && delegate.reverseWaveform();
         // `heights` always matches the current width (see setSize), so the continuous wave needs no
         // from/to interpolation; the width animation after sending (transcribe button) stays M3E.
-        final boolean expressiveWave = org.telegram.ui.OtherSettingsActivity.isMaterialExpressiveEnabled()
+        final boolean expressiveWave = org.telegram.ui.OtherSettingsActivity.isM3eVoiceEnabled()
                 && heights != null && heights.length > 1;
         float expressiveThumbX = -1;
         if (expressiveWave) {
