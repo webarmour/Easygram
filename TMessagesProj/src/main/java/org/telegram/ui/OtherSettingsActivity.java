@@ -96,6 +96,29 @@ public class OtherSettingsActivity extends BaseFragment {
                 .getBoolean(KEY_EASYGRAM_TITLE, true);
     }
 
+    public static final String KEY_M3E_VOICE = "easygram_m3e_voice";
+    private static volatile Boolean m3eVoiceCached;
+
+    /** M3E look of voice messages in chats (wave, play button); off keeps the stock voice messages while M3E is on. */
+    public static boolean isM3eVoiceEnabled() {
+        if (!isMaterialExpressiveEnabled()) {
+            return false;
+        }
+        Boolean cached = m3eVoiceCached;
+        if (cached == null) {
+            cached = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE)
+                    .getBoolean(KEY_M3E_VOICE, true);
+            m3eVoiceCached = cached;
+        }
+        return cached;
+    }
+
+    public static void setM3eVoiceEnabled(boolean enabled) {
+        m3eVoiceCached = enabled;
+        ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE)
+                .edit().putBoolean(KEY_M3E_VOICE, enabled).apply();
+    }
+
     public static final String KEY_DOWNLOAD_HAPTIC = "easygram_download_haptic";
     private static volatile Boolean downloadHapticCached;
 
@@ -134,6 +157,37 @@ public class OtherSettingsActivity extends BaseFragment {
             miniPlayerDetailedWaveCached = cached;
         }
         return cached;
+    }
+
+    public static final String KEY_MINI_PLAYER_VOICE_DETAILED_WAVE = "easygram_mini_player_voice_detailed_wave";
+    private static volatile Boolean miniPlayerVoiceDetailedWaveCached;
+
+    /** Same choice as {@link #isMiniPlayerDetailedWaveEnabled()}, but for voice messages / round videos (set separately). */
+    public static boolean isMiniPlayerVoiceDetailedWaveEnabled() {
+        if (!isMaterialExpressiveEnabled()) {
+            return false;
+        }
+        Boolean cached = miniPlayerVoiceDetailedWaveCached;
+        if (cached == null) {
+            cached = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE)
+                    .getBoolean(KEY_MINI_PLAYER_VOICE_DETAILED_WAVE, false);
+            miniPlayerVoiceDetailedWaveCached = cached;
+        }
+        return cached;
+    }
+
+    public static void setMiniPlayerVoiceDetailedWaveEnabled(boolean enabled) {
+        miniPlayerVoiceDetailedWaveCached = enabled;
+        ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE)
+                .edit().putBoolean(KEY_MINI_PLAYER_VOICE_DETAILED_WAVE, enabled).apply();
+    }
+
+    public static boolean isMiniPlayerDetailedWaveEnabled(boolean voice) {
+        return voice ? isMiniPlayerVoiceDetailedWaveEnabled() : isMiniPlayerDetailedWaveEnabled();
+    }
+
+    public static void setMiniPlayerDetailedWaveEnabled(boolean voice, boolean enabled) {
+        if (voice) setMiniPlayerVoiceDetailedWaveEnabled(enabled); else setMiniPlayerDetailedWaveEnabled(enabled);
     }
 
     public static void setMiniPlayerDetailedWaveEnabled(boolean enabled) {
@@ -194,11 +248,6 @@ public class OtherSettingsActivity extends BaseFragment {
     private int starMessagesInfoRow;
     private int easygramTitleRow;
     private int easygramTitleInfoRow;
-    private int materialExpressiveRow;
-    private int loaderPreviewRow;
-    private int downloadHapticRow;
-    private int miniPlayerDetailedWaveRow;
-    private int materialExpressiveInfoRow;
     private int navHeaderRow;
     private int navLabelsRow;
     private int navStartRow;
@@ -397,12 +446,6 @@ public class OtherSettingsActivity extends BaseFragment {
             easygramTitleRow = rowCount++;
             easygramTitleInfoRow = rowCount++;
         }
-        materialExpressiveRow = rowCount++;
-        // sub-options of M3E: only shown while it is on
-        loaderPreviewRow = isMaterialExpressiveEnabled() ? rowCount++ : -1;
-        downloadHapticRow = isMaterialExpressiveEnabled() ? rowCount++ : -1;
-        miniPlayerDetailedWaveRow = isMaterialExpressiveEnabled() ? rowCount++ : -1;
-        materialExpressiveInfoRow = rowCount++;
         secretMediaRow = rowCount++;
         navHeaderRow = rowCount++;
         navLabelsRow = rowCount++;
@@ -517,37 +560,6 @@ public class OtherSettingsActivity extends BaseFragment {
             } else if (position == easygramTitleRow) {
                 boolean next = !isEasygramTitleEnabled();
                 preferences().edit().putBoolean(KEY_EASYGRAM_TITLE, next).apply();
-                if (view instanceof TextCheckCell) {
-                    ((TextCheckCell) view).setChecked(next);
-                }
-            } else if (position == materialExpressiveRow) {
-                boolean next = !isMaterialExpressiveEnabled();
-                setMaterialExpressiveEnabled(next);
-                if (view instanceof TextCheckCell) {
-                    ((TextCheckCell) view).setChecked(next);
-                }
-                updateRows();
-                if (adapter != null) {
-                    if (next) {
-                        adapter.notifyItemRangeInserted(materialExpressiveRow + 1, 3); // loader preview + haptic + detailed wave
-                    } else {
-                        adapter.notifyItemRangeRemoved(materialExpressiveRow + 1, 3);
-                    }
-                    adapter.notifyItemChanged(materialExpressiveRow); // divider under the M3E switch
-                }
-                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.updateInterfaces, org.telegram.messenger.MessagesController.UPDATE_MASK_ALL);
-            } else if (position == downloadHapticRow) {
-                boolean next = !isDownloadHapticEnabled();
-                setDownloadHapticEnabled(next);
-                if (view instanceof TextCheckCell) {
-                    ((TextCheckCell) view).setChecked(next);
-                }
-                if (next) {
-                    view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP, android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
-                }
-            } else if (position == miniPlayerDetailedWaveRow) {
-                boolean next = !isMiniPlayerDetailedWaveEnabled();
-                setMiniPlayerDetailedWaveEnabled(next);
                 if (view instanceof TextCheckCell) {
                     ((TextCheckCell) view).setChecked(next);
                 }
@@ -745,9 +757,8 @@ public class OtherSettingsActivity extends BaseFragment {
             if (position == headerRow || position == navHeaderRow || position == photoMenuHeaderRow) return 0;
             if (position == galleryRow) return 1;
             if (position == secretMediaRow) return 6;
-            if (position == loaderPreviewRow) return 7;
-            if (position == premiumAccessInfoRow || position == galleryInfoRow || position == sendMediaHdInfoRow || position == storiesInfoRow || position == adsInfoRow || position == starMessagesInfoRow || position == materialExpressiveInfoRow || position == easygramTitleInfoRow || position == navInfoRow || position == photoMenuInfoRow) return 2;
-            if (position == premiumAccessRow || position == sendMediaHdRow || position == disableStoriesRow || position == disableAdsRow || position == showStarMessagesRow || position == materialExpressiveRow || position == easygramTitleRow || position == miniPlayerDetailedWaveRow || position == downloadHapticRow || position == navLabelsRow) return 3;
+            if (position == premiumAccessInfoRow || position == galleryInfoRow || position == sendMediaHdInfoRow || position == storiesInfoRow || position == adsInfoRow || position == starMessagesInfoRow || position == easygramTitleInfoRow || position == navInfoRow || position == photoMenuInfoRow) return 2;
+            if (position == premiumAccessRow || position == sendMediaHdRow || position == disableStoriesRow || position == disableAdsRow || position == showStarMessagesRow || position == easygramTitleRow || position == navLabelsRow) return 3;
             if (position >= navStartRow && position < navEndRow) return 4;
             if (position >= photoMenuStartRow && position < photoMenuEndRow) return 5;
             return 0;
@@ -772,10 +783,6 @@ public class OtherSettingsActivity extends BaseFragment {
                 case 6:
                 case 3:
                     view = new TextCheckCell(mContext);
-                    view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
-                    break;
-                case 7:
-                    view = new org.telegram.ui.Cells.EasygramLoaderPreviewCell(mContext);
                     view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                     break;
                 case 4:
@@ -825,8 +832,6 @@ public class OtherSettingsActivity extends BaseFragment {
                         infoCell.setText(LocaleController.getString(R.string.EasygramShowStarMessagesInfo));
                     } else if (position == easygramTitleInfoRow) {
                         infoCell.setText(LocaleController.getString(R.string.EasygramTitleInChatsInfo));
-                    } else if (position == materialExpressiveInfoRow) {
-                        infoCell.setText(LocaleController.getString(R.string.EasygramMaterialExpressiveInfo));
                     } else if (position == navInfoRow) {
                         infoCell.setText(LocaleController.getString(R.string.EasygramNavigationBarInfo));
                     } else if (position == photoMenuInfoRow) {
@@ -883,24 +888,6 @@ public class OtherSettingsActivity extends BaseFragment {
                         checkCell.setTextAndCheck(
                                 LocaleController.getString(R.string.EasygramTitleInChats),
                                 isEasygramTitleEnabled(),
-                                false
-                        );
-                    } else if (position == materialExpressiveRow) {
-                        checkCell.setTextAndCheck(
-                                LocaleController.getString(R.string.EasygramMaterialExpressive),
-                                isMaterialExpressiveEnabled(),
-                                miniPlayerDetailedWaveRow != -1
-                        );
-                    } else if (position == downloadHapticRow) {
-                        checkCell.setTextAndCheck(
-                                LocaleController.getString(R.string.EasygramDownloadHaptic),
-                                isDownloadHapticEnabled(),
-                                true
-                        );
-                    } else if (position == miniPlayerDetailedWaveRow) {
-                        checkCell.setTextAndCheck(
-                                LocaleController.getString(R.string.EasygramMiniPlayerDetailedWave),
-                                isMiniPlayerDetailedWaveEnabled(),
                                 false
                         );
                     } else if (position == navLabelsRow) {

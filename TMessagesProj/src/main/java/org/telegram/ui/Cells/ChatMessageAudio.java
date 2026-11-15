@@ -292,8 +292,8 @@ class ChatMessageAudio {
 
     void drawTranscribeButton(Canvas canvas, float transcribeAlpha, float playingRoundAlpha, int seekBarX) {
         canvas.save();
-        // M3E voice wave is drawn 7 dp lower (centred on the play button), keep the button centred on its horizon
-        int m3eShift = cell.documentAttachType == ChatMessageCell.DOCUMENT_ATTACH_TYPE_AUDIO && org.telegram.ui.OtherSettingsActivity.isMaterialExpressiveEnabled() ? dp(7) : 0;
+        // M3E voice wave is drawn 1 dp lower (see ChatMessageCell), keep the button centred on its horizon
+        int m3eShift = cell.documentAttachType == ChatMessageCell.DOCUMENT_ATTACH_TYPE_AUDIO && org.telegram.ui.OtherSettingsActivity.isM3eVoiceEnabled() ? dp(1) : 0;
         int backgroundWidth = cell.getCurrentBackgroundRight() - cell.getCurrentBackgroundLeft() + dp(cell.pinnedBottom ? 6 : 0);
         int seekBarWidth = backgroundWidth - dp(92 + (cell.hasLinkPreview ? 10 : 0) + 36);
         if (cell.transcribeButton == null) {
@@ -386,16 +386,14 @@ class ChatMessageAudio {
 
     void drawVoiceDuration(Canvas canvas, int timeAudioX, float yoffset) {
         canvas.save();
-        // M3E: the wave is centred on the play button, so the duration moves down to leave room for its peaks and
-        // starts exactly where the wave starts (wave line begins 13 dp after seekBarX; timeAudioX = seekBarX + 10 dp)
-        boolean m3e = cell.documentAttachType == ChatMessageCell.DOCUMENT_ATTACH_TYPE_AUDIO && OtherSettingsActivity.isMaterialExpressiveEnabled();
-        canvas.translate(timeAudioX + (m3e ? dp(3) : 0), dp(44) + cell.namesOffset + cell.getMediaOffsetY() + yoffset + (m3e ? dp(6) : 0));
+        // same place as in the stock voice message, also with the M3E wave
+        canvas.translate(timeAudioX, dp(44) + cell.namesOffset + cell.getMediaOffsetY() + yoffset);
         cell.durationLayout.draw(canvas);
         canvas.restore();
 
         if (cell.currentMessageObject.type != MessageObject.TYPE_TEXT && cell.currentMessageObject.isContentUnread()) {
             Theme.chat_docBackPaint.setColor(cell.getThemedColor(cell.currentMessageObject.isOutOwner() ? Theme.key_chat_outVoiceSeekbarFill : Theme.key_chat_inVoiceSeekbarFill));
-            canvas.drawCircle(timeAudioX + cell.timeWidthAudio + dp(6) + (m3e ? dp(3) : 0), dp(51) + cell.namesOffset + cell.getMediaOffsetY() + (m3e ? dp(6) : 0), dp(3), Theme.chat_docBackPaint);
+            canvas.drawCircle(timeAudioX + cell.timeWidthAudio + dp(6), dp(51) + cell.namesOffset + cell.getMediaOffsetY(), dp(3), Theme.chat_docBackPaint);
         }
     }
 }

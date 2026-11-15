@@ -809,6 +809,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             ));
         }
         items.add(SettingCell.Factory.of(100, IconBackgroundColors.RED.top, IconBackgroundColors.RED.bottom, R.drawable.settings_other, getString(R.string.EasygramOther), getString(R.string.EasygramOtherInfo)));
+        items.add(SettingCell.Factory.of(103, 0xFF9575CD, 0xFF5E35B1, R.drawable.settings_m3e, getString(R.string.EasygramM3eTitle), getString(R.string.EasygramM3eSettingsInfo)));
         items.add(SettingCell.Factory.of(3, IconBackgroundColors.GREEN.top, IconBackgroundColors.GREEN.bottom, R.drawable.settings_privacy, getString(R.string.SettingsPrivacySecurity), getString(R.string.SettingsPrivacySecurityInfo)));
         items.add(SettingCell.Factory.of(5, IconBackgroundColors.RED.top, IconBackgroundColors.RED.bottom, R.drawable.settings_sounds, getString(R.string.SettingsNotifications), getString(R.string.SettingsNotificationsInfo)));
         items.add(SettingCell.Factory.of(6, IconBackgroundColors.BLUE_DEEP.top, IconBackgroundColors.BLUE_DEEP.bottom, R.drawable.settings_data, getString(R.string.SettingsData), getString(R.string.SettingsDataInfo)));
@@ -976,6 +977,9 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 break;
             case 101:
                 org.telegram.ui.Components.EasygramUpdater.check(getParentActivity(), true);
+                break;
+            case 103:
+                presentSettingFragment(new M3ExpressiveSettingsActivity());
                 break;
             case 102: {
                 if (getParentActivity() == null) {
