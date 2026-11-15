@@ -455,6 +455,8 @@
     <string name="EasygramWidgetCover">Обложка</string>
     <string name="EasygramSendMediaHd">Отправлять медиа в HD</string>
     <string name="EasygramSendMediaHdInfo">Применимо в сторонних пикерах, выбранных выше.</string>
+    <string name="EasygramGalleryCamera">Отображать камеру в галерее фото</string>
+    <string name="EasygramGalleryCameraInfo">Живая камера в первой ячейке галереи в меню вложений. Пока камера работает, некоторые телефоны ограничивают экран до 60 Гц.</string>
     <string name="EasygramPhotoMenu">Меню фото в чате</string>
     <string name="EasygramPhotoMenuInfo">Выберите пункты и перетаскивайте их, чтобы изменить порядок меню просмотра фото.</string>
     <string name="PhotoCopiedToClipboard">Фотография скопирована в буфер обмена</string>

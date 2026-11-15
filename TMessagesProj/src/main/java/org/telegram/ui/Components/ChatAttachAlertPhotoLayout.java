@@ -114,6 +114,7 @@ import org.telegram.ui.ChatActivity;
 import org.telegram.ui.Components.blur3.capture.IBlur3Capture;
 import org.telegram.ui.Components.blur3.capture.IBlur3Hash;
 import org.telegram.ui.LaunchActivity;
+import org.telegram.ui.OtherSettingsActivity;
 import org.telegram.ui.PhotoViewer;
 import org.telegram.ui.Stars.StarsIntroActivity;
 import org.telegram.ui.Stories.recorder.AlbumButton;
@@ -229,6 +230,16 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
     private int itemsPerRow = 3;
 
     private boolean deviceHasGoodCamera;
+    // The camera is closed while its grid cell is scrolled out of view: an open camera (even with the preview
+    // stopped) makes some vendors (OnePlus/ColorOS) cap the display at 60 Hz, so gallery scrolling lost 120 Hz.
+    private boolean cameraCellVisible = true;
+    private boolean cameraClosedOffscreen;
+    private CameraViewInternal cameraViewClosedOffscreen;
+    private boolean closeCameraOffscreenScheduled;
+    private final Runnable closeCameraOffscreenRunnable = () -> {
+        closeCameraOffscreenScheduled = false;
+        closeCameraOffscreen();
+    };
     private boolean noCameraPermissions;
     private boolean noGalleryPermissions;
     private boolean requestingPermissions;
@@ -956,11 +967,11 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 return;
             }
 
-            if (position != 0 || !needCamera || selectedAlbumEntry != galleryAlbumEntry) {
+            if (position != 0 || !adapter.needCamera || selectedAlbumEntry != galleryAlbumEntry) {
                 if (adapter.hasCameraSpaceRow && position > itemsPerRow) {
                     position--;
                 }
-                if (selectedAlbumEntry == galleryAlbumEntry && needCamera) {
+                if (selectedAlbumEntry == galleryAlbumEntry && adapter.needCamera) {
                     position--;
                 }
                 if (showAvatarConstructor) {
@@ -2552,7 +2563,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         if (fragment == null || fragment.getParentActivity() == null) {
             return;
         }
-        if (!SharedConfig.inappCamera && !forceCameraPreview) {
+        if ((!SharedConfig.inappCamera || !OtherSettingsActivity.isGalleryCameraEnabled()) && !forceCameraPreview) {
             deviceHasGoodCamera = false;
         } else {
             if (Build.VERSION.SDK_INT >= 23) {
@@ -2617,6 +2628,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
             }
             cameraExpanded = true;
             cameraOpened = true;
+            updateCameraForCellVisibility();
             return;
         }
         if (shouldLoadAllMedia()) {
@@ -2709,6 +2721,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
             }
         }
         cameraOpened = true;
+        updateCameraForCellVisibility();
         if (cameraView != null) {
             cameraView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         }
@@ -2748,6 +2761,9 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         if (cameraView == null) {
             final boolean lazy = !LiteMode.isEnabled(LiteMode.FLAGS_CHAT);
             cameraView = new CameraViewInternal(getContext(), isCameraFrontfaceBeforeEnteringEditMode != null ? isCameraFrontfaceBeforeEnteringEditMode : parentAlert.openWithFrontFaceCamera, lazy);
+            // a camera opened by another path (onResume, onShow) is closed again in onCameraInit if its cell is out of view
+            cameraClosedOffscreen = false;
+            cameraViewClosedOffscreen = null;
             //if (lazy) {
             //    cameraView.setThumbDrawable(cameraViewItemDecoration.placeholderDrawable);
             //}
@@ -2810,6 +2826,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                     }
                     switchCameraButton.setImageResource(cameraView.isFrontface() ? R.drawable.camera_revert1 : R.drawable.camera_revert2);
                     switchCameraButton.setVisibility(cameraView.hasFrontFaceCamera() ? View.VISIBLE : View.INVISIBLE);
+                    updateCameraForCellVisibility();
                     if (!cameraOpened) {
                         cameraInitAnimation = new AnimatorSet();
                         cameraInitAnimation.playTogether(
@@ -2876,9 +2893,13 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
             cameraInitAnimation.cancel();
             cameraInitAnimation = null;
         }
+        final CameraViewInternal destroyedCameraView = cameraView;
         AndroidUtilities.runOnUIThread(() -> {
-            parentAlert.getContainer().removeView(cameraView);
-            cameraView = null;
+            parentAlert.getContainer().removeView(destroyedCameraView);
+            // a new camera may already have been created in the meantime (reopened right after an offscreen close)
+            if (cameraView == destroyedCameraView) {
+                cameraView = null;
+            }
         }, 300);
         canSaveCameraPreview = false;
     }
@@ -3356,8 +3377,12 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 cameraViewLocation[0] = left;
                 cameraViewLocation[1] = top;
                 applyCameraViewPosition();
+                setCameraCellVisible(true);
                 return;
             }
+        }
+        if (count > 0) {
+            setCameraCellVisible(false);
         }
 
 
@@ -3957,6 +3982,14 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
 
     @Override
     public void onInit(boolean hasVideo, boolean hasPhoto, boolean hasDocuments) {
+        boolean showCameraCell = needCamera && OtherSettingsActivity.isGalleryCameraEnabled();
+        if (adapter != null && adapter.needCamera != showCameraCell) {
+            adapter.needCamera = showCameraCell;
+            if (!showCameraCell && !cameraOpened) {
+                hideCamera(true);
+            }
+            adapter.notifyDataSetChanged();
+        }
         mediaEnabled = hasVideo || hasPhoto;
         videoEnabled = hasVideo;
         photoEnabled = hasPhoto;
@@ -4163,7 +4196,64 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         }
     }
 
+    private void setCameraCellVisible(boolean visible) {
+        cameraCellVisible = visible;
+        updateCameraForCellVisibility();
+    }
+
+    private void updateCameraForCellVisibility() {
+        boolean close = !cameraCellVisible && !cameraOpened && !cameraAnimationInProgress;
+        if (!close) {
+            if (closeCameraOffscreenScheduled) {
+                closeCameraOffscreenScheduled = false;
+                AndroidUtilities.cancelRunOnUIThread(closeCameraOffscreenRunnable);
+            }
+            if (cameraClosedOffscreen) {
+                reopenCameraAfterOffscreen();
+            }
+        } else if (!cameraClosedOffscreen && cameraView != null && !closeCameraOffscreenScheduled) {
+            // posted (not run inline): this is called from onScrolled/onCameraInit; scheduled once, since it runs
+            // on every scroll frame. No extra delay: the two-row camera cell crosses the edge once per swipe
+            closeCameraOffscreenScheduled = true;
+            AndroidUtilities.runOnUIThread(closeCameraOffscreenRunnable);
+        }
+    }
+
+    private void closeCameraOffscreen() {
+        if (cameraCellVisible || cameraOpened || cameraAnimationInProgress || cameraClosedOffscreen || cameraView == null
+                || openCameraAfterInit || isStandaloneCamera) {
+            return;
+        }
+        // also while the camera is still starting: out of view its texture may never get drawn, so the first frame
+        // (and onCameraInit) would not come and the camera would stay open; hideCamera handles a starting session
+        cameraClosedOffscreen = true;
+        cameraViewClosedOffscreen = cameraView;
+        FileLog.d("AttachAlertTrace camera closed offscreen inited=" + cameraView.isInited()); // TEMP
+        hideCamera(true);
+    }
+
+    private void reopenCameraAfterOffscreen() {
+        FileLog.d("AttachAlertTrace camera reopen showing=" + parentAlert.isShowing() + " dismissed=" + parentAlert.isDismissed()); // TEMP
+        cameraClosedOffscreen = false;
+        if (cameraView != null && cameraView == cameraViewClosedOffscreen) {
+            // still waiting for the delayed removal in hideCamera: let showCamera create a fresh view now
+            cameraView = null;
+        }
+        cameraViewClosedOffscreen = null;
+        if (parentAlert.destroyed || parentAlert.isDismissed() || !parentAlert.isShowing() || !deviceHasGoodCamera) {
+            return;
+        }
+        if (PhotoViewer.hasInstance() && PhotoViewer.getInstance().isVisible()) {
+            return;
+        }
+        showCamera();
+    }
+
     private void resumeCameraPreview() {
+        if (cameraClosedOffscreen) {
+            // the camera cell is still out of view: the camera reopens when it is scrolled back
+            return;
+        }
         try {
             checkCamera(false);
             if (cameraView != null) {

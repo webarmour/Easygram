@@ -85,6 +85,26 @@ public class OtherSettingsActivity extends BaseFragment {
                 .edit().putBoolean(KEY_MATERIAL_EXPRESSIVE, enabled).apply();
     }
 
+    public static final String KEY_GALLERY_CAMERA = "easygram_gallery_camera";
+    private static volatile Boolean galleryCameraCached;
+
+    /** Live camera cell at the start of the attach menu photo gallery; off removes the cell (and never opens the camera). */
+    public static boolean isGalleryCameraEnabled() {
+        Boolean cached = galleryCameraCached;
+        if (cached == null) {
+            cached = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE)
+                    .getBoolean(KEY_GALLERY_CAMERA, true);
+            galleryCameraCached = cached;
+        }
+        return cached;
+    }
+
+    public static void setGalleryCameraEnabled(boolean enabled) {
+        galleryCameraCached = enabled;
+        ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE)
+                .edit().putBoolean(KEY_GALLERY_CAMERA, enabled).apply();
+    }
+
     public static final String KEY_EASYGRAM_TITLE = "easygram_title_in_chats";
 
     /** Chat list title: "easygram" (default) or the original "Telegram" logo. */
@@ -240,6 +260,8 @@ public class OtherSettingsActivity extends BaseFragment {
     private int galleryInfoRow;
     private int sendMediaHdRow;
     private int sendMediaHdInfoRow;
+    private int galleryCameraRow;
+    private int galleryCameraInfoRow;
     private int disableStoriesRow;
     private int storiesInfoRow;
     private int disableAdsRow;
@@ -433,6 +455,8 @@ public class OtherSettingsActivity extends BaseFragment {
         galleryInfoRow = rowCount++;
         sendMediaHdRow = rowCount++;
         sendMediaHdInfoRow = rowCount++;
+        galleryCameraRow = rowCount++;
+        galleryCameraInfoRow = rowCount++;
         disableStoriesRow = rowCount++;
         storiesInfoRow = rowCount++;
         disableAdsRow = rowCount++;
@@ -526,6 +550,12 @@ public class OtherSettingsActivity extends BaseFragment {
                 SharedConfig.photoHighQualityDefault = next;
                 ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE)
                         .edit().putBoolean("photoHighQualityDefault", next).apply();
+                if (view instanceof TextCheckCell) {
+                    ((TextCheckCell) view).setChecked(next);
+                }
+            } else if (position == galleryCameraRow) {
+                boolean next = !isGalleryCameraEnabled();
+                setGalleryCameraEnabled(next);
                 if (view instanceof TextCheckCell) {
                     ((TextCheckCell) view).setChecked(next);
                 }
@@ -757,8 +787,8 @@ public class OtherSettingsActivity extends BaseFragment {
             if (position == headerRow || position == navHeaderRow || position == photoMenuHeaderRow) return 0;
             if (position == galleryRow) return 1;
             if (position == secretMediaRow) return 6;
-            if (position == premiumAccessInfoRow || position == galleryInfoRow || position == sendMediaHdInfoRow || position == storiesInfoRow || position == adsInfoRow || position == starMessagesInfoRow || position == easygramTitleInfoRow || position == navInfoRow || position == photoMenuInfoRow) return 2;
-            if (position == premiumAccessRow || position == sendMediaHdRow || position == disableStoriesRow || position == disableAdsRow || position == showStarMessagesRow || position == easygramTitleRow || position == navLabelsRow) return 3;
+            if (position == premiumAccessInfoRow || position == galleryInfoRow || position == sendMediaHdInfoRow || position == galleryCameraInfoRow || position == storiesInfoRow || position == adsInfoRow || position == starMessagesInfoRow || position == easygramTitleInfoRow || position == navInfoRow || position == photoMenuInfoRow) return 2;
+            if (position == premiumAccessRow || position == sendMediaHdRow || position == galleryCameraRow || position == disableStoriesRow || position == disableAdsRow || position == showStarMessagesRow || position == easygramTitleRow || position == navLabelsRow) return 3;
             if (position >= navStartRow && position < navEndRow) return 4;
             if (position >= photoMenuStartRow && position < photoMenuEndRow) return 5;
             return 0;
@@ -824,6 +854,8 @@ public class OtherSettingsActivity extends BaseFragment {
                         infoCell.setText(LocaleController.getString(R.string.EasygramDefaultGalleryInfo));
                     } else if (position == sendMediaHdInfoRow) {
                         infoCell.setText(LocaleController.getString(R.string.EasygramSendMediaHdInfo));
+                    } else if (position == galleryCameraInfoRow) {
+                        infoCell.setText(LocaleController.getString(R.string.EasygramGalleryCameraInfo));
                     } else if (position == storiesInfoRow) {
                         infoCell.setText(LocaleController.getString(R.string.EasygramDisableStoriesInfo));
                     } else if (position == adsInfoRow) {
@@ -861,6 +893,12 @@ public class OtherSettingsActivity extends BaseFragment {
                         checkCell.setTextAndCheck(
                                 LocaleController.getString(R.string.EasygramSendMediaHd),
                                 sendMediaHd,
+                                false
+                        );
+                    } else if (position == galleryCameraRow) {
+                        checkCell.setTextAndCheck(
+                                LocaleController.getString(R.string.EasygramGalleryCamera),
+                                isGalleryCameraEnabled(),
                                 false
                         );
                     } else if (position == disableStoriesRow) {
