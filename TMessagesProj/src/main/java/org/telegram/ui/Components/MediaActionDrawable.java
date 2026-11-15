@@ -536,7 +536,10 @@ public class MediaActionDrawable extends Drawable {
             }
             if (alpha != 0) {
                 paint.setAlpha((int) (alpha * overrideAlpha));
-                if (currentIcon == ICON_CANCEL_FILL || nextIcon == ICON_CANCEL_FILL) {
+                if (M3ExpressiveLoader.enabled()) { // easygram: M3 "stop" square instead of the cross
+                    paint3.setAlpha((int) (alpha * overrideAlpha));
+                    M3ExpressiveLoader.drawStop(canvas, rect, cx, cy, AndroidUtilities.dp(isMini ? 3.5f : 5f), paint3);
+                } else if (currentIcon == ICON_CANCEL_FILL || nextIcon == ICON_CANCEL_FILL) {
                     paint3.setAlpha((int) (alpha * overrideAlpha));
                     rect.set(cx - AndroidUtilities.dp(3.5f), cy - AndroidUtilities.dp(3.5f), cx + AndroidUtilities.dp(3.5f), cy + AndroidUtilities.dp(3.5f));
                     canvas.drawRoundRect(rect, AndroidUtilities.dp(2), AndroidUtilities.dp(2), paint3);
@@ -560,12 +563,18 @@ public class MediaActionDrawable extends Drawable {
                 int diff = AndroidUtilities.dp(isMini ? 2 : 4);
                 rect.set(bounds.left + diff, bounds.top + diff, bounds.right - diff, bounds.bottom - diff);
 
-                if (currentIcon == ICON_CANCEL_FILL || currentIcon == ICON_NONE && nextIcon == ICON_CANCEL_FILL) {
-                    paint.setAlpha((int) (alpha * 0.15f * overrideAlpha));
-                    canvas.drawArc(rect, 0, 360, false, paint);
-                    paint.setAlpha(alpha);
+                if (M3ExpressiveLoader.enabled()) {
+                    if (!m3ProgressInContainer) {
+                        drawDownloadArc(canvas, rad, true); // wave + flat track with gaps
+                    }
+                } else {
+                    if (currentIcon == ICON_CANCEL_FILL || currentIcon == ICON_NONE && nextIcon == ICON_CANCEL_FILL) {
+                        paint.setAlpha((int) (alpha * 0.15f * overrideAlpha));
+                        canvas.drawArc(rect, 0, 360, false, paint);
+                        paint.setAlpha(alpha);
+                    }
+                    drawDownloadArc(canvas, rad, false);
                 }
-                canvas.drawArc(rect, downloadRadOffset, rad, false, paint);
             }
             if (progressScale != 1.0f) {
                 canvas.restore();
@@ -586,7 +595,7 @@ public class MediaActionDrawable extends Drawable {
                 float rad = Math.max(4, 360 * animatedDownloadProgress);
                 int diff = AndroidUtilities.dp(isMini ? 2 : 4);
                 rect.set(bounds.left + diff, bounds.top + diff, bounds.right - diff, bounds.bottom - diff);
-                canvas.drawArc(rect, downloadRadOffset, rad, false, paint);
+                drawDownloadArc(canvas, rad, false);
             }
         }
 
@@ -917,5 +926,28 @@ public class MediaActionDrawable extends Drawable {
     @Override
     public int getMinimumHeight() {
         return AndroidUtilities.dp(48);
+    }
+
+    // easygram: Material 3 Expressive wavy download progress
+    private Path m3WavePath;
+    /** The container (RadialProgress2) shows the download progress with its own shape, so no ring here. */
+    private boolean m3ProgressInContainer;
+
+    public void setM3ProgressInContainer(boolean value) {
+        m3ProgressInContainer = value;
+    }
+
+    public float getAnimatedDownloadProgress() {
+        return animatedDownloadProgress;
+    }
+
+    private void drawDownloadArc(Canvas canvas, float sweep, boolean withTrack) {
+        if (M3ExpressiveLoader.enabled()) {
+            if (m3WavePath == null) m3WavePath = new Path();
+            M3ExpressiveLoader.drawWavyProgress(canvas, m3WavePath, rect, downloadRadOffset, sweep, paint, withTrack ? 0.3f : 0f);
+            invalidateSelf(); // keep the wave travelling while the progress is shown
+        } else {
+            canvas.drawArc(rect, downloadRadOffset, sweep, false, paint);
+        }
     }
 }

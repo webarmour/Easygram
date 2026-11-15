@@ -63,6 +63,12 @@ public class CircularProgressDrawable extends Drawable {
         if (start < 0) {
             start = SystemClock.elapsedRealtime();
         }
+        if (M3ExpressiveLoader.enabled()) { // easygram: Material 3 Expressive shape-morphing indicator
+            if (m3Morph == null) m3Morph = new M3ExpressiveLoader.Morph();
+            m3Morph.draw(canvas, bounds.centerX(), bounds.centerY(), bounds.width() / 2f, paint.getColor());
+            invalidateSelf();
+            return;
+        }
         updateSegment();
         canvas.drawArc(
             bounds,
@@ -74,8 +80,11 @@ public class CircularProgressDrawable extends Drawable {
         invalidateSelf();
     }
 
+    private M3ExpressiveLoader.Morph m3Morph;
+
     public void reset() {
         start = -1;
+        if (m3Morph != null) m3Morph.reset();
     }
 
     public void setAngleOffset(float angleOffset) {
