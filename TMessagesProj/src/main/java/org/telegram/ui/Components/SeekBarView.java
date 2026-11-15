@@ -485,10 +485,7 @@ public class SeekBarView extends FrameLayout implements Theme.Colorable {
                 float amp = AndroidUtilities.dp(8);
                 float wl = AndroidUtilities.dp(10);
                 expressiveTrack.drawLoudness(canvas, left, thumbCenter - gap, left, right, centerY, stroke, amp, wl, expressiveLevels, fgColor);
-                if (bufferedProgress > 0 && bufferedX > inactiveLeft) {
-                    expressiveTrack.drawLoudness(canvas, inactiveLeft, bufferedX, left, right, centerY, stroke, amp, wl, expressiveLevels, cacheColor);
-                    inactiveLeft = bufferedX;
-                }
+                // one colour after the thumb: a separate translucent buffered segment looked like a gap in the wave
                 expressiveTrack.drawLoudness(canvas, inactiveLeft, right, left, right, centerY, stroke, amp, wl, expressiveLevels, bgColor);
             } else {
                 float thickness = AndroidUtilities.dp(lineWidthDp);

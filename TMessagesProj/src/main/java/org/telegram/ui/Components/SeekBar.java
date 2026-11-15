@@ -443,20 +443,15 @@ public class SeekBar {
         final float left = thumbWidth / 2f;
         final float right = width - thumbWidth / 2f;
         final float centerY = height / 2f;
-        final float bufferedX = left + bufferedProgress * (right - left);
         final float stroke = AndroidUtilities.dp(2.2f);
         final float amp = AndroidUtilities.dp(6);
         final float wl = AndroidUtilities.dp(9);
 
         // played part
         track.drawLoudness(canvas, left, thumbCenterX - thumbGap, left, right, centerY, stroke, amp, wl, waveformLevels, progressColor);
-        // buffered part
+        // rest of the track, one colour: the player's read-ahead buffer is not drawn here, its translucent cache
+        // colour replaced the track instead of overlaying it and looked like a gap in the wave
         float inactiveLeft = thumbCenterX + thumbGap;
-        if (bufferedProgress > 0 && bufferedX > inactiveLeft) {
-            track.drawLoudness(canvas, inactiveLeft, bufferedX, left, right, centerY, stroke, amp, wl, waveformLevels, selected ? backgroundSelectedColor : cacheColor);
-            inactiveLeft = bufferedX;
-        }
-        // rest of the track
         track.drawLoudness(canvas, inactiveLeft, right, left, right, centerY, stroke, amp, wl, waveformLevels, selected ? backgroundSelectedColor : backgroundColor);
 
         // thumb (bar) + its press animation; bumps on beats
