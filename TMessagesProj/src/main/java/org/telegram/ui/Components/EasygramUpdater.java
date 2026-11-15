@@ -49,13 +49,17 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Independent APK updater; Telegram API ID/hash and login are not required. */
 public final class EasygramUpdater {
-    // Public GitHub feed in this repository; no GitHub access token is required.
+    // Public GitHub feed; no token required. Releases are fetched by the numeric repository
+    // ID so renaming the repo (including case-only renames) never breaks update checks.
     private static final String FEED_BASE =
-            "https://raw.githubusercontent.com/webarmour/Easygram/easygram-dev/updates/";
+            "https://raw.githubusercontent.com/webarmour/easygram/easygram-dev/updates/";
     private static final String RELEASES_URL =
-            "https://api.github.com/repos/webarmour/Easygram/releases?per_page=100";
-    private static final String RELEASE_ASSET_BASE =
-            "https://github.com/webarmour/Easygram/releases/download/";
+            "https://api.github.com/repositories/1423703156/releases?per_page=100"; // webarmour/Easygram
+    // Any repo name of this owner, any case: GitHub builds asset URLs from the current repo name.
+    // The APK is still verified by SHA-256 from the API and by the installed signing certificate.
+    private static final Pattern RELEASE_ASSET_URL = Pattern.compile(
+            "^https://github\\.com/webarmour/[A-Za-z0-9._-]+/releases/download/[^?#]+\\.apk$",
+            Pattern.CASE_INSENSITIVE);
     private static final Pattern RELEASE_TAG_STABLE =
             Pattern.compile("^v?(\\d+(?:\\.\\d+){1,3})-(\\d+)$");
     private static final Pattern RELEASE_TAG_BETA =
@@ -169,7 +173,7 @@ public final class EasygramUpdater {
             if (apk == null || apk.optLong("size") <= 0 || apk.optLong("size") > MAX_APK_BYTES) continue;
             String digest = apk.optString("digest", "");
             String url = apk.optString("browser_download_url", "");
-            if (!digest.matches("sha256:[0-9a-fA-F]{64}") || !url.startsWith(RELEASE_ASSET_BASE)) continue;
+            if (!digest.matches("sha256:[0-9a-fA-F]{64}") || !RELEASE_ASSET_URL.matcher(url).matches()) continue;
 
             Update candidate = new Update();
             candidate.versionCode = versionCode;

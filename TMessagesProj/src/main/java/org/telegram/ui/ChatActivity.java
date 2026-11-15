@@ -1276,6 +1276,8 @@ public class ChatActivity extends BaseFragment implements
     public boolean allowExpandPreviewByClick;
     private boolean showSearchAsIcon;
     private boolean showAudioCallAsIcon;
+    // easygram: in private chats the search takes the header slot of the call icon, the call goes to the menu
+    private boolean searchIconInsteadOfCall;
     public MessageEnterTransitionContainer messageEnterTransitionContainer;
     private float pullingDownOffset, pullingBottomOffset;
     private ChatPullingDownDrawable pullingDownDrawable;
@@ -4324,6 +4326,7 @@ public class ChatActivity extends BaseFragment implements
                     showAudioCallAsIcon = false;
                     audioCallIconItem.setVisibility(View.GONE);
                 }
+                updateCallSearchSwap(false);
             }
         }
         /*
@@ -19326,7 +19329,7 @@ public class ChatActivity extends BaseFragment implements
                 } /*else if (chatMode == MODE_SUGGESTIONS) {
                     showSearchAsIcon = true;
                 }*/ else {
-                    showSearchAsIcon = false;
+                    showSearchAsIcon = searchIconInsteadOfCall;
                 }
                 if (showSearchAsIcon || showAudioCallAsIcon || UserObject.isBotForumWithEditableTopics(currentUser)) {
                     if (avatarContainer != null && avatarContainer.getLayoutParams() != null) {
@@ -25083,6 +25086,7 @@ public class ChatActivity extends BaseFragment implements
                 }
                 if (headerItem != null) {
                     showAudioCallAsIcon = userInfo.phone_calls_available && !inPreviewMode;
+                    updateCallSearchSwap(true);
                     if (userInfo.phone_calls_available) {
                         if (showAudioCallAsIcon) {
                             if (audioCallIconItem != null) {
@@ -30881,6 +30885,48 @@ public class ChatActivity extends BaseFragment implements
         super.dismissCurrentDialog();
     }
 
+    /**
+     * easygram: when the call would be shown as a header icon in a private chat, show the search icon
+     * in its place instead (the call stays available in the menu). Must run right after
+     * showAudioCallAsIcon was computed.
+     */
+    private void updateCallSearchSwap(boolean applyViews) {
+        final boolean wasSwapped = searchIconInsteadOfCall;
+        searchIconInsteadOfCall = showAudioCallAsIcon && searchIconItem != null && currentUser != null && !currentUser.self;
+        if (searchIconInsteadOfCall) {
+            showAudioCallAsIcon = false;
+        }
+        if (!applyViews || wasSwapped == searchIconInsteadOfCall && !searchIconInsteadOfCall) {
+            if (audioCallIconItem != null && searchIconInsteadOfCall) {
+                audioCallIconItem.setVisibility(View.GONE);
+            }
+            return;
+        }
+        showSearchAsIcon = searchIconInsteadOfCall;
+        if (audioCallIconItem != null && searchIconInsteadOfCall) {
+            audioCallIconItem.setVisibility(View.GONE);
+        }
+        final boolean searchOpened = actionBar != null && actionBar.isSearchFieldVisible();
+        if (searchIconItem != null) {
+            searchIconItem.setVisibility(showSearchAsIcon && !searchOpened && !inPreviewMode ? View.VISIBLE : View.GONE);
+        }
+        if (headerItem != null) {
+            if (showSearchAsIcon) {
+                headerItem.hideSubItem(search);
+            } else {
+                headerItem.showSubItem(search);
+            }
+            TLRPC.UserFull userInfo = getCurrentUserInfo();
+            if (searchIconInsteadOfCall && userInfo != null && userInfo.phone_calls_available) {
+                headerItem.showSubItem(call, true);
+            }
+        }
+        if (avatarContainer != null && avatarContainer.getLayoutParams() != null && !inPreviewMode) {
+            ((ViewGroup.MarginLayoutParams) avatarContainer.getLayoutParams()).rightMargin = AndroidUtilities.dp(searchIconInsteadOfCall ? 92 : 52);
+            avatarContainer.requestLayout();
+        }
+    }
+
     @Override
     public void setInPreviewMode(boolean value) {
         super.setInPreviewMode(value);
@@ -30893,6 +30939,7 @@ public class ChatActivity extends BaseFragment implements
                 showAudioCallAsIcon = false;
                 audioCallIconItem.setVisibility(View.GONE);
             }
+            updateCallSearchSwap(true);
         }
         if (avatarContainer != null) {
             avatarContainer.setOccupyStatusBar(!value);
