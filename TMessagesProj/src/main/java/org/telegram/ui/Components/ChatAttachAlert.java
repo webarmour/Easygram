@@ -6984,8 +6984,6 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
 
     @Override
     public void dismissInternal() {
-        // TEMP AttachAlertTrace
-        FileLog.e("AttachAlertTrace dismissInternal", new Exception("AttachAlertTrace"));
         if (delegate != null) {
             delegate.doOnIdle(this::removeFromRoot);
         } else {
@@ -7086,8 +7084,6 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
 
     @Override
     public void dismiss() {
-        // TEMP AttachAlertTrace: who closes the alert right after it opens
-        FileLog.e("AttachAlertTrace dismiss showing=" + isShowing() + " dismissed=" + isDismissed() + " layout=" + currentAttachLayout, new Exception("AttachAlertTrace"));
         if (!allowPassConfirmationAlert && photoLayout != null && photoLayout.isStandaloneCamera) {
             photoLayout.closeCamera(true);
             return;

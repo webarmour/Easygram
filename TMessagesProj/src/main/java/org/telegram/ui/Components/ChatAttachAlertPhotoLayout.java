@@ -4228,12 +4228,10 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         // (and onCameraInit) would not come and the camera would stay open; hideCamera handles a starting session
         cameraClosedOffscreen = true;
         cameraViewClosedOffscreen = cameraView;
-        FileLog.d("AttachAlertTrace camera closed offscreen inited=" + cameraView.isInited()); // TEMP
         hideCamera(true);
     }
 
     private void reopenCameraAfterOffscreen() {
-        FileLog.d("AttachAlertTrace camera reopen showing=" + parentAlert.isShowing() + " dismissed=" + parentAlert.isDismissed()); // TEMP
         cameraClosedOffscreen = false;
         if (cameraView != null && cameraView == cameraViewClosedOffscreen) {
             // still waiting for the delayed removal in hideCamera: let showCamera create a fresh view now
