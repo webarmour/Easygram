@@ -11,6 +11,7 @@ package org.telegram.ui.Components;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.view.View;
@@ -270,14 +271,33 @@ public class RadialProgressView extends View implements Theme.Colorable {
         int x = (getMeasuredWidth() - size) / 2;
         int y = (getMeasuredHeight() - size) / 2;
         cicleRect.set(x, y, x + size, y + size);
-        canvas.drawArc(cicleRect, radOffset, drawingCircleLenght = currentCircleLength, false, progressPaint);
+        drawProgress(canvas);
         updateAnimation();
     }
 
     public void draw(Canvas canvas, float cx, float cy) {
         cicleRect.set(cx - size / 2f, cy - size / 2f, cx + size / 2f, cy +  size / 2f);
-        canvas.drawArc(cicleRect, radOffset, drawingCircleLenght = currentCircleLength, false, progressPaint);
+        drawProgress(canvas);
         updateAnimation();
+    }
+
+    // easygram: Material 3 Expressive loaders (shape-morphing when indeterminate, wavy when determinate)
+    private M3ExpressiveLoader.Morph m3Morph;
+    private Path m3WavePath;
+
+    private void drawProgress(Canvas canvas) {
+        drawingCircleLenght = currentCircleLength;
+        if (M3ExpressiveLoader.enabled() && !toCircle && toCircleProgress == 0) {
+            if (noProgress) {
+                if (m3Morph == null) m3Morph = new M3ExpressiveLoader.Morph();
+                m3Morph.draw(canvas, cicleRect.centerX(), cicleRect.centerY(), size * 0.5f, progressPaint.getColor());
+            } else {
+                if (m3WavePath == null) m3WavePath = new Path();
+                M3ExpressiveLoader.drawWavyArc(canvas, m3WavePath, cicleRect, radOffset, currentCircleLength, progressPaint);
+            }
+            return;
+        }
+        canvas.drawArc(cicleRect, radOffset, currentCircleLength, false, progressPaint);
     }
 
     public boolean isCircle() {

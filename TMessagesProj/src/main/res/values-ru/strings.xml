@@ -427,7 +427,11 @@
     <string name="EasygramTitleInChatsInfo">Сверху над списком чатов отображается easygram. При отключении будет Telegram.</string>
     <string name="EasygramMaterialExpressive">Стилистика Material 3 Expressive</string>
     <string name="EasygramMiniPlayerDetailedWave">Подробная форма волны в мини-плеере</string>
-    <string name="EasygramMaterialExpressiveInfo">Волнистая полоска прогресса в видеоплеере и у песен и аудиофайлов в чате, а также волнистая диаграмма голосовых и скачанных аудиофайлов, амплитуда которой повторяет громкость. При отключении используется стандартный вид Telegram.</string>
+    <string name="EasygramLoaderPreviewLoading">Загрузка</string>
+    <string name="EasygramLoaderPreviewButton">В кнопке</string>
+    <string name="EasygramLoaderPreviewDownload">Скачивание</string>
+    <string name="EasygramDownloadHaptic">Вибрация при окончании загрузки</string>
+    <string name="EasygramMaterialExpressiveInfo">Волнистая полоска прогресса в видеоплеере и у песен и аудиофайлов в чате, а также волнистая диаграмма голосовых и скачанных аудиофайлов, амплитуда которой повторяет громкость. Лоадеры меняют форму во время ожидания, а прогресс скачивания становится волнистым кольцом. При отключении используется стандартный вид Telegram.</string>
     <string name="EasygramWidgetName">Музыкальный плеер</string>
     <string name="EasygramWidgetNameLarge">Музыкальный плеер — большой</string>
     <string name="EasygramWidgetDescription">Текущий трек и волна Material 3 Expressive, реагирующая на звук</string>

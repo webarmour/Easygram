@@ -11775,7 +11775,11 @@
     <string name="EasygramTitleInChatsInfo">The title above the chat list shows easygram. When off, Telegram is shown.</string>
     <string name="EasygramMaterialExpressive">Use Material 3 Expressive style</string>
     <string name="EasygramMiniPlayerDetailedWave">Detailed waveform in mini player</string>
-    <string name="EasygramMaterialExpressiveInfo">Wavy progress line in the video player and for songs and audio files in chats, and a wavy waveform whose amplitude follows the loudness for voice messages and downloaded audio files. When off, the default Telegram look is used.</string>
+    <string name="EasygramLoaderPreviewLoading">Loading</string>
+    <string name="EasygramLoaderPreviewButton">In a button</string>
+    <string name="EasygramLoaderPreviewDownload">Download</string>
+    <string name="EasygramDownloadHaptic">Vibrate when a download finishes</string>
+    <string name="EasygramMaterialExpressiveInfo">Wavy progress line in the video player and for songs and audio files in chats, and a wavy waveform whose amplitude follows the loudness for voice messages and downloaded audio files. Loaders change shape while waiting, and download progress becomes a wavy ring. When off, the default Telegram look is used.</string>
     <string name="EasygramWidgetName">Music player</string>
     <string name="EasygramWidgetNameLarge">Music player — large</string>
     <string name="EasygramWidgetDescription">Now playing with an audio-reactive Material 3 Expressive wave</string>

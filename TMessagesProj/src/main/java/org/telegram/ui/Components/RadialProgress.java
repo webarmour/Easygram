@@ -496,7 +496,12 @@ public class RadialProgress {
                     miniProgressPaint.setAlpha((int) (255 * overrideAlpha));
                 }
                 cicleRect.set(cx - AndroidUtilities.dp(halfSize - 2) * alpha, cy - AndroidUtilities.dp(halfSize - 2) * alpha, cx + AndroidUtilities.dp(halfSize - 2) * alpha, cy + AndroidUtilities.dp(halfSize - 2) * alpha);
-                canvas.drawArc(cicleRect, -90 + radOffset, Math.max(4, 360 * animatedProgressValue), false, miniProgressPaint);
+                if (M3ExpressiveLoader.enabled()) {
+                    if (m3WavePath == null) m3WavePath = new Path();
+                    M3ExpressiveLoader.drawWavyArc(canvas, m3WavePath, cicleRect, -90 + radOffset, Math.max(4, 360 * animatedProgressValue), miniProgressPaint);
+                } else {
+                    canvas.drawArc(cicleRect, -90 + radOffset, Math.max(4, 360 * animatedProgressValue), false, miniProgressPaint);
+                }
                 updateAnimation(true);
             } else {
                 updateAnimation(false);
@@ -579,10 +584,15 @@ public class RadialProgress {
             if (percentTo > 1) {
                 drawArc(canvas, oval, startAngle + 90, sweepAngle - 90, useCenter, paint);
             }
+        } else if (!useCenter && M3ExpressiveLoader.enabled()) { // easygram: Material 3 Expressive wavy progress
+            if (m3WavePath == null) m3WavePath = new Path();
+            M3ExpressiveLoader.drawWavyArc(canvas, m3WavePath, oval, startAngle, sweepAngle, paint);
         } else {
             canvas.drawArc(oval, startAngle, sweepAngle, useCenter, paint);
         }
     }
+
+    private Path m3WavePath;
 
     public void setPaint(Paint paint) {
         overridePaint = paint;

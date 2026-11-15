@@ -38,6 +38,74 @@ public class RadialProgress2 {
     private boolean m3WasUsed;
     private M3PlayPauseIcon m3Icon;
 
+    private boolean m3ShapeProgress;
+    private android.graphics.Path m3ShapePath;
+
+    private static boolean isCancelIcon(int icon) {
+        return icon == MediaActionDrawable.ICON_CANCEL || icon == MediaActionDrawable.ICON_CANCEL_FILL;
+    }
+
+    /** Download finished: the icon animates from cancel to the file's action (play, open...), not back to download. */
+    private static boolean isDownloadSuccess(int previousIcon, int nextIcon) {
+        return isCancelIcon(previousIcon) && !isCancelIcon(nextIcon)
+                && nextIcon != MediaActionDrawable.ICON_DOWNLOAD && nextIcon != MediaActionDrawable.ICON_NONE;
+    }
+
+    // easygram: bounce of the whole button when a download finishes (M3E)
+    private static final long M3_BOUNCE_MS = 600;
+    private long m3BounceStart = -1;
+    private int m3LastNextIcon = -1;
+
+    private void updateM3Bounce() {
+        int next = mediaActionDrawable.getCurrentIcon();
+        if (next != m3LastNextIcon) {
+            if (m3LastNextIcon != -1 && M3ExpressiveLoader.enabled()
+                    && mediaActionDrawable.getTransitionProgress() < 1f // animated change, not a recycled cell
+                    && isDownloadSuccess(mediaActionDrawable.getPreviousIcon(), next)) {
+                m3BounceStart = android.os.SystemClock.uptimeMillis();
+                if (parent != null && org.telegram.ui.OtherSettingsActivity.isDownloadHapticEnabled()) {
+                    try { // soft "knock" together with the bounce
+                        parent.performHapticFeedback(android.os.Build.VERSION.SDK_INT >= 30
+                                        ? android.view.HapticFeedbackConstants.CONFIRM : android.view.HapticFeedbackConstants.KEYBOARD_TAP,
+                                android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+            m3LastNextIcon = next;
+        }
+    }
+
+    /** Scale of the bounce: a quick overshoot that settles back with a small undershoot. */
+    private float m3BounceScale() {
+        if (m3BounceStart < 0) return 1f;
+        float t = (android.os.SystemClock.uptimeMillis() - m3BounceStart) / (float) M3_BOUNCE_MS;
+        if (t >= 1f) {
+            m3BounceStart = -1;
+            return 1f;
+        }
+        if (parent != null) M3ExpressiveTrack.invalidateNextFrame(parent);
+        return 1f + 0.25f * (float) (Math.exp(-4 * t) * Math.sin(2.5 * Math.PI * t));
+    }
+
+    private void drawM3DownloadShape(Canvas canvas, int centerX, int centerY) {
+        if (m3ShapePath == null) m3ShapePath = new android.graphics.Path();
+        int alpha = circlePaint.getAlpha();
+        circlePaint.setAlpha((int) (alpha * 0.22f)); // light disc: the part still to download
+        canvas.drawCircle(centerX, centerY, circleRadius, circlePaint);
+        circlePaint.setAlpha(alpha);
+        float progress = mediaActionDrawable.getAnimatedDownloadProgress();
+        int previous = mediaActionDrawable.getPreviousIcon(), next = mediaActionDrawable.getCurrentIcon();
+        if (isDownloadSuccess(previous, next)) {
+            // finished: grow the rest of the way into the plain circle while the icon changes
+            progress += (1f - progress) * mediaActionDrawable.getTransitionProgress();
+        }
+        M3ExpressiveLoader.drawGrowingShape(canvas, m3ShapePath, centerX, centerY, circleRadius, progress, circlePaint);
+        if (parent != null) {
+            M3ExpressiveTrack.invalidateNextFrame(parent); // keep it spinning
+        }
+    }
+
     public void setExpressive(boolean expressive, boolean reactToBeat) {
         if (this.expressive != expressive || this.expressiveBeat != reactToBeat) {
             this.expressive = expressive;
@@ -363,6 +431,19 @@ public class RadialProgress2 {
 
     @Keep
     public void draw(Canvas canvas) {
+        updateM3Bounce();
+        float bounce = m3BounceScale();
+        if (bounce != 1f && !progressRect.isEmpty()) {
+            canvas.save();
+            canvas.scale(bounce, bounce, progressRect.centerX(), progressRect.centerY());
+            drawInternal(canvas);
+            canvas.restore();
+        } else {
+            drawInternal(canvas);
+        }
+    }
+
+    private void drawInternal(Canvas canvas) {
         if (mediaActionDrawable.getCurrentIcon() == MediaActionDrawable.ICON_NONE && mediaActionDrawable.getTransitionProgress() >= 1.0f || progressRect.isEmpty()) {
             return;
         }
@@ -477,6 +558,16 @@ public class RadialProgress2 {
             float scaleMini = 1.0f - 0.1f * (1.0f - circleCheckProgress);
             miniDrawCanvas.scale(scaleMini, scaleMini, centerX, centerY);
         }
+        // easygram: M3E download button - the button shape itself shows the progress (growing scalloped shape)
+        final int previousIcon = mediaActionDrawable.getPreviousIcon();
+        final float iconTransition = mediaActionDrawable.getTransitionProgress();
+        // also while the cancel icon is still fading out, otherwise the drawable's own wavy ring shows up for a moment
+        final boolean leavingCancel = isCancelIcon(previousIcon) && iconTransition < 1f;
+        m3ShapeProgress = M3ExpressiveLoader.enabled()
+                && (isCancelIcon(currentIcon) || leavingCancel)
+                && drawCircle && drawBackground && backgroundStroke == 0 && !overlayImageView.hasBitmapImage()
+                && !((drawMiniIcon || circleCrossfadeColorKey >= 0) && miniDrawCanvas != null);
+        mediaActionDrawable.setM3ProgressInContainer(m3ShapeProgress);
         final boolean useM3 = expressive
                 && (currentIcon == MediaActionDrawable.ICON_PLAY || currentIcon == MediaActionDrawable.ICON_PAUSE)
                 && backgroundStroke == 0;
@@ -536,6 +627,8 @@ public class RadialProgress2 {
                     if (currentIcon != MediaActionDrawable.ICON_NONE || wholeAlpha != 0) {
                         if (backgroundStroke != 0) {
                             canvas.drawCircle(centerX, centerY, (circleRadius - AndroidUtilities.dp(3.5f)), circlePaint);
+                        } else if (m3ShapeProgress) {
+                            drawM3DownloadShape(canvas, centerX, centerY);
                         } else {
                             canvas.drawCircle(centerX, centerY, circleRadius, circlePaint);
                         }

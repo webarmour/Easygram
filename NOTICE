@@ -72,12 +72,18 @@ merges with upstream simple, the changes are not marked inside the files;
   TMessagesProj/src/main/java/org/telegram/ui/Components/ChatAttachAlert.java
   TMessagesProj/src/main/java/org/telegram/ui/Components/ChatAttachAlertDocumentLayout.java
   TMessagesProj/src/main/java/org/telegram/ui/Components/ChatAttachAlertPhotoLayout.java
+  TMessagesProj/src/main/java/org/telegram/ui/Components/CircularProgressDrawable.java
+  TMessagesProj/src/main/java/org/telegram/ui/Components/ContextProgressView.java
   TMessagesProj/src/main/java/org/telegram/ui/Components/Crop/CropView.java
   TMessagesProj/src/main/java/org/telegram/ui/Components/FragmentContextView.java
+  TMessagesProj/src/main/java/org/telegram/ui/Components/InfiniteProgress.java
   TMessagesProj/src/main/java/org/telegram/ui/Components/InstantCameraView.java
   TMessagesProj/src/main/java/org/telegram/ui/Components/InstantCameraViewBase.java
+  TMessagesProj/src/main/java/org/telegram/ui/Components/MediaActionDrawable.java
   TMessagesProj/src/main/java/org/telegram/ui/Components/QRCodeBottomSheet.java
+  TMessagesProj/src/main/java/org/telegram/ui/Components/RadialProgress.java
   TMessagesProj/src/main/java/org/telegram/ui/Components/RadialProgress2.java
+  TMessagesProj/src/main/java/org/telegram/ui/Components/RadialProgressView.java
   TMessagesProj/src/main/java/org/telegram/ui/Components/SeekBar.java
   TMessagesProj/src/main/java/org/telegram/ui/Components/SeekBarView.java
   TMessagesProj/src/main/java/org/telegram/ui/Components/SeekBarWaveform.java
