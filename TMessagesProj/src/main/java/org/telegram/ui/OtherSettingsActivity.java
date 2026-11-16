@@ -34,6 +34,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
+import org.telegram.messenger.BuildConfig;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
@@ -103,6 +104,26 @@ public class OtherSettingsActivity extends BaseFragment {
         galleryCameraCached = enabled;
         ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE)
                 .edit().putBoolean(KEY_GALLERY_CAMERA, enabled).apply();
+    }
+
+    public static final String KEY_HIDE_KEYBOARD_ON_SCROLL = "easygram_hide_keyboard_on_scroll";
+    private static volatile Boolean hideKeyboardOnScrollCached;
+
+    /** Chat: scrolling up through the messages with the keyboard open closes the keyboard. */
+    public static boolean isHideKeyboardOnScrollEnabled() {
+        Boolean cached = hideKeyboardOnScrollCached;
+        if (cached == null) {
+            cached = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE)
+                    .getBoolean(KEY_HIDE_KEYBOARD_ON_SCROLL, false);
+            hideKeyboardOnScrollCached = cached;
+        }
+        return cached;
+    }
+
+    public static void setHideKeyboardOnScrollEnabled(boolean enabled) {
+        hideKeyboardOnScrollCached = enabled;
+        ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE)
+                .edit().putBoolean(KEY_HIDE_KEYBOARD_ON_SCROLL, enabled).apply();
     }
 
     public static final String KEY_EASYGRAM_TITLE = "easygram_title_in_chats";
@@ -249,8 +270,15 @@ public class OtherSettingsActivity extends BaseFragment {
     private ListAdapter adapter;
     private ItemTouchHelper itemTouchHelper;
 
-    // Unavailable until secret media actions are ready for release.
-    public static final boolean SECRET_MEDIA_ACTIONS_ENABLED = false;
+    // Secret media actions are available only in the debug build type.
+    public static final boolean SECRET_MEDIA_ACTIONS_ENABLED = BuildConfig.DEBUG;
+    private static final String KEY_SECRET_MEDIA_ACTIONS = "easygram_secret_media_actions";
+
+    public static boolean isSecretMediaActionsEnabled() {
+        return SECRET_MEDIA_ACTIONS_ENABLED && ApplicationLoader.applicationContext
+                .getSharedPreferences("mainconfig", Activity.MODE_PRIVATE)
+                .getBoolean(KEY_SECRET_MEDIA_ACTIONS, true);
+    }
 
     private int secretMediaRow;
     private int headerRow;
@@ -262,6 +290,8 @@ public class OtherSettingsActivity extends BaseFragment {
     private int sendMediaHdInfoRow;
     private int galleryCameraRow;
     private int galleryCameraInfoRow;
+    private int hideKeyboardOnScrollRow;
+    private int hideKeyboardOnScrollInfoRow;
     private int disableStoriesRow;
     private int storiesInfoRow;
     private int disableAdsRow;
@@ -457,6 +487,8 @@ public class OtherSettingsActivity extends BaseFragment {
         sendMediaHdInfoRow = rowCount++;
         galleryCameraRow = rowCount++;
         galleryCameraInfoRow = rowCount++;
+        hideKeyboardOnScrollRow = rowCount++;
+        hideKeyboardOnScrollInfoRow = rowCount++;
         disableStoriesRow = rowCount++;
         storiesInfoRow = rowCount++;
         disableAdsRow = rowCount++;
@@ -470,7 +502,7 @@ public class OtherSettingsActivity extends BaseFragment {
             easygramTitleRow = rowCount++;
             easygramTitleInfoRow = rowCount++;
         }
-        secretMediaRow = rowCount++;
+        secretMediaRow = SECRET_MEDIA_ACTIONS_ENABLED ? rowCount++ : -1;
         navHeaderRow = rowCount++;
         navLabelsRow = rowCount++;
         navStartRow = rowCount;
@@ -543,6 +575,12 @@ public class OtherSettingsActivity extends BaseFragment {
                 NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.premiumStatusChangedGlobal);
             } else if (position == galleryRow) {
                 showGalleryChooser(view);
+            } else if (position == secretMediaRow && SECRET_MEDIA_ACTIONS_ENABLED) {
+                boolean next = !isSecretMediaActionsEnabled();
+                preferences().edit().putBoolean(KEY_SECRET_MEDIA_ACTIONS, next).apply();
+                if (view instanceof TextCheckCell) {
+                    ((TextCheckCell) view).setChecked(next);
+                }
             } else if (position == sendMediaHdRow) {
                 boolean current = preferences().getBoolean("easygram_send_media_hd", SharedConfig.photoHighQualityDefault);
                 boolean next = !current;
@@ -556,6 +594,12 @@ public class OtherSettingsActivity extends BaseFragment {
             } else if (position == galleryCameraRow) {
                 boolean next = !isGalleryCameraEnabled();
                 setGalleryCameraEnabled(next);
+                if (view instanceof TextCheckCell) {
+                    ((TextCheckCell) view).setChecked(next);
+                }
+            } else if (position == hideKeyboardOnScrollRow) {
+                boolean next = !isHideKeyboardOnScrollEnabled();
+                setHideKeyboardOnScrollEnabled(next);
                 if (view instanceof TextCheckCell) {
                     ((TextCheckCell) view).setChecked(next);
                 }
@@ -774,7 +818,7 @@ public class OtherSettingsActivity extends BaseFragment {
         @Override
         public boolean isEnabled(RecyclerView.ViewHolder holder) {
             int type = holder.getItemViewType();
-            return type == 1 || type == 3 || type == 4 || type == 5;
+            return type == 1 || type == 3 || type == 4 || type == 5 || type == 6;
         }
 
         @Override
@@ -787,8 +831,8 @@ public class OtherSettingsActivity extends BaseFragment {
             if (position == headerRow || position == navHeaderRow || position == photoMenuHeaderRow) return 0;
             if (position == galleryRow) return 1;
             if (position == secretMediaRow) return 6;
-            if (position == premiumAccessInfoRow || position == galleryInfoRow || position == sendMediaHdInfoRow || position == galleryCameraInfoRow || position == storiesInfoRow || position == adsInfoRow || position == starMessagesInfoRow || position == easygramTitleInfoRow || position == navInfoRow || position == photoMenuInfoRow) return 2;
-            if (position == premiumAccessRow || position == sendMediaHdRow || position == galleryCameraRow || position == disableStoriesRow || position == disableAdsRow || position == showStarMessagesRow || position == easygramTitleRow || position == navLabelsRow) return 3;
+            if (position == premiumAccessInfoRow || position == galleryInfoRow || position == sendMediaHdInfoRow || position == galleryCameraInfoRow || position == hideKeyboardOnScrollInfoRow || position == storiesInfoRow || position == adsInfoRow || position == starMessagesInfoRow || position == easygramTitleInfoRow || position == navInfoRow || position == photoMenuInfoRow) return 2;
+            if (position == premiumAccessRow || position == sendMediaHdRow || position == galleryCameraRow || position == hideKeyboardOnScrollRow || position == disableStoriesRow || position == disableAdsRow || position == showStarMessagesRow || position == easygramTitleRow || position == navLabelsRow) return 3;
             if (position >= navStartRow && position < navEndRow) return 4;
             if (position >= photoMenuStartRow && position < photoMenuEndRow) return 5;
             return 0;
@@ -856,6 +900,8 @@ public class OtherSettingsActivity extends BaseFragment {
                         infoCell.setText(LocaleController.getString(R.string.EasygramSendMediaHdInfo));
                     } else if (position == galleryCameraInfoRow) {
                         infoCell.setText(LocaleController.getString(R.string.EasygramGalleryCameraInfo));
+                    } else if (position == hideKeyboardOnScrollInfoRow) {
+                        infoCell.setText(LocaleController.getString(R.string.EasygramHideKeyboardOnScrollInfo));
                     } else if (position == storiesInfoRow) {
                         infoCell.setText(LocaleController.getString(R.string.EasygramDisableStoriesInfo));
                     } else if (position == adsInfoRow) {
@@ -875,9 +921,7 @@ public class OtherSettingsActivity extends BaseFragment {
                     secretMediaCell.setTextAndValueAndCheck(
                             LocaleController.getString(R.string.EasygramSecretMedia),
                             LocaleController.getString(R.string.EasygramSecretMediaInfo),
-                            SECRET_MEDIA_ACTIONS_ENABLED, false, false);
-                    secretMediaCell.setEnabled(false);
-                    secretMediaCell.setAlpha(0.5f);
+                            isSecretMediaActionsEnabled(), false, false);
                     break;
                 case 3:
                     TextCheckCell checkCell = (TextCheckCell) holder.itemView;
@@ -899,6 +943,12 @@ public class OtherSettingsActivity extends BaseFragment {
                         checkCell.setTextAndCheck(
                                 LocaleController.getString(R.string.EasygramGalleryCamera),
                                 isGalleryCameraEnabled(),
+                                false
+                        );
+                    } else if (position == hideKeyboardOnScrollRow) {
+                        checkCell.setTextAndCheck(
+                                LocaleController.getString(R.string.EasygramHideKeyboardOnScroll),
+                                isHideKeyboardOnScrollEnabled(),
                                 false
                         );
                     } else if (position == disableStoriesRow) {

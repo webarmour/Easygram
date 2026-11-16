@@ -11752,7 +11752,7 @@
     <string name="EasygramOther">Advanced</string>
     <string name="EasygramOtherInfo">easygram features</string>
     <string name="EasygramSecretMedia">Secret media tools</string>
-    <string name="EasygramSecretMediaInfo">Work in progress</string>
+    <string name="EasygramSecretMediaInfo">Media actions and viewing after the timer expires</string>
     <string name="EasygramPremiumAccess">Access to premium functions</string>
     <string name="EasygramPremiumAccessInfo">Enables local Premium features in the application.\n\n<b>What works on client (locally):</b>\n• Disabling sponsored messages and channel ads\n• Viewing and downloading Stories in high quality (Full HD)\n• Removal of media and file download speed limits\n• Adding up to 5 accounts in the app\n• Creating up to 30 chat folders and pinning up to 10 chats\n• Extended limits for message length (4096 chars), captions, and profile bio\n• Increased limits for favorite stickers (up to 100) and GIFs (up to 400)\n• Enabling custom app icons, chat translation bar, and auto-archive\n\n<b>What does NOT work (enforced by Telegram servers):</b>\n• Sending premium stickers and custom emojis to chats (rejected by server)\n• Voice-to-text message transcription (processed server-side)\n• Saving emoji status to profile on server\n• Uploading files larger than 2 GB (up to 4 GB)\n• Displaying Premium badge (star) to other users\n• Granting channel boosts</string>
     <string name="EasygramDefaultGallery">Gallery app</string>
@@ -11805,6 +11805,8 @@
     <string name="EasygramSendMediaHdInfo">Applies to third-party pickers selected above.</string>
     <string name="EasygramGalleryCamera">Show camera in photo gallery</string>
     <string name="EasygramGalleryCameraInfo">A live camera cell at the start of the gallery in the attach menu. While the camera is on, some phones limit the screen to 60 Hz.</string>
+    <string name="EasygramHideKeyboardOnScroll">Hide keyboard on scroll</string>
+    <string name="EasygramHideKeyboardOnScrollInfo">Scrolling up through a chat with the keyboard open closes the keyboard.</string>
     <string name="EasygramPhotoMenu">Photo menu options</string>
     <string name="EasygramPhotoMenuInfo">Toggle options and drag to reorder items in the photo viewer overflow menu.</string>
     <string name="PhotoCopiedToClipboard">Photo copied to clipboard</string>

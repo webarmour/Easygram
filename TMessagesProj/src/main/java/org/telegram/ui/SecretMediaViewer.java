@@ -544,8 +544,6 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
     @SuppressWarnings("unchecked")
     @Override
     public void didReceivedNotification(int id, int account, Object... args) {
-        // Keep the viewer open. Message deletion only changes the available
-        // menu actions, never closes the currently displayed media.
         if (currentMessageObject == null || secretDeleteTimer == null) {
             return;
         }
@@ -556,7 +554,11 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
             if (!scheduled && channelId == 0) {
                 ArrayList<Integer> deleted = (ArrayList<Integer>) args[0];
                 if (deleted.contains(currentMessageObject.getId())) {
-                    secretDeleteTimer.markExpired();
+                    if (OtherSettingsActivity.isSecretMediaActionsEnabled()) {
+                        secretDeleteTimer.markExpired();
+                    } else {
+                        closePhoto(true, true);
+                    }
                 }
             }
             return;
@@ -565,7 +567,11 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
         if (id == NotificationCenter.updateMessageMedia) {
             TLRPC.Message updated = (TLRPC.Message) args[0];
             if (updated != null && currentMessageObject.getId() == updated.id) {
-                secretDeleteTimer.markExpired();
+                if (OtherSettingsActivity.isSecretMediaActionsEnabled()) {
+                    secretDeleteTimer.markExpired();
+                } else {
+                    closePhoto(true, true);
+                }
             }
             return;
         }
@@ -954,7 +960,7 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
         final int touchSlop = ViewConfiguration.get(activity).getScaledTouchSlop();
         secretDeleteTimer.setClickable(true);
         secretDeleteTimer.setOnTouchListener((view, event) -> {
-            if (!OtherSettingsActivity.SECRET_MEDIA_ACTIONS_ENABLED) {
+            if (!OtherSettingsActivity.isSecretMediaActionsEnabled()) {
                 cancelMediaMenuHold();
                 return false;
             }
@@ -1802,7 +1808,7 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
     }
 
     private void showMediaActionsMenu() {
-        if (!OtherSettingsActivity.SECRET_MEDIA_ACTIONS_ENABLED
+        if (!OtherSettingsActivity.isSecretMediaActionsEnabled()
                 || parentActivity == null || secretDeleteTimer == null
                 || !isPhotoVisible || isMediaActionsMenuShowing()) {
             return;

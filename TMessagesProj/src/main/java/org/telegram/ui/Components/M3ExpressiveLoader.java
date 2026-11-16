@@ -212,16 +212,27 @@ public final class M3ExpressiveLoader {
      * (the spin is invisible then, so it just stops). The caller draws the light "not downloaded" disc below.
      */
     public static void drawGrowingShape(Canvas canvas, Path path, float cx, float cy, float outer, float progress, Paint fill) {
+        buildGrowingShape(path, cx, cy, outer, progress, 1f);
+        canvas.drawPath(path, fill);
+    }
+
+    /**
+     * Builds the growing shape into {@code path}. {@code mix} blends it with the plain round button
+     * (0 = round button of radius {@code outer}, 1 = the progress shape), for smooth enter / leave transitions.
+     */
+    public static void buildGrowingShape(Path path, float cx, float cy, float outer, float progress, float mix) {
         progress = Math.max(0f, Math.min(1f, progress));
+        mix = Math.max(0f, Math.min(1f, mix));
         float grow = (float) (1 - Math.pow(1 - progress, 1.6));
-        float radius = outer * (15f + 7f * grow) / 22f;
-        float depth = outer * 2.6f / 22f * (1f - grow); // soft, rounded scallops
+        float shapeRadius = outer * (15f + 7f * grow) / 22f;
+        float radius = outer + (shapeRadius - outer) * mix;
+        float depth = outer * 2.6f / 22f * (1f - grow) * mix; // soft, rounded scallops
+        path.rewind();
         if (depth < 0.5f) {
-            canvas.drawCircle(cx, cy, radius, fill);
+            path.addCircle(cx, cy, radius, Path.Direction.CW);
             return;
         }
         double spin = 2 * Math.PI * (SystemClock.uptimeMillis() % GROW_SPIN_MS) / GROW_SPIN_MS;
-        path.rewind();
         for (int i = 0; i < GROW_SAMPLES; i++) {
             double theta = 2 * Math.PI * i / GROW_SAMPLES; // clockwise from 12 o'clock
             double g = (1 - Math.cos((theta - spin) * GROW_WAVES)) / 2;
@@ -231,6 +242,5 @@ public final class M3ExpressiveLoader {
             if (i == 0) path.moveTo(x, y); else path.lineTo(x, y);
         }
         path.close();
-        canvas.drawPath(path, fill);
     }
 }

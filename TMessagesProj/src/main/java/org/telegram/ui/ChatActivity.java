@@ -7070,6 +7070,7 @@ public class ChatActivity extends BaseFragment implements
             private float totalDy = 0;
             private boolean scrollUp;
             private final int scrollValue = AndroidUtilities.dp(100);
+            private int hideKeyboardScrollDy; // easygram: upward drag distance towards closing the keyboard
 
             @Override
             public void onScrollStateChanged(RecyclerView recyclerView, int newState) {
@@ -7104,6 +7105,7 @@ public class ChatActivity extends BaseFragment implements
                         wasManualScroll = true;
                         scrollingChatListView = true;
                     } else if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
+                        hideKeyboardScrollDy = 0;
                         pollHintCell = null;
                         wasManualScroll = true;
                         scrollingFloatingDate = true;
@@ -7135,6 +7137,18 @@ public class ChatActivity extends BaseFragment implements
                     chatListThanosEffect.scroll(dx, dy);
                 }
                 scrollUp = dy < 0;
+                // easygram: the user drags up through the chat with the keyboard open -> close the keyboard
+                if (dy < 0 && recyclerView.getScrollState() == RecyclerView.SCROLL_STATE_DRAGGING
+                        && OtherSettingsActivity.isHideKeyboardOnScrollEnabled()
+                        && chatActivityEnterView != null && isKeyboardVisible()) {
+                    hideKeyboardScrollDy -= dy;
+                    if (hideKeyboardScrollDy >= AndroidUtilities.dp(24)) { // a deliberate scroll, not a jitter of the finger
+                        hideKeyboardScrollDy = 0;
+                        chatActivityEnterView.closeKeyboard();
+                    }
+                } else if (dy > 0) {
+                    hideKeyboardScrollDy = 0;
+                }
                 int firstVisibleItem = chatLayoutManager.findFirstVisibleItemPosition();
                 if (dy != 0 && (scrollByTouch && recyclerView.getScrollState() == RecyclerView.SCROLL_STATE_SETTLING) || recyclerView.getScrollState() == RecyclerView.SCROLL_STATE_DRAGGING) {
                     if (forceNextPinnedMessageId != 0) {

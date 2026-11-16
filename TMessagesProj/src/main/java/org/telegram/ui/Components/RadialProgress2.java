@@ -59,20 +59,34 @@ public class RadialProgress2 {
     private void updateM3Bounce() {
         int next = mediaActionDrawable.getCurrentIcon();
         if (next != m3LastNextIcon) {
-            if (m3LastNextIcon != -1 && M3ExpressiveLoader.enabled()
+            if (m3LastNextIcon != -1
                     && mediaActionDrawable.getTransitionProgress() < 1f // animated change, not a recycled cell
                     && isDownloadSuccess(mediaActionDrawable.getPreviousIcon(), next)) {
-                m3BounceStart = android.os.SystemClock.uptimeMillis();
-                if (parent != null && org.telegram.ui.OtherSettingsActivity.isDownloadHapticEnabled()) {
-                    try { // soft "knock" together with the bounce
-                        parent.performHapticFeedback(android.os.Build.VERSION.SDK_INT >= 30
-                                        ? android.view.HapticFeedbackConstants.CONFIRM : android.view.HapticFeedbackConstants.KEYBOARD_TAP,
-                                android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
-                    } catch (Exception ignored) {
-                    }
-                }
+                notifyM3Success();
             }
             m3LastNextIcon = next;
+        }
+    }
+
+    /**
+     * Success feedback (bounce + optional haptic tap) of the M3E button. Called on its own when a download finishes;
+     * the owner calls it for cases the icon change can't tell apart, e.g. a sent photo whose button just hides.
+     */
+    public void notifyM3Success() {
+        if (!M3ExpressiveLoader.enabled() || m3BounceStart >= 0) {
+            return; // the bounce of this very success is already running
+        }
+        m3BounceStart = android.os.SystemClock.uptimeMillis();
+        if (parent != null) {
+            M3ExpressiveTrack.invalidateNextFrame(parent);
+            if (org.telegram.ui.OtherSettingsActivity.isDownloadHapticEnabled()) {
+                try { // soft "knock" together with the bounce
+                    parent.performHapticFeedback(android.os.Build.VERSION.SDK_INT >= 30
+                                    ? android.view.HapticFeedbackConstants.CONFIRM : android.view.HapticFeedbackConstants.KEYBOARD_TAP,
+                            android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+                } catch (Exception ignored) {
+                }
+            }
         }
     }
 
@@ -88,19 +102,66 @@ public class RadialProgress2 {
         return 1f + 0.25f * (float) (Math.exp(-4 * t) * Math.sin(2.5 * Math.PI * t));
     }
 
-    private void drawM3DownloadShape(Canvas canvas, int centerX, int centerY) {
+    // easygram: smooth morph between the plain round button and the progress shape (both directions)
+    private static final float M3_SHAPE_MIX_MS = 320f;
+    private float m3ShapeMixT; // linear 0..1, eased when drawn
+    private long m3ShapeMixLastTime;
+    /** Progress the shape had while loading: kept when leaving, as a cancel resets the drawable's progress to 0. */
+    private float m3ShapeLastProgress;
+    private android.graphics.Path m3TrackPath;
+    private Paint m3TrackPaint;
+    private int m3CircleBaseAlpha = 255;
+
+    private float updateM3ShapeMix(boolean target) {
+        long now = android.os.SystemClock.uptimeMillis();
+        long dt = m3ShapeMixLastTime == 0 ? 16 : Math.min(32, now - m3ShapeMixLastTime);
+        m3ShapeMixLastTime = now;
+        float step = dt / M3_SHAPE_MIX_MS;
+        m3ShapeMixT = target ? Math.min(1f, m3ShapeMixT + step) : Math.max(0f, m3ShapeMixT - step);
+        if (m3ShapeMixT == (target ? 1f : 0f)) {
+            m3ShapeMixLastTime = 0; // settled: the next change starts fresh, not with a stale frame time
+        }
+        return CubicBezierInterpolator.EASE_BOTH.getInterpolation(m3ShapeMixT);
+    }
+
+    /** Non-animated icon change (bind, recycle): no morph, the shape is just there or not. */
+    private void snapM3ShapeMix(int icon) {
+        m3ShapeMixT = isCancelIcon(icon) ? 1f : 0f;
+        m3ShapeMixLastTime = 0;
+        if (isCancelIcon(icon)) {
+            m3ShapeLastProgress = 0f;
+        }
+    }
+
+    private void drawM3DownloadShape(Canvas canvas, int centerX, int centerY, float mix, int iconColor, float alphaScale) {
         if (m3ShapePath == null) m3ShapePath = new android.graphics.Path();
         int alpha = circlePaint.getAlpha();
         circlePaint.setAlpha((int) (alpha * 0.22f)); // light disc: the part still to download
         canvas.drawCircle(centerX, centerY, circleRadius, circlePaint);
         circlePaint.setAlpha(alpha);
-        float progress = mediaActionDrawable.getAnimatedDownloadProgress();
-        int previous = mediaActionDrawable.getPreviousIcon(), next = mediaActionDrawable.getCurrentIcon();
-        if (isDownloadSuccess(previous, next)) {
-            // finished: grow the rest of the way into the plain circle while the icon changes
-            progress += (1f - progress) * mediaActionDrawable.getTransitionProgress();
+        float progress;
+        if (isCancelIcon(mediaActionDrawable.getCurrentIcon())) {
+            progress = m3ShapeLastProgress = mediaActionDrawable.getAnimatedDownloadProgress();
+        } else {
+            progress = m3ShapeLastProgress; // leaving (cancelled or finished): the mix grows it into the circle
         }
-        M3ExpressiveLoader.drawGrowingShape(canvas, m3ShapePath, centerX, centerY, circleRadius, progress, circlePaint);
+        M3ExpressiveLoader.buildGrowingShape(m3ShapePath, centerX, centerY, circleRadius, progress, mix);
+        if (m3CircleBaseAlpha < 250) {
+            // translucent button over media: on a dark photo the dark shape is lost on the dark disc, so the part
+            // still to load gets a light frosted track (ring between the shape and the button edge)
+            if (m3TrackPath == null) {
+                m3TrackPath = new android.graphics.Path();
+                m3TrackPath.setFillType(android.graphics.Path.FillType.EVEN_ODD);
+                m3TrackPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            }
+            m3TrackPath.rewind();
+            m3TrackPath.addCircle(centerX, centerY, circleRadius, android.graphics.Path.Direction.CW);
+            m3TrackPath.addPath(m3ShapePath);
+            m3TrackPaint.setColor(iconColor);
+            m3TrackPaint.setAlpha((int) (Color.alpha(iconColor) * 0.3f * alphaScale));
+            canvas.drawPath(m3TrackPath, m3TrackPaint);
+        }
+        canvas.drawPath(m3ShapePath, circlePaint);
         if (parent != null) {
             M3ExpressiveTrack.invalidateNextFrame(parent); // keep it spinning
         }
@@ -343,6 +404,9 @@ public class RadialProgress2 {
             return;
         }
         mediaActionDrawable.setIcon(icon, animated);
+        if (!animated) {
+            snapM3ShapeMix(icon);
+        }
         if (parent != null) {
             if (!animated) {
                 parent.invalidate();
@@ -388,6 +452,7 @@ public class RadialProgress2 {
 
     public boolean swapIcon(int icon) {
         if (mediaActionDrawable.setIcon(icon, false)) {
+            snapM3ShapeMix(icon);
             return true;
         }
         return false;
@@ -445,6 +510,8 @@ public class RadialProgress2 {
 
     private void drawInternal(Canvas canvas) {
         if (mediaActionDrawable.getCurrentIcon() == MediaActionDrawable.ICON_NONE && mediaActionDrawable.getTransitionProgress() >= 1.0f || progressRect.isEmpty()) {
+            m3ShapeMixT = 0f; // hidden: don't resume a half-done morph when it shows up again
+            m3ShapeMixLastTime = 0;
             return;
         }
 
@@ -512,6 +579,7 @@ public class RadialProgress2 {
         }
 
         int originalAlpha = circlePaint.getAlpha();
+        m3CircleBaseAlpha = originalAlpha;
         circlePaint.setAlpha((int) (originalAlpha * wholeAlpha * overrideAlpha * overrideCircleAlpha));
         originalAlpha = circleMiniPaint.getAlpha();
         circleMiniPaint.setAlpha((int) (originalAlpha * wholeAlpha * overrideAlpha));
@@ -563,10 +631,11 @@ public class RadialProgress2 {
         final float iconTransition = mediaActionDrawable.getTransitionProgress();
         // also while the cancel icon is still fading out, otherwise the drawable's own wavy ring shows up for a moment
         final boolean leavingCancel = isCancelIcon(previousIcon) && iconTransition < 1f;
-        m3ShapeProgress = M3ExpressiveLoader.enabled()
-                && (isCancelIcon(currentIcon) || leavingCancel)
+        final boolean m3ShapeAllowed = M3ExpressiveLoader.enabled()
                 && drawCircle && drawBackground && backgroundStroke == 0 && !overlayImageView.hasBitmapImage()
                 && !((drawMiniIcon || circleCrossfadeColorKey >= 0) && miniDrawCanvas != null);
+        final float m3ShapeMix = updateM3ShapeMix(m3ShapeAllowed && isCancelIcon(currentIcon));
+        m3ShapeProgress = m3ShapeAllowed && (isCancelIcon(currentIcon) || leavingCancel || m3ShapeMix > 0f);
         mediaActionDrawable.setM3ProgressInContainer(m3ShapeProgress);
         final boolean useM3 = expressive
                 && (currentIcon == MediaActionDrawable.ICON_PLAY || currentIcon == MediaActionDrawable.ICON_PAUSE)
@@ -628,7 +697,7 @@ public class RadialProgress2 {
                         if (backgroundStroke != 0) {
                             canvas.drawCircle(centerX, centerY, (circleRadius - AndroidUtilities.dp(3.5f)), circlePaint);
                         } else if (m3ShapeProgress) {
-                            drawM3DownloadShape(canvas, centerX, centerY);
+                            drawM3DownloadShape(canvas, centerX, centerY, m3ShapeMix, color, wholeAlpha * overrideAlpha * overrideCircleAlpha);
                         } else {
                             canvas.drawCircle(centerX, centerY, circleRadius, circlePaint);
                         }

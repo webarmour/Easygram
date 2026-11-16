@@ -108,6 +108,7 @@ import org.telegram.ui.MainTabsActivity;
 import org.telegram.ui.PremiumPreviewFragment;
 import org.telegram.ui.ProfileActivity;
 import org.telegram.ui.SecretMediaViewer;
+import org.telegram.ui.OtherSettingsActivity;
 import org.telegram.ui.Stars.BotStarsController;
 import org.telegram.ui.Stars.StarsController;
 import org.telegram.ui.Stories.StoriesController;
@@ -8324,7 +8325,7 @@ public class MessagesController extends BaseController implements NotificationCe
                     for (int a = 0, N = taskMedia.size(); a < N; a++) {
                         long dialogId = taskMedia.keyAt(a);
                         ArrayList<Integer> mids = taskMedia.valueAt(a);
-                        if (checkViewer && viewerObject != null && viewerObject.currentAccount == currentAccount && viewerObject.getDialogId() == dialogId && mids.contains(viewerObject.getId())) {
+                        if (OtherSettingsActivity.isSecretMediaActionsEnabled() && checkViewer && viewerObject != null && viewerObject.currentAccount == currentAccount && viewerObject.getDialogId() == dialogId && mids.contains(viewerObject.getId())) {
                             final int id = viewerObject.getId();
                             mids.remove((Integer) id);
                             viewerObject.forceExpired = true;

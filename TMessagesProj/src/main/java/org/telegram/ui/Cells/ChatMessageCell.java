@@ -1288,6 +1288,8 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
     private boolean hasEmbed;
 
     private boolean wasSending;
+    /** easygram: message whose photo is uploading with the cancel button shown, for the M3E success feedback. */
+    private MessageObject m3UploadingMessage;
     boolean checkOnlyButtonPressed;
     int buttonX;
     int buttonY;
@@ -14556,6 +14558,17 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         if (animated && (PhotoViewer.isShowingImage(currentMessageObject) || !attachedToWindow)) {
             animated = false;
         }
+        if (m3UploadingMessage != null && (m3UploadingMessage != currentMessageObject
+                || !currentMessageObject.isSending() && !currentMessageObject.isEditing())) {
+            // easygram: a single photo is sent - its button just hides (cancel -> none), which the progress
+            // can't tell from other changes, so the M3E bounce + haptic is started from here
+            int icon = radialProgress.getIcon();
+            if (m3UploadingMessage == currentMessageObject && attachedToWindow && !currentMessageObject.isSendError()
+                    && (icon == MediaActionDrawable.ICON_CANCEL || icon == MediaActionDrawable.ICON_CANCEL_FILL)) {
+                radialProgress.notifyM3Success();
+            }
+            m3UploadingMessage = null;
+        }
         drawRadialCheckBackground = false;
         String fileName = null;
         boolean fileExists = false;
@@ -14797,8 +14810,10 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                         drawRadialCheckBackground = true;
                         getIconForCurrentState();
                         radialProgress.setIcon(MediaActionDrawable.ICON_CHECK, ifSame, animated);
+                        m3UploadingMessage = null; // cancel -> check already gives the success feedback
                     } else {
                         radialProgress.setIcon(getIconForCurrentState(), ifSame, animated);
+                        m3UploadingMessage = buttonState == 1 ? currentMessageObject : null;
                     }
                     if (needProgress) {
                         long[] progress = ImageLoader.getInstance().getFileProgressSizes(currentMessageObject.messageOwner.attachPath);
@@ -15454,6 +15469,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                 drawRadialCheckBackground = true;
                 getIconForCurrentState();
                 radialProgress.setIcon(MediaActionDrawable.ICON_CHECK, false, true);
+                m3UploadingMessage = null;
             }
         }
 
