@@ -448,6 +448,7 @@
     <string name="EasygramAsrTierLite">Лёгкая</string>
     <string name="EasygramAsrTierOptimal">Оптимальная</string>
     <string name="EasygramAsrTierMax">Максимальная</string>
+    <string name="EasygramAsrUpdateAvailable">Доступно обновление</string>
     <string name="EasygramAsrDownload">Скачать</string>
     <string name="EasygramAsrNotDownloaded">%1$s · не загружена</string>
     <string name="EasygramAsrDownloaded">Загружена · %1$s</string>

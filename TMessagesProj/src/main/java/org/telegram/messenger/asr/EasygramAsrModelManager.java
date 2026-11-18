@@ -38,11 +38,11 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * <p>Files live in {@code files/easygram/asr/<model id>/}, outside of the cache Telegram clears. A file is
  * downloaded into {@code <name>.part} (resumed with an HTTP Range request after an interruption), checked against
  * its size and SHA-256 and only then renamed; {@code ready} is written last, holding the hashes of the catalog
- * entry, so a model whose catalog entry changed is no longer reported as ready.</p>
+ * entry. A verified replacement becomes active by switching the saved directory.</p>
  */
 public final class EasygramAsrModelManager {
 
-    public static final int STATE_NONE = 0, STATE_QUEUED = 1, STATE_DOWNLOADING = 2, STATE_READY = 3;
+    public static final int STATE_NONE = 0, STATE_QUEUED = 1, STATE_DOWNLOADING = 2, STATE_READY = 3, STATE_UPDATE = 4;
 
     public static final int ERROR_NONE = 0, ERROR_NETWORK = 1, ERROR_NO_SPACE = 2, ERROR_CHECKSUM = 3, ERROR_WIFI_REQUIRED = 4;
 
@@ -55,11 +55,13 @@ public final class EasygramAsrModelManager {
         final EasygramAsrModels.Model model;
         volatile boolean cancelled;
         volatile long downloaded;
+        volatile long total;
         volatile boolean started;
         volatile boolean allowMetered;
 
         Task(EasygramAsrModels.Model model) {
             this.model = model;
+            total = model.totalSize();
         }
     }
 
@@ -90,7 +92,37 @@ public final class EasygramAsrModelManager {
     }
 
     public static File modelDir(EasygramAsrModels.Model m) {
-        return new File(baseDir(), m.id);
+        return new File(baseDir(), prefs().getString("dir_" + m.id, m.id));
+    }
+
+    private static android.content.SharedPreferences prefs() {
+        return ApplicationLoader.applicationContext.getSharedPreferences("asr_versions", Context.MODE_PRIVATE);
+    }
+
+    static EasygramAsrModels.Model latest(EasygramAsrModels.Model model) {
+        return EasygramAsrCatalog.resolve(model, prefs().getString("catalog", ""));
+    }
+
+    public static long downloadSize(EasygramAsrModels.Model model) {
+        return latest(model).totalSize();
+    }
+
+    public static void checkUpdates() {
+        new Thread(() -> {
+            try {
+                refreshCatalog();
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+        }, "asrCatalog").start();
+    }
+
+    private static synchronized void refreshCatalog() throws Exception {
+        String json = EasygramAsrCatalog.fetch();
+        if (json != null && !json.equals(prefs().getString("catalog", ""))) {
+            prefs().edit().putString("catalog", json).apply();
+            for (EasygramAsrModels.Model model : EasygramAsrModels.all()) notifyChanged(model.id);
+        }
     }
 
     private static String readySignature(EasygramAsrModels.Model m) {
@@ -113,6 +145,7 @@ public final class EasygramAsrModelManager {
         if (marker.exists()) {
             try {
                 String content = new String(readAll(marker), StandardCharsets.UTF_8);
+                m = EasygramAsrCatalog.resolve(m, prefs().getString("installed_" + m.id, ""));
                 ready = content.equals(readySignature(m));
                 if (ready) {
                     for (EasygramAsrModels.ModelFile f : m.files) {
@@ -140,7 +173,9 @@ public final class EasygramAsrModelManager {
                 return t.started ? STATE_DOWNLOADING : STATE_QUEUED;
             }
         }
-        return isReady(m) ? STATE_READY : STATE_NONE;
+        if (!isReady(m)) return STATE_NONE;
+        EasygramAsrModels.Model installed = EasygramAsrCatalog.resolve(m, prefs().getString("installed_" + m.id, ""));
+        return readySignature(installed).equals(readySignature(latest(m))) ? STATE_READY : STATE_UPDATE;
     }
 
     /** Downloaded part of the model, 0..1, while it downloads. */
@@ -150,7 +185,7 @@ public final class EasygramAsrModelManager {
             if (t == null) {
                 return isReady(m) ? 1f : 0f;
             }
-            return Math.min(1f, t.downloaded / (float) Math.max(1, m.totalSize()));
+            return Math.min(1f, t.downloaded / (float) Math.max(1, t.total));
         }
     }
 
@@ -196,11 +231,10 @@ public final class EasygramAsrModelManager {
             return ERROR_WIFI_REQUIRED;
         }
         synchronized (tasks) {
-            if (tasks.containsKey(m.id) || isReady(m)) {
+            if (tasks.containsKey(m.id) || getState(m) == STATE_READY) {
                 return ERROR_NONE;
             }
             Task task = new Task(m);
-            task.downloaded = partialBytes(m);
             task.allowMetered = allowMetered;
             tasks.put(m.id, task);
             lastErrors.remove(m.id);
@@ -230,7 +264,9 @@ public final class EasygramAsrModelManager {
     public static void delete(EasygramAsrModels.Model m) {
         cancel(m);
         EasygramAsrEngine.releaseIfLoaded(m);
-        deleteRecursive(modelDir(m));
+        deleteRecursive(new File(baseDir(), m.id));
+        deleteRecursive(new File(baseDir(), m.id + ".a"));
+        deleteRecursive(new File(baseDir(), m.id + ".b"));
         synchronized (readyCache) {
             readyCache.put(m.id, false);
         }
@@ -262,15 +298,14 @@ public final class EasygramAsrModelManager {
         f.delete();
     }
 
-    private static long partialBytes(EasygramAsrModels.Model m) {
+    private static long partialBytes(EasygramAsrModels.Model m, File dir) {
         long sum = 0;
-        File dir = modelDir(m);
         for (EasygramAsrModels.ModelFile f : m.files) {
             File done = new File(dir, f.name);
             if (done.length() == f.size) {
                 sum += f.size;
             } else {
-                sum += Math.min(f.size, new File(dir, f.name + ".part").length());
+                sum += Math.min(f.size, new File(dir, f.name + "." + f.sha256 + ".part").length());
             }
         }
         return sum;
@@ -315,12 +350,17 @@ public final class EasygramAsrModelManager {
     }
 
     private static int run(Task task) throws Exception {
-        EasygramAsrModels.Model m = task.model;
-        File dir = modelDir(m);
+        refreshCatalog();
+        String catalog = prefs().getString("catalog", "");
+        EasygramAsrModels.Model m = EasygramAsrCatalog.resolve(task.model, catalog);
+        File previous = modelDir(m);
+        File dir = new File(baseDir(), previous.getName().equals(m.id + ".a") ? m.id + ".b" : m.id + ".a");
+        task.total = m.totalSize();
+        task.downloaded = partialBytes(m, dir);
         if (!dir.isDirectory() && !dir.mkdirs()) {
             return ERROR_NO_SPACE;
         }
-        long remaining = m.totalSize() - partialBytes(m);
+        long remaining = m.totalSize() - task.downloaded;
         if (new StatFs(dir.getAbsolutePath()).getAvailableBytes() < remaining + 64L * 1024 * 1024) {
             return ERROR_NO_SPACE;
         }
@@ -336,7 +376,7 @@ public final class EasygramAsrModelManager {
             target.delete();
             int error = ERROR_NETWORK;
             for (String url : f.urls) {
-                error = downloadFile(task, f, url, new File(dir, f.name + ".part"), target);
+                error = downloadFile(task, f, url, new File(dir, f.name + "." + f.sha256 + ".part"), target);
                 if (error == ERROR_NONE || task.cancelled || error == ERROR_WIFI_REQUIRED) {
                     break;
                 }
@@ -348,8 +388,15 @@ public final class EasygramAsrModelManager {
         try (FileOutputStream out = new FileOutputStream(new File(dir, "ready"))) {
             out.write(readySignature(m).getBytes(StandardCharsets.UTF_8));
         }
-        synchronized (readyCache) {
-            readyCache.put(m.id, true);
+        synchronized (tasks) {
+            if (task.cancelled) return ERROR_NONE;
+            if (!prefs().edit().putString("dir_" + m.id, dir.getName())
+                    .putString("installed_" + m.id, catalog).commit()) return ERROR_NO_SPACE;
+            EasygramAsrEngine.releaseIfLoaded(task.model);
+            deleteRecursive(previous);
+            synchronized (readyCache) {
+                readyCache.put(m.id, true);
+            }
         }
         return ERROR_NONE;
     }

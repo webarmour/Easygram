@@ -8,20 +8,17 @@
 #
 """Builds the mirror of the on-device speech recognition models for the GitHub release asr-models-v1.
 
-The app downloads every model file from
-https://github.com/webarmour/Easygram/releases/download/asr-models-v1/<model id>--<file name>
-(and falls back to Hugging Face where the file exists there). This script fetches the upstream sherpa-onnx
-archives, extracts the files the app needs, checks them against the sizes and SHA-256 hashes written in
-EasygramAsrModels.java and puts them, renamed, together with the model licenses into an output directory.
-
-    python3 Tools/asr_models_mirror.py [--out DIR] [--only ID[,ID...]] [--upload]
-
---only limits the work to some models (e.g. --only lid-whisper-tiny), --upload creates the release (if missing)
-and uploads the files with the GitHub CLI (gh).
+Build v1 assets with python3 Tools/asr_models_mirror.py [--only ID] [--upload].
+For a new release, prepare a complete directory of <model id>--<file name> assets
+and licenses, replace the changed files, then run:
+    python3 Tools/asr_models_mirror.py --out DIR --tag asr-models-v2 --upload
+Use a fresh numbered tag each time. The stable catalog.json asset on v1 is
+updated only after the new release has been published.
 """
 
 import argparse
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -80,11 +77,38 @@ def download(url, dest):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--out", default=os.path.join(ROOT, "build", "asr-models-mirror"))
+    parser.add_argument("--tag", default=TAG)
     parser.add_argument("--only", default="")
     parser.add_argument("--upload", action="store_true")
     args = parser.parse_args()
 
     catalog = read_catalog()
+    if args.tag != TAG:
+        if not re.fullmatch(r"asr-models-v[1-9][0-9]*", args.tag) or args.only:
+            parser.error("use a numbered tag and a complete model directory")
+        outputs = []
+        models = {}
+        for model_id, entries in catalog.items():
+            models[model_id] = {}
+            for fname, _, _ in entries:
+                path = os.path.join(args.out, model_id + "--" + fname)
+                size = os.path.getsize(path)
+                if not 0 < size <= 2147483647:
+                    parser.error("invalid model file size: " + path)
+                models[model_id][fname] = {"size": size, "sha256": sha256(path)}
+                outputs.append(path)
+            license_path = os.path.join(args.out, model_id + "--LICENSE")
+            if os.path.isfile(license_path):
+                outputs.append(license_path)
+        index = os.path.join(args.out, "catalog.json")
+        with open(index, "w", encoding="utf-8") as stream:
+            json.dump({"tag": args.tag, "models": models}, stream, indent=2)
+        if args.upload:
+            subprocess.run(["gh", "release", "create", args.tag, "-R", REPO, "--latest=false",
+                            "--title", args.tag, "--notes", "On-device speech recognition models.",
+                            *outputs, index], check=True)
+            subprocess.run(["gh", "release", "upload", TAG, "-R", REPO, "--clobber", index], check=True)
+        return
     if args.only:
         wanted_ids = set(args.only.split(","))
         unknown = wanted_ids - set(catalog)

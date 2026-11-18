@@ -11796,6 +11796,7 @@
     <string name="EasygramAsrTierLite">Lite</string>
     <string name="EasygramAsrTierOptimal">Optimal</string>
     <string name="EasygramAsrTierMax">Maximum</string>
+    <string name="EasygramAsrUpdateAvailable">Update available</string>
     <string name="EasygramAsrDownload">Download</string>
     <string name="EasygramAsrNotDownloaded">%1$s · not downloaded</string>
     <string name="EasygramAsrDownloaded">Downloaded · %1$s</string>

@@ -142,16 +142,20 @@ public class EasygramAsrModelCell extends FrameLayout {
             title.setText(tier + " · " + model.title);
         }
 
-        String size = AndroidUtilities.formatFileSize(model.totalSize());
+        long bytes = EasygramAsrModelManager.downloadSize(model);
+        String size = AndroidUtilities.formatFileSize(bytes);
         String status;
         boolean error = false;
         switch (state) {
+            case EasygramAsrModelManager.STATE_UPDATE:
+                status = LocaleController.getString(R.string.EasygramAsrUpdateAvailable) + " · " + size;
+                break;
             case EasygramAsrModelManager.STATE_READY:
                 status = LocaleController.formatString(R.string.EasygramAsrDownloaded, size);
                 break;
             case EasygramAsrModelManager.STATE_DOWNLOADING:
                 status = LocaleController.formatString(R.string.EasygramAsrDownloading, (int) (targetProgress * 100),
-                        AndroidUtilities.formatFileSize((long) (model.totalSize() * targetProgress)), size);
+                        AndroidUtilities.formatFileSize((long) (bytes * targetProgress)), size);
                 break;
             case EasygramAsrModelManager.STATE_QUEUED:
                 status = LocaleController.formatString(R.string.EasygramAsrQueued, size);
@@ -168,6 +172,16 @@ public class EasygramAsrModelCell extends FrameLayout {
                 } else {
                     status = LocaleController.formatString(R.string.EasygramAsrNotDownloaded, size);
                 }
+            }
+        }
+        if (state == EasygramAsrModelManager.STATE_UPDATE) {
+            int lastError = EasygramAsrModelManager.getLastError(model);
+            if (lastError != EasygramAsrModelManager.ERROR_NONE) {
+                error = true;
+                int message = lastError == EasygramAsrModelManager.ERROR_NO_SPACE ? R.string.EasygramAsrErrorNoSpace
+                        : lastError == EasygramAsrModelManager.ERROR_CHECKSUM ? R.string.EasygramAsrErrorChecksum
+                        : R.string.EasygramAsrErrorNetwork;
+                status += " · " + LocaleController.getString(message);
             }
         }
         StringBuilder sb = new StringBuilder(status);
@@ -376,6 +390,13 @@ public class EasygramAsrModelCell extends FrameLayout {
                     }
                     animating = true;
                 }
+            } else if (state == EasygramAsrModelManager.STATE_UPDATE) {
+                icon.setColor(accent);
+                float rIcon = dp(8);
+                tmp.set(cx - rIcon, cy - rIcon, cx + rIcon, cy + rIcon);
+                canvas.drawArc(tmp, 0, 300, false, icon);
+                canvas.drawLine(cx + rIcon / 2, cy - rIcon, cx + rIcon / 2, cy - dp(3), icon);
+                canvas.drawLine(cx + rIcon / 2, cy - dp(3), cx - dp(1), cy - dp(4), icon);
             } else if (state == EasygramAsrModelManager.STATE_READY && mix <= 0f) {
                 drawTrash(canvas, cx, cy, 1f, 1f);
             } else {

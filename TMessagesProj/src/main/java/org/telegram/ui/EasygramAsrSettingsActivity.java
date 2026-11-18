@@ -105,6 +105,7 @@ public class EasygramAsrSettingsActivity extends BaseFragment implements Easygra
     public boolean onFragmentCreate() {
         updateRows();
         EasygramAsrModelManager.addListener(this);
+        EasygramAsrModelManager.checkUpdates();
         return super.onFragmentCreate();
     }
 
@@ -213,6 +214,8 @@ public class EasygramAsrSettingsActivity extends BaseFragment implements Easygra
                 selectModel(model);
             }
             startDownload(model);
+        } else if (state == EasygramAsrModelManager.STATE_UPDATE) {
+            startDownload(model);
         } else if (state == EasygramAsrModelManager.STATE_READY) {
             AlertDialog dialog = new AlertDialog.Builder(getParentActivity())
                     .setTitle(LocaleController.getString(R.string.Delete))
@@ -234,7 +237,7 @@ public class EasygramAsrSettingsActivity extends BaseFragment implements Easygra
         if (EasygramAsrModelManager.download(model, false) == EasygramAsrModelManager.ERROR_WIFI_REQUIRED) {
             AlertDialog dialog = new AlertDialog.Builder(getParentActivity())
                     .setTitle(LocaleController.getString(R.string.EasygramAsrMeteredTitle))
-                    .setMessage(LocaleController.formatString(R.string.EasygramAsrMeteredText, AndroidUtilities.formatFileSize(model.totalSize())))
+                    .setMessage(LocaleController.formatString(R.string.EasygramAsrMeteredText, AndroidUtilities.formatFileSize(EasygramAsrModelManager.downloadSize(model))))
                     .setPositiveButton(LocaleController.getString(R.string.EasygramAsrDownload), (d, w) -> EasygramAsrModelManager.download(model, true))
                     .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
                     .create();
