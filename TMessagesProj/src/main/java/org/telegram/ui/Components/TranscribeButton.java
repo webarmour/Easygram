@@ -112,7 +112,7 @@ public class TranscribeButton {
 
         this.isOpen = false;
         this.shouldBeOpen = false;
-        premium = parent.getMessageObject() != null && UserConfig.getInstance(parent.getMessageObject().currentAccount).isPremium();
+        premium = parent.getMessageObject() != null && hasRealPremium(parent.getMessageObject().currentAccount);
 
         loadingFloat = new AnimatedFloat(parent, 250, CubicBezierInterpolator.EASE_OUT_QUINT);
         animatedDrawLock = new AnimatedFloat(parent, 250, CubicBezierInterpolator.EASE_OUT_QUINT);
@@ -128,7 +128,17 @@ public class TranscribeButton {
         }
     }
 
+    // easygram: M3E loader inside the button and a bounce when the transcription is ready
+    private M3ExpressiveLoader.Morph m3Morph;
+    private long m3BounceStart = -1;
+
     public void setLoading(boolean loading, boolean animated) {
+        if (this.loading && !loading && animated && M3ExpressiveLoader.enabled()) {
+            m3BounceStart = SystemClock.uptimeMillis();
+        }
+        if (!this.loading && loading && m3Morph != null) {
+            m3Morph.reset();
+        }
         this.loading = loading;
         seekBar.setLoading(loading);
         if (!animated) {
@@ -207,9 +217,16 @@ public class TranscribeButton {
         }
         clickedToOpen = false;
         boolean processClick, toOpen = !shouldBeOpen;
+        if (BuildVars.LOGS_ENABLED) {
+            MessageObject mo = parent.getMessageObject();
+            FileLog.d("easygram asr: tap open=" + shouldBeOpen + " loading=" + loading + " premium=" + premium
+                    + " local=" + org.telegram.messenger.asr.EasygramAsrTranscriber.canTranscribe(mo)
+                    + " transcribing=" + isTranscribing(mo)
+                    + " saved=" + (mo != null && mo.messageOwner != null ? (mo.messageOwner.voiceTranscription == null ? "null" : "\"" + mo.messageOwner.voiceTranscription.length() + " chars\"") + " final=" + mo.messageOwner.voiceTranscriptionFinal : "-"));
+        }
         if (!shouldBeOpen) {
             processClick = !loading;
-            if ((premium || canTranscribeTrial(parent.getMessageObject())) && parent.getMessageObject().isSent()) {
+            if ((premium || org.telegram.messenger.asr.EasygramAsrTranscriber.canTranscribe(parent.getMessageObject()) || canTranscribeTrial(parent.getMessageObject())) && parent.getMessageObject().isSent()) {
                 setLoading(true, true);
             }
         } else {
@@ -223,7 +240,7 @@ public class TranscribeButton {
         }
         pressed = false;
         if (processClick) {
-            if (!premium && toOpen) {
+            if (!premium && !org.telegram.messenger.asr.EasygramAsrTranscriber.canTranscribe(parent.getMessageObject()) && toOpen) {
                 if (canTranscribeTrial(parent.getMessageObject()) || parent.getMessageObject() != null && parent.getMessageObject().messageOwner != null && !TextUtils.isEmpty(parent.getMessageObject().messageOwner.voiceTranscription)) {
                     transcribePressed(parent.getMessageObject(), toOpen, parent.getDelegate());
                 } else {
@@ -315,6 +332,27 @@ public class TranscribeButton {
     }
 
     public void draw(Canvas canvas, float alpha) {
+        float m3Bounce = 1f;
+        if (m3BounceStart >= 0) {
+            float t = (SystemClock.uptimeMillis() - m3BounceStart) / 520f;
+            if (t >= 1f) {
+                m3BounceStart = -1;
+            } else {
+                m3Bounce = M3ExpressiveLoader.bounce(t, 0.18f);
+                if (parent != null) parent.invalidate();
+            }
+        }
+        if (m3Bounce != 1f) {
+            canvas.save();
+            canvas.scale(m3Bounce, m3Bounce, bounds.centerX(), bounds.centerY());
+            drawInternal(canvas, alpha);
+            canvas.restore();
+        } else {
+            drawInternal(canvas, alpha);
+        }
+    }
+
+    private void drawInternal(Canvas canvas, float alpha) {
         this.pressBounds.set(this.bounds.left - dp(8), this.bounds.top - dp(8), this.bounds.right + dp(8), this.bounds.bottom + dp(8));
         if (boundsPath == null) {
             boundsPath = new Path();
@@ -341,7 +379,16 @@ public class TranscribeButton {
         canvas.restore();
 
         float loadingT = loadingFloat.set(loading ? 1f : 0f);
-        if (loadingT > 0f) {
+        final boolean m3Loader = M3ExpressiveLoader.enabled();
+        if (loadingT > 0f && m3Loader) {
+            // M3E: the shape-morphing loader takes the place of the icon
+            if (m3Morph == null) {
+                m3Morph = new M3ExpressiveLoader.Morph();
+            }
+            float s = CubicBezierInterpolator.EASE_OUT_BACK.getInterpolation(loadingT);
+            m3Morph.draw(canvas, bounds.centerX(), bounds.centerY(), dp(8.5f) * s, Theme.multAlpha(iconColor, alpha * Math.min(1f, loadingT * 1.5f)));
+            parent.invalidate();
+        } else if (loadingT > 0f) {
             float[] segments = getSegments((long) ((SystemClock.elapsedRealtime() - start) * .75f));
 
             if (progressClipPath == null) {
@@ -379,6 +426,11 @@ public class TranscribeButton {
         }
 
         canvas.save();
+        if (m3Loader && loadingT > 0f) {
+            // the icon shrinks away while the M3E loader is shown
+            float iconScale = 1f - loadingT;
+            canvas.scale(iconScale, iconScale, bounds.centerX(), bounds.centerY());
+        }
         canvas.translate(bounds.centerX() + dp(2 - 15), bounds.centerY() + dp(-1 - 12));
         canvas.saveLayerAlpha(0, 0, dp(26), dp(26), 0xFF, Canvas.ALL_SAVE_FLAG);
         if (isOpen) {
@@ -667,6 +719,10 @@ public class TranscribeButton {
     }
 
     private static void transcribePressed(MessageObject messageObject, boolean open, ChatMessageCell.ChatMessageCellDelegate delegate) {
+        transcribePressed(messageObject, open, delegate, false);
+    }
+
+    private static void transcribePressed(MessageObject messageObject, boolean open, ChatMessageCell.ChatMessageCellDelegate delegate, boolean forceServer) {
         if (messageObject == null || messageObject.messageOwner == null || !messageObject.isSent()) {
             return;
         }
@@ -675,14 +731,23 @@ public class TranscribeButton {
         TLRPC.InputPeer peer = MessagesController.getInstance(account).getInputPeer(messageObject.messageOwner.peer_id);
         long dialogId = DialogObject.getPeerDialogId(peer);
         int messageId = messageObject.messageOwner.id;
+        // easygram: an empty saved result ("No words recognized", also what a failed server request leaves behind)
+        // is transcribed again on the device instead of being shown forever
+        final boolean local = !forceServer && org.telegram.messenger.asr.EasygramAsrTranscriber.canTranscribe(messageObject);
         if (open) {
-            if (messageObject.messageOwner.voiceTranscription != null && messageObject.messageOwner.voiceTranscriptionFinal) {
+            if (messageObject.messageOwner.voiceTranscription != null && messageObject.messageOwner.voiceTranscriptionFinal
+                    && !((local || forceServer) && TextUtils.isEmpty(messageObject.messageOwner.voiceTranscription))) {
                 TranscribeButton.openVideoTranscription(messageObject);
                 messageObject.messageOwner.voiceTranscriptionOpen = true;
                 MessagesStorage.getInstance(account).updateMessageVoiceTranscriptionOpen(dialogId, messageId, messageObject.messageOwner);
                 AndroidUtilities.runOnUIThread(() -> {
                     NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.voiceTranscriptionUpdate, messageObject, null, null, (Boolean) true, (Boolean) true);
                 });
+            } else if (local) {
+                if (BuildVars.LOGS_ENABLED) {
+                    FileLog.d("easygram asr: transcribing locally msg_id=" + messageId);
+                }
+                transcribeLocally(messageObject, null, delegate);
             } else {
                 if (BuildVars.LOGS_ENABLED) {
                     FileLog.d("sending Transcription request, msg_id=" + messageId + " dialog_id=" + dialogId);
@@ -695,7 +760,7 @@ public class TranscribeButton {
                 }
                 transcribeOperationsByDialogPosition.put((Integer) reqInfoHash(messageObject), messageObject);
                 int flags = 0;
-                if (!UserConfig.getInstance(account).isPremium()) {
+                if (!hasRealPremium(account)) {
                     flags |= ConnectionsManager.RequestFlagDoNotWaitFloodWait;
                 }
                 ConnectionsManager.getInstance(account).sendRequest(req, (res, err) -> {
@@ -725,6 +790,9 @@ public class TranscribeButton {
                         transcribeOperationsById.put(id, messageObject);
                         messageObject.messageOwner.voiceTranscriptionId = id;
                     } else {
+                        if (BuildVars.LOGS_ENABLED) {
+                            FileLog.d("Transcription request failed: " + (err != null ? err.code + " " + err.text : "no response") + ", msg_id=" + messageId);
+                        }
                         if (err != null && err.text != null) {
                             if (err.text.startsWith("FLOOD_WAIT_")) {
                                 MessagesController.getInstance(account).updateTranscribeAudioTrialCurrentNumber(0);
@@ -758,6 +826,9 @@ public class TranscribeButton {
 
                     MessagesStorage.getInstance(account).updateMessageVoiceTranscription(dialogId, messageId, finalText, messageObject.messageOwner);
                     if (isFinal) {
+                        if (!TextUtils.isEmpty(finalText)) {
+                            EasygramTranscriptionReveal.start(messageObject); // easygram: M3E reveal of a ready result
+                        }
                         AndroidUtilities.runOnUIThread(() -> finishTranscription(messageObject, finalId, finalText), Math.max(0, minDuration - duration));
                     }
                 }, flags);
@@ -772,6 +843,80 @@ public class TranscribeButton {
                 NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.voiceTranscriptionUpdate, messageObject, null, null, (Boolean) false, null);
             });
         }
+    }
+
+    /**
+     * easygram: Premium as the server sees it. The local "Premium access" switch makes {@link UserConfig#isPremium()}
+     * true, but Telegram's servers don't transcribe for it (every request would fail and be saved as
+     * "No words recognized"), so transcription only counts the real subscription.
+     */
+    public static boolean hasRealPremium(int account) {
+        org.telegram.tgnet.TLRPC.User self = UserConfig.getInstance(account).getCurrentUser();
+        return self != null && self.premium;
+    }
+
+    /** Messages for which the "no model for this language" hint was shown: the next tap uses the other model. */
+    private static final java.util.HashSet<Integer> asrLangHintShown = new java.util.HashSet<>();
+
+    /** easygram: transcribes on the device (see org.telegram.messenger.asr); {@code lang} null picks it automatically. */
+    public static void transcribeLocally(MessageObject messageObject, String lang, ChatMessageCell.ChatMessageCellDelegate delegate) {
+        if (messageObject == null || messageObject.messageOwner == null) {
+            return;
+        }
+        if (transcribeOperationsByDialogPosition == null) {
+            transcribeOperationsByDialogPosition = new HashMap<>();
+        }
+        final int account = messageObject.currentAccount;
+        transcribeOperationsByDialogPosition.put((Integer) reqInfoHash(messageObject), messageObject);
+        final int key = reqInfoHash(messageObject);
+        final boolean allowOtherLang = asrLangHintShown.remove(key);
+        org.telegram.messenger.asr.EasygramAsrTranscriber.transcribe(messageObject, lang, allowOtherLang, (text, error, msgLang) -> {
+            if (BuildVars.LOGS_ENABLED) {
+                FileLog.d("easygram asr: result error=" + error + " lang=" + msgLang + " text=" + (text == null ? "null" : text.length() + " chars"));
+            }
+            if (text == null) {
+                if (transcribeOperationsByDialogPosition != null) {
+                    transcribeOperationsByDialogPosition.remove((Integer) reqInfoHash(messageObject));
+                }
+                if (error == org.telegram.messenger.asr.EasygramAsrTranscriber.ERROR_NO_LANG_MODEL) {
+                    if (org.telegram.messenger.asr.EasygramAsrTranscriber.hasServerTranscription(messageObject)) {
+                        // Telegram can transcribe it: better than a model of the wrong language
+                        transcribePressed(messageObject, true, delegate, true);
+                        return;
+                    }
+                    NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.voiceTranscriptionUpdate, messageObject);
+                    asrLangHintShown.add(key);
+                    boolean english = org.telegram.messenger.asr.EasygramAsrModels.LANG_EN.equals(msgLang);
+                    BulletinFactory.global().createSimpleBulletin(R.raw.info,
+                            org.telegram.messenger.LocaleController.getString(english ? R.string.EasygramAsrNoEnModel : R.string.EasygramAsrNoRuModel),
+                            org.telegram.messenger.LocaleController.getString(R.string.EasygramAsrDownload),
+                            () -> {
+                                org.telegram.ui.ActionBar.BaseFragment fragment = org.telegram.ui.LaunchActivity.getSafeLastFragment();
+                                if (fragment != null) {
+                                    fragment.presentFragment(new org.telegram.ui.EasygramAsrSettingsActivity());
+                                }
+                            }).show();
+                    return;
+                }
+                NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.voiceTranscriptionUpdate, messageObject);
+                int res;
+                if (error == org.telegram.messenger.asr.EasygramAsrTranscriber.ERROR_TOO_LONG) {
+                    res = org.telegram.messenger.R.string.EasygramAsrErrorTooLong;
+                } else if (error == org.telegram.messenger.asr.EasygramAsrTranscriber.ERROR_DOWNLOAD) {
+                    res = org.telegram.messenger.R.string.EasygramAsrErrorDownload;
+                } else {
+                    res = org.telegram.messenger.R.string.EasygramAsrError;
+                }
+                BulletinFactory.global().createErrorBulletin(org.telegram.messenger.LocaleController.getString(res)).show();
+                return;
+            }
+            TranscribeButton.openVideoTranscription(messageObject);
+            messageObject.messageOwner.voiceTranscriptionOpen = true;
+            if (!TextUtils.isEmpty(text)) {
+                EasygramTranscriptionReveal.start(messageObject);
+            }
+            finishTranscription(messageObject, 0, text);
+        });
     }
 
     public static boolean finishTranscription(MessageObject messageObject, long transcription_id, String text) {
@@ -857,7 +1002,7 @@ public class TranscribeButton {
         if (messageObject == null || messageObject.messageOwner == null) {
             return false;
         }
-        if (isFreeTranscribeInChat(messageObject)) {
+        if (isFreeTranscribeInChat(messageObject) || org.telegram.messenger.asr.EasygramAsrTranscriber.canTranscribe(messageObject)) {
             return false;
         }
         if (!TextUtils.isEmpty(messageObject.messageOwner.voiceTranscription)) {
@@ -865,7 +1010,7 @@ public class TranscribeButton {
         }
         ConnectionsManager cc = ConnectionsManager.getInstance(messageObject.currentAccount);
         MessagesController mc = MessagesController.getInstance(messageObject.currentAccount);
-        if (UserConfig.getInstance(messageObject.currentAccount).isPremium()) {
+        if (hasRealPremium(messageObject.currentAccount)) {
             return false;
         }
         return mc.transcribeAudioTrialCooldownUntil != 0 && cc.getCurrentTime() <= mc.transcribeAudioTrialCooldownUntil && mc.transcribeAudioTrialCurrentNumber <= 0;

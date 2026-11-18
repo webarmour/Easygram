@@ -17,6 +17,7 @@ configurations.all {
 
 dependencies {
     implementation files('../TMessagesProj/libs/video-message-recorder.aar')
+    implementation files('../TMessagesProj/libs/sherpa-onnx-static-2.0.1-arm.aar')
     implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.1.20'
     implementation project(':TMessagesProj')
     implementation 'com.google.firebase:firebase-analytics'

@@ -11174,7 +11174,9 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             !currentMessageObject.isRepostPreview &&
             (!currentMessageObject.isOutOwner() || currentMessageObject.isSent()) &&
             (
-                UserConfig.getInstance(currentAccount).isPremium()
+                TranscribeButton.hasRealPremium(currentAccount)
+                ||
+                org.telegram.messenger.asr.EasygramAsrTranscriber.canTranscribe(currentMessageObject)
                 ||
                 TranscribeButton.isFreeTranscribeInChat(currentMessageObject)
                 ||
@@ -14247,6 +14249,12 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                         invalidate();
                     }
 
+                    if (needDrawTextDefault && caption && currentMessageObject != null && currentMessageObject.isVoiceTranscriptionOpen()
+                            && currentMessageObject.messageOwner.voiceTranscription != null
+                            && org.telegram.ui.Components.EasygramTranscriptionReveal.draw(this, canvas, currentMessageObject, block.textLayout,
+                                block.charactersOffset, currentMessageObject.messageOwner.voiceTranscription.length())) {
+                        needDrawTextDefault = false; // easygram: M3E "decoding" reveal of a new transcription
+                    }
                     if (needDrawTextDefault) {
                         SpoilerEffect.renderWithRipple(this, invalidateSpoilersParent, blockSpoilersColor, 0, block.spoilersPatchedTextLayout, 0, block.textLayout, block.spoilers, canvas, currentPosition != null);
                     }

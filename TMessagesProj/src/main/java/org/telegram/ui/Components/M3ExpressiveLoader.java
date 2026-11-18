@@ -194,6 +194,61 @@ public final class M3ExpressiveLoader {
         paint.setAlpha(alpha);
     }
 
+    // ---------------------------------------------------------------- wavy linear progress
+
+    private static final long LINEAR_WAVE_PERIOD_MS = 1300;
+
+    /**
+     * M3 wavy linear progress indicator between {@code left} and {@code right} on the line {@code cy}: a travelling
+     * wave up to {@code progress} (its amplitude tapers in at the start and next to the head), a gap, the flat track
+     * and the stop dot at its end. {@code paint} must be a round-capped stroke; its colour is replaced.
+     */
+    public static void drawWavyLinear(Canvas canvas, Path path, float left, float right, float cy, float progress,
+                                      Paint paint, int activeColor, int trackColor, float amplitude) {
+        progress = Math.max(0f, Math.min(1f, progress));
+        float width = right - left;
+        if (width <= 0) return;
+        float stroke = paint.getStrokeWidth();
+        float head = left + width * progress;
+        float gap = AndroidUtilities.dp(4) + stroke;
+
+        // track and the stop dot
+        if (head + gap < right) {
+            paint.setColor(trackColor);
+            canvas.drawLine(head + gap, cy, right, cy, paint);
+        }
+        paint.setColor(activeColor);
+        Paint.Style style = paint.getStyle();
+        paint.setStyle(Paint.Style.FILL);
+        canvas.drawCircle(right - stroke / 2f, cy, stroke / 2f, paint);
+        paint.setStyle(style);
+
+        if (head - left < 1f) return;
+        float wavelength = AndroidUtilities.dp(20);
+        double phase = 2 * Math.PI * (SystemClock.uptimeMillis() % LINEAR_WAVE_PERIOD_MS) / LINEAR_WAVE_PERIOD_MS;
+        float taper = wavelength / 2f;
+        int steps = Math.max(4, (int) ((head - left) / AndroidUtilities.dp(1.5f)));
+        path.rewind();
+        for (int i = 0; i <= steps; i++) {
+            float x = left + (head - left) * i / steps;
+            float k = Math.min(1f, Math.min(x - left, head - x) / taper);
+            float y = cy + amplitude * k * (float) Math.sin(2 * Math.PI * (x - left) / wavelength - phase);
+            if (i == 0) path.moveTo(x, y); else path.lineTo(x, y);
+        }
+        canvas.drawPath(path, paint);
+    }
+
+    /** Overshooting spring 0 → 1 (M3 expressive spatial spring), for bounces of buttons and glyphs. */
+    public static float springIn(float t) {
+        return spring(t);
+    }
+
+    /** Success bounce scale: a quick overshoot that settles back with a small undershoot; 1 at t ≥ 1. */
+    public static float bounce(float t, float strength) {
+        if (t <= 0f || t >= 1f) return 1f;
+        return 1f + strength * (float) (Math.exp(-4 * t) * Math.sin(2.5 * Math.PI * t));
+    }
+
     /** M3 "stop" glyph (rounded square) used in place of the cancel cross while something downloads. */
     public static void drawStop(Canvas canvas, RectF tmp, float cx, float cy, float halfSize, Paint fillPaint) {
         tmp.set(cx - halfSize, cy - halfSize, cx + halfSize, cy + halfSize);

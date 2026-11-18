@@ -43,6 +43,8 @@ configurations.all {
 
 dependencies {
     compileOnly files('libs/video-message-recorder.aar')
+    // easygram: on-device voice transcription (sherpa-onnx, Apache-2.0; arm ABIs only, see NOTICE)
+    compileOnly files('libs/sherpa-onnx-static-2.0.1-arm.aar')
     compileOnly 'org.jetbrains.kotlin:kotlin-stdlib:2.1.20'
     implementation 'androidx.core:core:1.16.0'
     implementation 'androidx.palette:palette:1.0.0'

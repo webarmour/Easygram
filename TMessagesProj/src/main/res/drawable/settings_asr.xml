@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    This file is part of easygram, a fork of Telegram for Android.
+    It is licensed under GNU GPL v. 2 or later.
+    You should have received a copy of the license in this archive (see LICENSE).
+
+    Copyright webarmour, 2026.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- voice transcription: a microphone next to lines of text -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M8,3.5C9.66,3.5 11,4.84 11,6.5L11,11.5C11,13.16 9.66,14.5 8,14.5C6.34,14.5 5,13.16 5,11.5L5,6.5C5,4.84 6.34,3.5 8,3.5Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M3.25,10.75C3.66,10.75 4,11.09 4,11.5C4,13.71 5.79,15.5 8,15.5C10.21,15.5 12,13.71 12,11.5C12,11.09 12.34,10.75 12.75,10.75C13.16,10.75 13.5,11.09 13.5,11.5C13.5,14.28 11.42,16.58 8.75,16.95L8.75,19.25C8.75,19.66 8.41,20 8,20C7.59,20 7.25,19.66 7.25,19.25L7.25,16.95C4.58,16.58 2.5,14.28 2.5,11.5C2.5,11.09 2.84,10.75 3.25,10.75Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M15,7.25L20.75,7.25C21.16,7.25 21.5,7.59 21.5,8C21.5,8.41 21.16,8.75 20.75,8.75L15,8.75C14.59,8.75 14.25,8.41 14.25,8C14.25,7.59 14.59,7.25 15,7.25ZM15,11.25L20.75,11.25C21.16,11.25 21.5,11.59 21.5,12C21.5,12.41 21.16,12.75 20.75,12.75L15,12.75C14.59,12.75 14.25,12.41 14.25,12C14.25,11.59 14.59,11.25 15,11.25ZM15,15.25L18.75,15.25C19.16,15.25 19.5,15.59 19.5,16C19.5,16.41 19.16,16.75 18.75,16.75L15,16.75C14.59,16.75 14.25,16.41 14.25,16C14.25,15.59 14.59,15.25 15,15.25Z" />
+</vector>

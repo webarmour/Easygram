@@ -2022,3 +2022,80 @@ JNIEXPORT void Java_org_telegram_utils_recorder_audio_AudioNoiseSuppressor_nDest
             (AudioNoiseSuppressorContext *) (intptr_t) handle
     );
 }
+
+// easygram: Ogg/Opus reader for on-device voice transcription (org.telegram.messenger.asr.EasygramAsrAudio).
+// Copyright webarmour, 2026. Decodes to mono float PCM at 48 kHz, in chunks, so long voice messages never
+// have to be held in memory as one buffer.
+
+JNIEXPORT jlong Java_org_telegram_messenger_asr_EasygramAsrAudio_nOpenOpus(JNIEnv *env, jclass clazz, jstring path) {
+    const char *pathStr = (*env)->GetStringUTFChars(env, path, 0);
+    if (pathStr == NULL) {
+        return 0;
+    }
+    int error = OPUS_OK;
+    OggOpusFile *file = op_open_file(pathStr, &error);
+    (*env)->ReleaseStringUTFChars(env, path, pathStr);
+    if (file == NULL || error != OPUS_OK) {
+        if (file != NULL) {
+            op_free(file);
+        }
+        return 0;
+    }
+    return (jlong) (intptr_t) file;
+}
+
+JNIEXPORT jlong Java_org_telegram_messenger_asr_EasygramAsrAudio_nTotalOpusSamples(JNIEnv *env, jclass clazz, jlong handle) {
+    OggOpusFile *file = (OggOpusFile *) (intptr_t) handle;
+    if (file == NULL) {
+        return 0;
+    }
+    ogg_int64_t total = op_pcm_total(file, -1);
+    return total < 0 ? 0 : (jlong) total;
+}
+
+// Fills `out` with up to out.length mono samples; returns their count, 0 at the end, < 0 on a decode error.
+JNIEXPORT jint Java_org_telegram_messenger_asr_EasygramAsrAudio_nReadOpus(JNIEnv *env, jclass clazz, jlong handle, jfloatArray out) {
+    OggOpusFile *file = (OggOpusFile *) (intptr_t) handle;
+    if (file == NULL || out == NULL) {
+        return -1;
+    }
+    jsize capacity = (*env)->GetArrayLength(env, out);
+    if (capacity <= 0) {
+        return 0;
+    }
+    float stereo[5760 * 2]; // 120 ms at 48 kHz, the largest Opus frame
+    jfloat *dst = (*env)->GetFloatArrayElements(env, out, NULL);
+    if (dst == NULL) {
+        return -1;
+    }
+    jint written = 0;
+    while (written < capacity) {
+        int want = capacity - written;
+        if (want > 5760) {
+            want = 5760;
+        }
+        int read = op_read_float_stereo(file, stereo, want * 2);
+        if (read < 0) {
+            if (written == 0) {
+                written = read;
+            }
+            break;
+        }
+        if (read == 0) {
+            break;
+        }
+        for (int i = 0; i < read; i++) {
+            dst[written + i] = (stereo[2 * i] + stereo[2 * i + 1]) * 0.5f;
+        }
+        written += read;
+    }
+    (*env)->ReleaseFloatArrayElements(env, out, dst, 0);
+    return written;
+}
+
+JNIEXPORT void Java_org_telegram_messenger_asr_EasygramAsrAudio_nCloseOpus(JNIEnv *env, jclass clazz, jlong handle) {
+    OggOpusFile *file = (OggOpusFile *) (intptr_t) handle;
+    if (file != NULL) {
+        op_free(file);
+    }
+}
