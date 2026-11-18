@@ -67,8 +67,8 @@ removed. It runs on-device voice transcription.
 The speech recognition models are not part of the app; they are downloaded
 on request (see Tools/asr_models_mirror.py) and keep their own licenses:
 GigaAM v3 (MIT, Sber), T-one (Apache License 2.0, T-Software DC),
-Moonshine (MIT, Useful Sensors / Moonshine AI) and Parakeet TDT 0.6B v2
-(CC BY 4.0, NVIDIA).
+Moonshine (MIT, Useful Sensors / Moonshine AI), Parakeet TDT 0.6B v2
+(CC BY 4.0, NVIDIA) and Whisper tiny for language detection (MIT, OpenAI).
 
 
 Telegram for Android files modified by easygram

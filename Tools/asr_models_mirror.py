@@ -14,9 +14,10 @@ https://github.com/webarmour/Easygram/releases/download/asr-models-v1/<model id>
 archives, extracts the files the app needs, checks them against the sizes and SHA-256 hashes written in
 EasygramAsrModels.java and puts them, renamed, together with the model licenses into an output directory.
 
-    python3 Tools/asr_models_mirror.py [--out DIR] [--upload]
+    python3 Tools/asr_models_mirror.py [--out DIR] [--only ID[,ID...]] [--upload]
 
---upload creates the release (if missing) and uploads the files with the GitHub CLI (gh).
+--only limits the work to some models (e.g. --only lid-whisper-tiny), --upload creates the release (if missing)
+and uploads the files with the GitHub CLI (gh).
 """
 
 import argparse
@@ -35,8 +36,12 @@ TAG = "asr-models-v1"
 REPO = "webarmour/Easygram"
 UPSTREAM = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/"
 
-# model id -> (upstream archive, directory inside it)
+HF = "https://huggingface.co/csukuangfj/"
+
+# model id -> upstream sherpa-onnx archive (its top directory has the same name),
+# or ("hf", repository, license URL) for models published as separate files on Hugging Face
 SOURCES = {
+    "lid-whisper-tiny": ("hf", "sherpa-onnx-whisper-tiny", "https://raw.githubusercontent.com/openai/whisper/main/LICENSE"),
     "ru-t-one": "sherpa-onnx-streaming-t-one-russian-2025-09-08",
     "ru-gigaam-v3": "sherpa-onnx-nemo-ctc-punct-giga-am-v3-russian-2025-12-16",
     "en-moonshine-tiny": "sherpa-onnx-moonshine-tiny-en-quantized-2026-02-27",
@@ -75,10 +80,17 @@ def download(url, dest):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--out", default=os.path.join(ROOT, "build", "asr-models-mirror"))
+    parser.add_argument("--only", default="")
     parser.add_argument("--upload", action="store_true")
     args = parser.parse_args()
 
     catalog = read_catalog()
+    if args.only:
+        wanted_ids = set(args.only.split(","))
+        unknown = wanted_ids - set(catalog)
+        if unknown:
+            sys.exit("not in the catalog: " + ", ".join(sorted(unknown)))
+        catalog = {k: v for k, v in catalog.items() if k in wanted_ids}
     missing = set(catalog) - set(SOURCES)
     if missing:
         sys.exit("no upstream source for " + ", ".join(sorted(missing)))
@@ -87,7 +99,23 @@ def main():
 
     outputs = []
     for model_id, entries in catalog.items():
-        name = SOURCES[model_id]
+        source = SOURCES[model_id]
+        if isinstance(source, tuple):
+            _, repo, license_url = source
+            for fname, size, digest in entries:
+                dest = os.path.join(args.out, f"{model_id}--{fname}")
+                download(HF + repo + "/resolve/main/" + fname, dest)
+                actual_size, actual = os.path.getsize(dest), sha256(dest)
+                if actual_size != size or actual != digest:
+                    sys.exit(f"{dest}: size {actual_size} sha256 {actual}, catalog expects {size} {digest}")
+                outputs.append(dest)
+                print("  ok", os.path.basename(dest))
+            dest = os.path.join(args.out, f"{model_id}--LICENSE")
+            download(license_url, dest)
+            outputs.append(dest)
+            print("  ok", os.path.basename(dest))
+            continue
+        name = source
         archive = os.path.join(work, name + ".tar.bz2")
         download(UPSTREAM + name + ".tar.bz2", archive)
         with tarfile.open(archive, "r:bz2") as tar:
@@ -120,7 +148,8 @@ def main():
                             "--latest=false"], check=True)
         subprocess.run(["gh", "release", "upload", TAG, "-R", REPO, "--clobber", *outputs], check=True)
     else:
-        print(f"upload with: gh release upload {TAG} -R {REPO} --clobber {args.out}/*--*")
+        files = " ".join('"' + o + '"' for o in outputs)
+        print(f"upload with: gh release upload {TAG} -R {REPO} --clobber {files}")
 
 
 if __name__ == "__main__":

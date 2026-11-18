@@ -77,6 +77,9 @@ public final class EasygramTranscriptionReveal {
         int tickedWords;
         boolean finishedHaptic;
         int totalWords = -1;
+        // cost of the reveal on the UI thread, logged when it ends
+        int frames;
+        long drawNanos, maxFrameNanos, frameNanos;
     }
 
     private static final HashMap<String, Run> runs = new HashMap<>();
@@ -117,6 +120,10 @@ public final class EasygramTranscriptionReveal {
         }
         long now = SystemClock.uptimeMillis();
         if (expired(run, now)) {
+            if (org.telegram.messenger.BuildVars.LOGS_ENABLED && run.frames > 0) {
+                org.telegram.messenger.FileLog.d("easygram asr: reveal " + totalChars + " chars, " + run.frames + " frames, draw avg "
+                        + run.drawNanos / run.frames / 1000 + " us, max " + run.maxFrameNanos / 1000 + " us per frame");
+            }
             runs.remove(key);
             for (Iterator<Map.Entry<String, Run>> it = runs.entrySet().iterator(); it.hasNext(); ) {
                 if (expired(it.next().getValue(), now)) it.remove();
@@ -138,8 +145,11 @@ public final class EasygramTranscriptionReveal {
             run.totalWords = Math.max(1, totalChars / 6);
         }
         float elapsed = now - run.start;
+        long t0 = System.nanoTime();
         if (run.lastFrame != now) {
             run.lastFrame = now; // once per frame, however many blocks the text has
+            run.frames++;
+            run.frameNanos = 0;
             haptics(parent, run, elapsed, now);
         }
 
@@ -211,6 +221,10 @@ public final class EasygramTranscriptionReveal {
         paint.setColor(textColor);
         paint.setAlpha(baseAlpha);
         parent.invalidate();
+        long spent = System.nanoTime() - t0;
+        run.drawNanos += spent;
+        run.frameNanos += spent;
+        run.maxFrameNanos = Math.max(run.maxFrameNanos, run.frameNanos);
         return true;
     }
 

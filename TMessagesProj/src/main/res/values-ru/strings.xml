@@ -459,10 +459,12 @@
     <string name="EasygramAsrErrorNoSpace">Недостаточно места</string>
     <string name="EasygramAsrErrorChecksum">Файл повреждён, нажмите, чтобы повторить</string>
     <string name="EasygramAsrModelsInfo">Лёгкие модели быстрее, оптимальные точнее. Используется отмеченная модель; пока она не загружена — другая загруженная модель этого языка.</string>
+    <string name="EasygramAsrLidHeader">Определение языка по голосу</string>
+    <string name="EasygramAsrLidInfo">Слушает начало сообщения и отличает русскую речь от английской по самому голосу — гораздо надёжнее, чем по переписке. Работает в автоматическом режиме и занимает доли секунды.</string>
     <string name="EasygramAsrSettingsHeader">Настройки</string>
     <string name="EasygramAsrLanguage">Язык голосовых</string>
     <string name="EasygramAsrLangAuto">Автоматически</string>
-    <string name="EasygramAsrLanguageInfo">Автоматически: по языку последних текстовых сообщений в чате, а если их нет — по языку приложения.</string>
+    <string name="EasygramAsrLanguageInfo">Автоматически: по голосу, если скачана модель определения языка; иначе по языку последних текстовых сообщений в чате, а если их нет — по языку приложения.</string>
     <string name="EasygramAsrPerformance">Производительность</string>
     <string name="EasygramAsrPerfEconomy">Сбалансированно (2 потока)</string>
     <string name="EasygramAsrPerfGentle">Бережно (1 поток)</string>

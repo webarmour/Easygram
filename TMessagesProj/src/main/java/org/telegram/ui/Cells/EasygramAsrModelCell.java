@@ -130,11 +130,17 @@ public class EasygramAsrModelCell extends FrameLayout {
         }
         button.setState(newState, animated);
         state = newState;
-        radio.setChecked(model.id.equals(EasygramAsrSettings.getSelectedModelId(model.lang)), animated);
+        boolean lid = EasygramAsrModels.LANG_ID.equals(model.lang);
+        radio.setVisibility(lid ? INVISIBLE : VISIBLE); // nothing to choose: it is used whenever it is downloaded
+        radio.setChecked(!lid && model.id.equals(EasygramAsrSettings.getSelectedModelId(model.lang)), animated);
 
-        String tier = LocaleController.getString(model.tier == EasygramAsrModels.TIER_LITE ? R.string.EasygramAsrTierLite
-                : model.tier == EasygramAsrModels.TIER_OPTIMAL ? R.string.EasygramAsrTierOptimal : R.string.EasygramAsrTierMax);
-        title.setText(tier + " · " + model.title);
+        if (lid) {
+            title.setText(model.title);
+        } else {
+            String tier = LocaleController.getString(model.tier == EasygramAsrModels.TIER_LITE ? R.string.EasygramAsrTierLite
+                    : model.tier == EasygramAsrModels.TIER_OPTIMAL ? R.string.EasygramAsrTierOptimal : R.string.EasygramAsrTierMax);
+            title.setText(tier + " · " + model.title);
+        }
 
         String size = AndroidUtilities.formatFileSize(model.totalSize());
         String status;

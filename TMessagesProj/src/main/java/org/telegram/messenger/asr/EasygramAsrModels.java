@@ -26,11 +26,16 @@ public final class EasygramAsrModels {
 
     public static final String LANG_RU = "ru";
     public static final String LANG_EN = "en";
+    /** Not a language: the spoken language identification model, used to pick the RU / EN model by the voice. */
+    public static final String LANG_ID = "lid";
 
     public static final int TIER_LITE = 0, TIER_OPTIMAL = 1, TIER_MAX = 2;
 
     /** Which sherpa-onnx recognizer runs the model. */
-    public static final int ENGINE_NEMO_CTC = 0, ENGINE_TONE_CTC = 1, ENGINE_MOONSHINE_V2 = 2, ENGINE_NEMO_TRANSDUCER = 3;
+    public static final int ENGINE_NEMO_CTC = 0, ENGINE_TONE_CTC = 1, ENGINE_MOONSHINE_V2 = 2, ENGINE_NEMO_TRANSDUCER = 3,
+            ENGINE_WHISPER_LID = 4;
+
+    public static final String LID_MODEL_ID = "lid-whisper-tiny";
 
     static final String MIRROR_TAG = "asr-models-v1";
     private static final String MIRROR = "https://github.com/webarmour/Easygram/releases/download/" + MIRROR_TAG + "/";
@@ -133,6 +138,12 @@ public final class EasygramAsrModels {
                 mirrored("en-parakeet-v2", "decoder.int8.onnx", 7257753L, "4d097bae3bac5c96018d5293ba39f1b657296102b142affda40378f38b020f41", parakeet),
                 mirrored("en-parakeet-v2", "joiner.int8.onnx", 1739080L, "77a29f3e5ac7d37074e0af465391b80f314015d5b97f0f90c6c7767f1d56f428", parakeet),
                 mirrored("en-parakeet-v2", "tokens.txt", 9384L, "ec182b70dd42113aff6c5372c75cac58c952443eb22322f57bbd7f53977d497d", parakeet)));
+
+        // Spoken language identification ------------------------------------------------------------------------
+        String whisper = "sherpa-onnx-whisper-tiny";
+        list.add(new Model(LID_MODEL_ID, LANG_ID, TIER_LITE, ENGINE_WHISPER_LID, "Whisper tiny", false, "MIT",
+                mirrored("lid-whisper-tiny", "tiny-encoder.int8.onnx", 12937772L, "d24fb083ae3b1041fc24e97971d60e280c9342201fbb67b0ab428a8b4a51a434", whisper),
+                mirrored("lid-whisper-tiny", "tiny-decoder.int8.onnx", 89855401L, "d2fece8dd42771f1df975c6c0445770d0c292bf7547c2cae04a6c0cc57540925", whisper)));
 
         ALL = Collections.unmodifiableList(list);
     }

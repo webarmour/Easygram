@@ -55,11 +55,13 @@ public class EasygramAsrSettingsActivity extends BaseFragment implements Easygra
 
     private final List<EasygramAsrModels.Model> ruModels = EasygramAsrModels.forLang(EasygramAsrModels.LANG_RU);
     private final List<EasygramAsrModels.Model> enModels = EasygramAsrModels.forLang(EasygramAsrModels.LANG_EN);
+    private final List<EasygramAsrModels.Model> lidModels = EasygramAsrModels.forLang(EasygramAsrModels.LANG_ID);
 
     private int rowCount;
     private int enableRow, enableInfoRow;
     private int ruHeaderRow, ruStartRow, ruShadowRow;
     private int enHeaderRow, enStartRow, enInfoRow;
+    private int lidHeaderRow, lidStartRow, lidInfoRow;
     private int settingsHeaderRow, langRow, perfRow, hapticRow, wifiRow, langInfoRow;
 
     private void updateRows() {
@@ -74,6 +76,10 @@ public class EasygramAsrSettingsActivity extends BaseFragment implements Easygra
         enStartRow = rowCount;
         rowCount += enModels.size();
         enInfoRow = rowCount++;
+        lidHeaderRow = rowCount++;
+        lidStartRow = rowCount;
+        rowCount += lidModels.size();
+        lidInfoRow = rowCount++;
         settingsHeaderRow = rowCount++;
         langRow = rowCount++;
         perfRow = rowCount++;
@@ -88,6 +94,9 @@ public class EasygramAsrSettingsActivity extends BaseFragment implements Easygra
         }
         if (position >= enStartRow && position < enStartRow + enModels.size()) {
             return enModels.get(position - enStartRow);
+        }
+        if (position >= lidStartRow && position < lidStartRow + lidModels.size()) {
+            return lidModels.get(position - lidStartRow);
         }
         return null;
     }
@@ -131,7 +140,9 @@ public class EasygramAsrSettingsActivity extends BaseFragment implements Easygra
         listView.setOnItemClickListener((view, position) -> {
             EasygramAsrModels.Model model = modelAt(position);
             if (model != null) {
-                selectModel(model);
+                if (!EasygramAsrModels.LANG_ID.equals(model.lang)) {
+                    selectModel(model);
+                }
                 if (EasygramAsrModelManager.getState(model) == EasygramAsrModelManager.STATE_NONE) {
                     startDownload(model);
                 }
@@ -198,7 +209,9 @@ public class EasygramAsrSettingsActivity extends BaseFragment implements Easygra
 
     private void onModelAction(EasygramAsrModels.Model model, int state) {
         if (state == EasygramAsrModelManager.STATE_NONE) {
-            selectModel(model);
+            if (!EasygramAsrModels.LANG_ID.equals(model.lang)) {
+                selectModel(model);
+            }
             startDownload(model);
         } else if (state == EasygramAsrModelManager.STATE_READY) {
             AlertDialog dialog = new AlertDialog.Builder(getParentActivity())
@@ -256,7 +269,8 @@ public class EasygramAsrSettingsActivity extends BaseFragment implements Easygra
     }
 
     private boolean hasDivider(int position) {
-        return position != ruStartRow + ruModels.size() - 1 && position != enStartRow + enModels.size() - 1;
+        return position != ruStartRow + ruModels.size() - 1 && position != enStartRow + enModels.size() - 1
+                && position != lidStartRow + lidModels.size() - 1;
     }
 
     private void notifyChats() {
@@ -288,10 +302,10 @@ public class EasygramAsrSettingsActivity extends BaseFragment implements Easygra
         @Override
         public int getItemViewType(int position) {
             if (modelAt(position) != null) return TYPE_MODEL;
-            if (position == ruHeaderRow || position == enHeaderRow || position == settingsHeaderRow) return TYPE_HEADER;
+            if (position == ruHeaderRow || position == enHeaderRow || position == lidHeaderRow || position == settingsHeaderRow) return TYPE_HEADER;
             if (position == enableRow || position == hapticRow || position == wifiRow) return TYPE_CHECK;
             if (position == langRow || position == perfRow) return TYPE_SETTING;
-            if (position == enableInfoRow || position == enInfoRow || position == langInfoRow) return TYPE_INFO;
+            if (position == enableInfoRow || position == enInfoRow || position == lidInfoRow || position == langInfoRow) return TYPE_INFO;
             return TYPE_SHADOW;
         }
 
@@ -339,6 +353,8 @@ public class EasygramAsrSettingsActivity extends BaseFragment implements Easygra
                         cell.setText(LocaleController.getString(R.string.EasygramAsrRussian));
                     } else if (position == enHeaderRow) {
                         cell.setText(LocaleController.getString(R.string.EasygramAsrEnglish));
+                    } else if (position == lidHeaderRow) {
+                        cell.setText(LocaleController.getString(R.string.EasygramAsrLidHeader));
                     } else {
                         cell.setText(LocaleController.getString(R.string.EasygramAsrSettingsHeader));
                     }
@@ -381,6 +397,8 @@ public class EasygramAsrSettingsActivity extends BaseFragment implements Easygra
                         res = R.string.EasygramAsrEnableInfo;
                     } else if (position == enInfoRow) {
                         res = R.string.EasygramAsrModelsInfo;
+                    } else if (position == lidInfoRow) {
+                        res = R.string.EasygramAsrLidInfo;
                     } else {
                         cell.setText(LocaleController.getString(R.string.EasygramAsrLanguageInfo) + "\n\n" + LocaleController.getString(R.string.EasygramAsrPerfInfo));
                         break;

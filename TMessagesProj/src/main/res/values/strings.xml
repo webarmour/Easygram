@@ -11807,10 +11807,12 @@
     <string name="EasygramAsrErrorNoSpace">Not enough free space</string>
     <string name="EasygramAsrErrorChecksum">Downloaded file is damaged, tap to retry</string>
     <string name="EasygramAsrModelsInfo">Lite models are faster, optimal ones are more accurate. The checked model is used; until it is downloaded, another downloaded model of the language is used.</string>
+    <string name="EasygramAsrLidHeader">Language detection by voice</string>
+    <string name="EasygramAsrLidInfo">Listens to the start of a message and tells Russian from English by the voice itself, much more reliably than by the chat. Used in the automatic mode and takes a fraction of a second.</string>
     <string name="EasygramAsrSettingsHeader">Settings</string>
     <string name="EasygramAsrLanguage">Voice message language</string>
     <string name="EasygramAsrLangAuto">Automatic</string>
-    <string name="EasygramAsrLanguageInfo">Automatic: by the language of recent text messages in the chat, or of the app when there are none.</string>
+    <string name="EasygramAsrLanguageInfo">Automatic: by the voice when the language detection model is downloaded; otherwise by the language of recent text messages in the chat, or of the app when there are none.</string>
     <string name="EasygramAsrPerformance">Performance</string>
     <string name="EasygramAsrPerfEconomy">Balanced (2 threads)</string>
     <string name="EasygramAsrPerfGentle">Gentle (1 thread)</string>

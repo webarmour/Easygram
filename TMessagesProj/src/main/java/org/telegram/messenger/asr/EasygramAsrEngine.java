@@ -29,6 +29,9 @@ import com.k2fsa.sherpa.onnx.OnlineRecognizer;
 import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig;
 import com.k2fsa.sherpa.onnx.OnlineStream;
 import com.k2fsa.sherpa.onnx.OnlineToneCtcModelConfig;
+import com.k2fsa.sherpa.onnx.SpokenLanguageIdentification;
+import com.k2fsa.sherpa.onnx.SpokenLanguageIdentificationConfig;
+import com.k2fsa.sherpa.onnx.SpokenLanguageIdentificationWhisperConfig;
 
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.BuildVars;
@@ -61,6 +64,57 @@ public final class EasygramAsrEngine {
     private static OfflineRecognizer offline;
     @Nullable
     private static OnlineRecognizer online;
+    @Nullable
+    private static SpokenLanguageIdentification lid;
+
+    /** The language identification model looks at most at this much of the start of the message. */
+    private static final int LID_MAX_SEC = 20;
+
+    /**
+     * Must be called on {@link #queue}. The language of the speech as a Whisper code ("ru", "en", "uk"...), or null
+     * when the model is not downloaded or fails.
+     */
+    @Nullable
+    static String identifyLanguage(float[] samples) {
+        EasygramAsrModels.Model model = EasygramAsrModels.byId(EasygramAsrModels.LID_MODEL_ID);
+        if (model == null || !EasygramAsrModelManager.isReady(model)) {
+            return null;
+        }
+        queue.cancelRunnable(unloadRunnable);
+        try {
+            long start = SystemClock.elapsedRealtime();
+            if (lid == null) {
+                File dir = EasygramAsrModelManager.modelDir(model);
+                SpokenLanguageIdentificationWhisperConfig whisper = new SpokenLanguageIdentificationWhisperConfig();
+                whisper.setEncoder(new File(dir, "tiny-encoder.int8.onnx").getAbsolutePath());
+                whisper.setDecoder(new File(dir, "tiny-decoder.int8.onnx").getAbsolutePath());
+                SpokenLanguageIdentificationConfig config = new SpokenLanguageIdentificationConfig();
+                config.setWhisper(whisper);
+                config.setNumThreads(Math.min(2, EasygramAsrSettings.getThreads()));
+                config.setProvider("cpu");
+                lid = new SpokenLanguageIdentification(null, config);
+            }
+            int n = Math.min(samples.length, LID_MAX_SEC * EasygramAsrAudio.SAMPLE_RATE);
+            float[] head = n == samples.length ? samples : java.util.Arrays.copyOf(samples, n);
+            OfflineStream stream = lid.createStream();
+            String lang;
+            try {
+                stream.acceptWaveform(head, EasygramAsrAudio.SAMPLE_RATE);
+                lang = lid.compute(stream);
+            } finally {
+                stream.release();
+            }
+            if (BuildVars.LOGS_ENABLED) {
+                FileLog.d("easygram asr: voice language " + lang + " in " + (SystemClock.elapsedRealtime() - start) + "ms");
+            }
+            return lang;
+        } catch (Throwable e) {
+            FileLog.e(e);
+            return null;
+        } finally {
+            queue.postRunnable(unloadRunnable, IDLE_UNLOAD_MS);
+        }
+    }
 
     private static final Runnable unloadRunnable = EasygramAsrEngine::release;
 
@@ -120,7 +174,7 @@ public final class EasygramAsrEngine {
         if (loadedModel == model && loadedThreads == threads && (offline != null || online != null)) {
             return;
         }
-        release();
+        releaseRecognizer(); // the language identification model stays
         File dir = EasygramAsrModelManager.modelDir(model);
         String tokens = new File(dir, "tokens.txt").getAbsolutePath();
         if (model.engine == EasygramAsrModels.ENGINE_TONE_CTC) {
@@ -303,6 +357,14 @@ public final class EasygramAsrEngine {
 
     /** Releases the loaded recognizer; runs on the queue. */
     private static void release() {
+        if (lid != null) {
+            lid.release();
+            lid = null;
+        }
+        releaseRecognizer();
+    }
+
+    private static void releaseRecognizer() {
         if (offline != null) {
             offline.release();
             offline = null;
@@ -316,8 +378,13 @@ public final class EasygramAsrEngine {
 
     public static void releaseIfLoaded(EasygramAsrModels.Model model) {
         queue.postRunnable(() -> {
-            if (loadedModel == model) {
-                release();
+            if (model.engine == EasygramAsrModels.ENGINE_WHISPER_LID) {
+                if (lid != null) {
+                    lid.release();
+                    lid = null;
+                }
+            } else if (loadedModel == model) {
+                releaseRecognizer();
             }
         });
     }

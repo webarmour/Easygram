@@ -60,10 +60,6 @@ public final class EasygramAsrTranscriber {
     }
 
     /**
-     * @param allowOtherLang when the message seems to be in a language without a downloaded model, transcribe it
-     *                       with the model of the other language anyway instead of failing with ERROR_NO_LANG_MODEL
-     */
-    /**
      * Whether Telegram's servers would really transcribe this message: an actual Premium subscription (not the
      * local "Premium access" switch of easygram, which the server doesn't know about) or a group that allows it.
      */
@@ -72,6 +68,13 @@ public final class EasygramAsrTranscriber {
                 || org.telegram.ui.Components.TranscribeButton.isFreeTranscribeInChat(m);
     }
 
+    /**
+     * File → audio → language (by the voice when the identification model is downloaded, otherwise by the chat)
+     * → model → text.
+     *
+     * @param allowOtherLang when the message seems to be in a language without a downloaded model, transcribe it
+     *                       with the model of the other language anyway instead of failing with ERROR_NO_LANG_MODEL
+     */
     public static void transcribe(MessageObject m, @Nullable String forcedLang, boolean allowOtherLang, Callback callback) {
         AtomicBoolean cancelled = new AtomicBoolean(false);
         resolveFile(m, file -> {
@@ -80,52 +83,62 @@ public final class EasygramAsrTranscriber {
                 callback.onResult(null, ERROR_DOWNLOAD, null);
                 return;
             }
-            pickLanguage(m, forcedLang, (lang, confident) -> {
-                EasygramAsrModels.Model model = EasygramAsrModelManager.readyModelFor(lang);
-                if (model == null) {
-                    String other = EasygramAsrModels.LANG_RU.equals(lang) ? EasygramAsrModels.LANG_EN : EasygramAsrModels.LANG_RU;
-                    EasygramAsrModels.Model fallback = EasygramAsrModelManager.readyModelFor(other);
-                    if (fallback == null) {
-                        callback.onResult(null, ERROR_NO_MODEL, lang);
-                        return;
-                    }
-                    if (confident && !allowOtherLang) {
-                        // a Russian model turns English speech into Cyrillic nonsense (and back): ask first
-                        callback.onResult(null, ERROR_NO_LANG_MODEL, lang);
-                        return;
-                    }
-                    model = fallback;
+            final boolean byVoice = forcedLang == null && EasygramAsrSettings.getLangMode() == EasygramAsrSettings.LANG_AUTO;
+            EasygramAsrEngine.queue.postRunnable(() -> {
+                float[] samples;
+                try {
+                    samples = EasygramAsrAudio.decode(file, cancelled);
+                } catch (EasygramAsrAudio.TooLongException e) {
+                    AndroidUtilities.runOnUIThread(() -> callback.onResult(null, ERROR_TOO_LONG, null));
+                    return;
+                } catch (Throwable e) {
+                    FileLog.e(e);
+                    samples = null;
                 }
-                final EasygramAsrModels.Model finalModel = model;
-                log("lang " + lang + " confident=" + confident + " model " + model.id);
-                EasygramAsrEngine.queue.postRunnable(() -> {
-                    String text = null;
-                    int error = 0;
-                    try {
-                        float[] samples = EasygramAsrAudio.decode(file, cancelled);
-                        if (samples != null) {
-                            float peak = 0;
-                            for (float v : samples) peak = Math.max(peak, Math.abs(v));
-                            log("decoded " + samples.length + " samples (" + samples.length / (float) EasygramAsrAudio.SAMPLE_RATE + " s), peak " + peak);
+                if (samples == null) {
+                    AndroidUtilities.runOnUIThread(() -> callback.onResult(null, ERROR_DECODE, null));
+                    return;
+                }
+                float peak = 0;
+                for (float v : samples) peak = Math.max(peak, Math.abs(v));
+                log("decoded " + samples.length + " samples (" + samples.length / (float) EasygramAsrAudio.SAMPLE_RATE + " s), peak " + peak);
+                String voiceLang = byVoice ? EasygramAsrEngine.identifyLanguage(samples) : null;
+                final float[] audio = samples;
+                AndroidUtilities.runOnUIThread(() -> pickLanguage(m, forcedLang, voiceLang, (lang, confident) -> {
+                    EasygramAsrModels.Model model = EasygramAsrModelManager.readyModelFor(lang);
+                    if (model == null) {
+                        String other = EasygramAsrModels.LANG_RU.equals(lang) ? EasygramAsrModels.LANG_EN : EasygramAsrModels.LANG_RU;
+                        EasygramAsrModels.Model fallback = EasygramAsrModelManager.readyModelFor(other);
+                        if (fallback == null) {
+                            callback.onResult(null, ERROR_NO_MODEL, lang);
+                            return;
                         }
-                        if (samples == null) {
-                            error = ERROR_DECODE;
-                        } else {
-                            text = EasygramAsrEngine.transcribe(finalModel, samples, cancelled, null);
+                        if (confident && !allowOtherLang) {
+                            // a Russian model turns English speech into Cyrillic nonsense (and back): ask first
+                            callback.onResult(null, ERROR_NO_LANG_MODEL, lang);
+                            return;
+                        }
+                        model = fallback;
+                    }
+                    final EasygramAsrModels.Model finalModel = model;
+                    log("lang " + lang + " confident=" + confident + " model " + model.id);
+                    EasygramAsrEngine.queue.postRunnable(() -> {
+                        String text = null;
+                        int error = 0;
+                        try {
+                            text = EasygramAsrEngine.transcribe(finalModel, audio, cancelled, null);
                             if (text == null) {
                                 error = ERROR_ENGINE;
                             }
+                        } catch (Throwable e) {
+                            FileLog.e(e);
+                            error = ERROR_ENGINE;
                         }
-                    } catch (EasygramAsrAudio.TooLongException e) {
-                        error = ERROR_TOO_LONG;
-                    } catch (Throwable e) {
-                        FileLog.e(e);
-                        error = ERROR_ENGINE;
-                    }
-                    final String finalText = text;
-                    final int finalError = error;
-                    AndroidUtilities.runOnUIThread(() -> callback.onResult(finalText, finalError, finalModel.lang));
-                });
+                        final String finalText = text;
+                        final int finalError = error;
+                        AndroidUtilities.runOnUIThread(() -> callback.onResult(finalText, finalError, finalModel.lang));
+                    });
+                }));
             });
         });
     }
@@ -260,13 +273,26 @@ public final class EasygramAsrTranscriber {
     private static final HashMap<Long, CachedLang> dialogLangs = new HashMap<>();
 
     /**
-     * Forced language, then the setting; in "auto" mode the script of the recent text messages of the chat
-     * (Cyrillic or Latin), and the app language when there is too little text (then not confident).
+     * Forced language, then the setting; in "auto" mode the language heard by the identification model, else the
+     * script of the recent text messages of the chat (Cyrillic or Latin), and the app language when there is too
+     * little text (then not confident).
      */
-    private static void pickLanguage(MessageObject m, @Nullable String forcedLang, LangCallback callback) {
+    private static void pickLanguage(MessageObject m, @Nullable String forcedLang, @Nullable String voiceLang, LangCallback callback) {
         if (forcedLang != null) {
             callback.onLang(forcedLang, true);
             return;
+        }
+        if (EasygramAsrModels.LANG_RU.equals(voiceLang) || EasygramAsrModels.LANG_EN.equals(voiceLang)) {
+            callback.onLang(voiceLang, true); // heard in the message itself: better than any guess from the chat
+            return;
+        }
+        if (voiceLang != null) {
+            // Ukrainian, Belarusian... are closer to the Russian model; anything else: fall back to the chat
+            boolean slavic = "uk".equals(voiceLang) || "be".equals(voiceLang) || "bg".equals(voiceLang) || "sr".equals(voiceLang) || "kk".equals(voiceLang);
+            if (slavic) {
+                callback.onLang(EasygramAsrModels.LANG_RU, false);
+                return;
+            }
         }
         int mode = EasygramAsrSettings.getLangMode();
         if (mode == EasygramAsrSettings.LANG_RU) {
