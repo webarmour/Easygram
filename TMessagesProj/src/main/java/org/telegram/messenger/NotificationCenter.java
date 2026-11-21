@@ -324,6 +324,7 @@ public class NotificationCenter {
     public static final int closeSearchByActiveAction = totalEvents++;
     public static final int messagePlayingSpeedChanged = totalEvents++;
     public static final int screenStateChanged = totalEvents++;
+    public static final int messageArchiveCleared = totalEvents++;
     public static final int didClearDatabase = totalEvents++;
     public static final int voipServiceCreated = totalEvents++;
     public static final int webRtcMicAmplitudeEvent = totalEvents++;

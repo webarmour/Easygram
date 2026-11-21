@@ -525,10 +525,26 @@
     <string name="RVDescEnableConcurrentPrewarm">Параллельное удержание фронтальной и основной камер в активном состоянии для мгновенного переключения.</string>
     <string name="RVDescConcurrentPrewarmFps">Кадровая частота фоновой камеры при включенном прогреве.</string>
     <string name="MessageArchiveHistory">История сообщения</string>
+    <string name="ClearMessageArchive">Очистить архив сообщений</string>
+    <string name="ArchiveAccountSlot">Аккаунт №%1$d</string>
+    <string name="ArchiveUnassignedFiles">Файлы без привязки к аккаунту</string>
+    <string name="ArchiveCurrentAccount">%1$s (текущий аккаунт)</string>
+    <string name="ClearMessageArchiveConfirm">Удалить сохранённые версии сообщений и архивные копии фото, видео и других вложений этого аккаунта? Удалённые сообщения исчезнут из чатов.</string>
     <string name="MessageArchiveDeleted">Удалено</string>
     <string name="MessageArchiveEditedAndDeleted">Изменено и удалено</string>
     <string name="MessageArchiveEmpty">Сохранённых версий нет</string>
     <string name="MessageArchiveOriginal">Исходная версия</string>
     <string name="MessageArchiveVersion">Версия %1$d</string>
     <string name="MessageArchiveOpenMedia">Открыть медиа</string>
+    <string name="PackageStorageTotal">Всего по данным Android</string>
+    <string name="PackageStorageApp">Установленное приложение</string>
+    <string name="PackageStorageArchivedMedia">Вложения из архива</string>
+    <string name="PackageStorageMessageDatabases">Базы сообщений</string>
+    <string name="PackageStorageMedia">Загруженные медиа</string>
+    <string name="PackageStorageCache">Папки кеша</string>
+    <string name="PackageStorageOther">Прочие файлы приложения</string>
+    <string name="PackageStorageUnattributed">Прочие данные по учёту Android</string>
+    <string name="PackageStorageCacheBreakdown">Нажмите на выделенную строку, чтобы открыть очистку. Архив и локальная база очищаются для текущего аккаунта.</string>
+    <string name="PackageStorageClearCacheConfirm">Очистить медиакеш Easygram?</string>
+    <string name="PackageStorageClearLogsConfirm">Удалить текущие файлы журналов Easygram?</string>
 </resources>

@@ -307,9 +307,8 @@ public class MessagesStorage extends BaseController {
                 }
             }
         }
-        File filesDir = ApplicationLoader.getFilesDirFixed();
+        File filesDir = getAccountDatabaseDirectory(currentAccount);
         if (currentAccount != 0) {
-            filesDir = new File(filesDir, "account" + currentAccount + "/");
             filesDir.mkdirs();
         }
         cacheFile = new File(filesDir, "cache4.db");
@@ -852,36 +851,91 @@ public class MessagesStorage extends BaseController {
         if (messageId <= 0 || dialogId == 0 || source == null || !source.isFile()) {
             return;
         }
-        Utilities.globalQueue.postRunnable(() -> {
-            File directory = new File(ApplicationLoader.getFilesDirFixed(), "message_archive_media/" + currentAccount + "/" + dialogId + "_" + messageId);
+        storageQueue.postRunnable(() -> {
+            if (!source.isFile()) {
+                return;
+            }
+            File directory = new File(getArchiveMediaDirectory(currentAccount), dialogId + "_" + messageId);
             if (!directory.exists() && !directory.mkdirs()) {
                 return;
             }
             File archived = new File(directory, source.getName());
+            SQLitePreparedStatement statement = null;
             try {
                 if (!archived.isFile() || archived.length() != source.length()) {
                     AndroidUtilities.copyFile(source, archived);
                 }
-                storageQueue.postRunnable(() -> {
-                    SQLitePreparedStatement statement = null;
-                    try {
-                        statement = database.executeFast("REPLACE INTO message_archive_media(uid, mid, original_path, archive_path) VALUES(?, ?, ?, ?)");
-                        statement.bindLong(1, dialogId);
-                        statement.bindInteger(2, messageId);
-                        statement.bindString(3, source.getAbsolutePath());
-                        statement.bindString(4, archived.getAbsolutePath());
-                        statement.step();
-                    } catch (Exception e) {
-                        checkSQLException(e);
-                    } finally {
-                        if (statement != null) {
-                            statement.dispose();
-                        }
-                    }
-                });
+                statement = database.executeFast("REPLACE INTO message_archive_media(uid, mid, original_path, archive_path) VALUES(?, ?, ?, ?)");
+                statement.bindLong(1, dialogId);
+                statement.bindInteger(2, messageId);
+                statement.bindString(3, source.getAbsolutePath());
+                statement.bindString(4, archived.getAbsolutePath());
+                statement.step();
+            } catch (Exception e) {
+                FileLog.e(e);
+            } finally {
+                if (statement != null) {
+                    statement.dispose();
+                }
+            }
+        });
+    }
+
+    private static File getAccountDatabaseDirectory(int account) {
+        File filesDir = ApplicationLoader.getFilesDirFixed();
+        return account == 0 ? filesDir : new File(filesDir, "account" + account);
+    }
+
+    private static File getArchiveMediaDirectory(int account) {
+        return new File(getArchiveMediaRoot(), Integer.toString(account));
+    }
+
+    public static File getArchiveMediaRoot() {
+        return new File(ApplicationLoader.getFilesDirFixed(), "message_archive_media");
+    }
+
+    public static int getArchiveMediaAccount(File directory) {
+        for (int account = 0; account < UserConfig.MAX_ACCOUNT_COUNT; account++) {
+            if (directory.getName().equals(Integer.toString(account))) {
+                return account;
+            }
+        }
+        return -1;
+    }
+
+    public void clearMessageArchive(Utilities.Callback<Boolean> onComplete) {
+        storageQueue.postRunnable(() -> {
+            try {
+                if (!deleteArchiveMediaDirectory(getArchiveMediaDirectory(currentAccount))) {
+                    throw new java.io.IOException("Could not delete archived attachments");
+                }
+                database.executeFast("SAVEPOINT clear_message_archive").stepThis().dispose();
+                try {
+                    database.executeFast("DELETE FROM message_archive_media").stepThis().dispose();
+                    database.executeFast("DELETE FROM message_archive").stepThis().dispose();
+                } catch (Exception e) {
+                    database.executeFast("ROLLBACK TO clear_message_archive").stepThis().dispose();
+                    throw e;
+                } finally {
+                    database.executeFast("RELEASE clear_message_archive").stepThis().dispose();
+                }
+            } catch (Exception e) {
+                FileLog.e(e);
+                AndroidUtilities.runOnUIThread(() -> onComplete.run(false));
+                return;
+            }
+            try {
+                database.executeFast("PRAGMA wal_checkpoint(TRUNCATE)").stepThis().dispose();
+                database.executeFast("VACUUM").stepThis().dispose();
+                database.executeFast("PRAGMA wal_checkpoint(TRUNCATE)").stepThis().dispose();
             } catch (Exception e) {
                 FileLog.e(e);
             }
+            AndroidUtilities.runOnUIThread(() -> {
+                getNotificationCenter().postNotificationName(NotificationCenter.messageArchiveCleared);
+                getNotificationCenter().postNotificationName(NotificationCenter.didClearDatabase);
+                onComplete.run(true);
+            });
         });
     }
 
@@ -929,23 +983,24 @@ public class MessagesStorage extends BaseController {
                 shmCacheFile.delete();
                 shmCacheFile = null;
             }
-            deleteArchiveMediaDirectory(new File(ApplicationLoader.getFilesDirFixed(), "message_archive_media/" + currentAccount));
+            deleteArchiveMediaDirectory(getArchiveMediaDirectory(currentAccount));
 
         }
     }
 
-    private static void deleteArchiveMediaDirectory(File directory) {
-        File[] children = directory.listFiles();
-        if (children != null) {
+    private static boolean deleteArchiveMediaDirectory(File file) {
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children == null) {
+                return false;
+            }
             for (File child : children) {
-                if (child.isDirectory()) {
-                    deleteArchiveMediaDirectory(child);
-                } else {
-                    child.delete();
+                if (!deleteArchiveMediaDirectory(child)) {
+                    return false;
                 }
             }
         }
-        directory.delete();
+        return !file.exists() || file.delete();
     }
 
     public void clearDatabaseValues() {

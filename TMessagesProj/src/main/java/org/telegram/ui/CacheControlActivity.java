@@ -14,8 +14,11 @@ import static org.telegram.messenger.LocaleController.formatString;
 
 import android.animation.Animator;
 import android.animation.ObjectAnimator;
+import android.app.usage.StorageStats;
+import android.app.usage.StorageStatsManager;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Canvas;
 import android.graphics.Paint;
@@ -26,11 +29,18 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.StatFs;
+import android.os.storage.StorageManager;
+import android.system.ErrnoException;
+import android.system.Os;
+import android.system.OsConstants;
+import android.system.StructStat;
 import android.text.SpannableString;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextUtils;
+import android.text.style.ForegroundColorSpan;
 import android.text.style.RelativeSizeSpan;
+import android.text.format.Formatter;
 import android.util.LongSparseArray;
 import android.util.SparseArray;
 import android.util.TypedValue;
@@ -69,6 +79,8 @@ import org.telegram.messenger.MessagesStorage;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
+import org.telegram.messenger.UserConfig;
+import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.ActionBar;
@@ -122,6 +134,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Objects;
 
@@ -142,6 +155,8 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
     private static final int VIEW_TYPE_SECTION_LOADING = 12;
     private static final int VIEW_TYPE_CLEAR_CACHE_BUTTON = 13;
     public static final int VIEW_TYPE_MAX_CACHE_SIZE = 14;
+    private static final int VIEW_TYPE_PACKAGE_SIZE = 15;
+    private static final int PACKAGE_SEGMENT_START = 11;
 
     public static final int KEEP_MEDIA_TYPE_USER = 0;
     public static final int KEEP_MEDIA_TYPE_GROUP = 1;
@@ -169,6 +184,9 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
     private long logsSize = -1;
     private long stickersCacheSize = -1;
     private long totalSize = -1;
+    private long displayedStorageTotal;
+    private PackageStorageUsage packageStorageUsage;
+    private int packageStorageRequest;
     private long totalDeviceSize = -1;
     private long totalDeviceFreeSize = -1;
     private long migrateOldFolderRow = -1;
@@ -182,8 +200,6 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
     private BoolAnimator actionBarShownAnimator;
     private BoolAnimator tabsPinnedAnimator;
 
-    private int[] percents;
-    private float[] tempSizes;
 
     private int sectionsStartRow = -1;
     private int sectionsEndRow = -1;
@@ -214,6 +230,7 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
     private static final int other_id = 2;
     private static final int clear_database_id = 3;
     private static final int reset_database_id = 4;
+    private static final int clear_message_archive_id = 5;
     private boolean loadingDialogs;
     private SiblingRecyclerPagerLayout scrollCoordinator;
 
@@ -424,24 +441,25 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
 
     private void updateChart() {
         if (cacheChart != null) {
-            if (!calculating && totalSize > 0) {
-                CacheChart.SegmentSize[] segments = new CacheChart.SegmentSize[11];
-                for (int i = 0; i < itemInners.size(); ++i) {
-                    ItemInner item = itemInners.get(i);
+            if (!calculating && (totalSize > 0 || packageStorageUsage != null)) {
+                CacheChart.SegmentSize[] segments = new CacheChart.SegmentSize[
+                        PACKAGE_SEGMENT_START + PackageStorageUsage.Category.values().length];
+                for (ItemInner item : itemInners) {
                     if (item.viewType == VIEW_TYPE_SECTION) {
-                        if (item.index < 0) {
-                            if (collapsed) {
-                                segments[10] = CacheChart.SegmentSize.of(item.size, selected[10]);
-                            }
-                        } else {
-                            segments[item.index] = CacheChart.SegmentSize.of(item.size, selected[item.index]);
+                        if (item.index >= 0) {
+                            segments[item.index] = CacheChart.SegmentSize.of(item.size, true);
+                        } else if (collapsed) {
+                            segments[10] = CacheChart.SegmentSize.of(item.size, true);
                         }
+                    } else if (item.viewType == VIEW_TYPE_PACKAGE_SIZE && item.packageCategory != null) {
+                        segments[PACKAGE_SEGMENT_START + item.packageCategory.ordinal()] =
+                                CacheChart.SegmentSize.of(item.size, true);
                     }
                 }
                 if (System.currentTimeMillis() - fragmentCreateTime < 80) {
                     cacheChart.loadingFloat.set(0, true);
                 }
-                cacheChart.setSegments(totalSize, true, segments);
+                cacheChart.setSegments(displayedStorageTotal, true, segments);
             } else if (calculating) {
                 cacheChart.setSegments(-1, true);
             } else {
@@ -542,8 +560,8 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
                         updateChart();
                         if (cacheChartHeader != null && !calculating && System.currentTimeMillis() - fragmentCreateTime > 120) {
                             cacheChartHeader.setData(
-                                    totalSize > 0,
-                                    totalDeviceSize <= 0 ? 0 : (float) totalSize / totalDeviceSize,
+                                    displayedStorageTotal > 0,
+                                    totalDeviceSize <= 0 ? 0 : (float) displayedStorageTotal / totalDeviceSize,
                                     totalDeviceFreeSize <= 0 || totalDeviceSize <= 0 ? 0 : (float) (totalDeviceSize - totalDeviceFreeSize) / totalDeviceSize
                             );
                         }
@@ -726,28 +744,14 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
                 sections.get(sections.size() - 1).last = true;
                 hasCache = true;
 
-                if (tempSizes == null) {
-                    tempSizes = new float[11];
-                }
-                for (int i = 0; i < tempSizes.length; ++i) {
-                    tempSizes[i] = (float) size(i);
-                }
-                if (percents == null) {
-                    percents = new int[11];
-                }
-                AndroidUtilities.roundPercents(tempSizes, percents);
-
                 final int MAX_NOT_COLLAPSED = 4;
                 if (sections.size() > MAX_NOT_COLLAPSED + 1) {
                     itemInners.addAll(sections.subList(0, MAX_NOT_COLLAPSED));
-                    int sumPercents = 0;
                     long sum = 0;
                     for (int i = MAX_NOT_COLLAPSED; i < sections.size(); ++i) {
                         sections.get(i).pad = true;
                         sum += sections.get(i).size;
-                        sumPercents += percents[sections.get(i).index];
                     }
-                    percents[10] = sumPercents;
                     itemInners.add(ItemInner.asCheckBox(LocaleController.getString(R.string.LocalOther), -1, sum, Theme.key_statisticChartLine_golden));
                     if (!collapsed) {
                         itemInners.addAll(sections.subList(MAX_NOT_COLLAPSED, sections.size()));
@@ -758,6 +762,7 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
             }
         }
 
+        addPackageStorageRows();
         if (hasCache) {
             sectionsEndRow = itemInners.size();
             itemInners.add(new ItemInner(VIEW_TYPE_CLEAR_CACHE_BUTTON, null, null));
@@ -785,6 +790,12 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
             itemInners.add(new ItemInner(VIEW_TYPE_CACHE_VIEW_PAGER, null, null));
         }
 
+        updateChart();
+        if (cacheChartHeader != null && !calculating) {
+            cacheChartHeader.setData(displayedStorageTotal > 0,
+                    totalDeviceSize <= 0 ? 0 : (float) displayedStorageTotal / totalDeviceSize,
+                    totalDeviceFreeSize <= 0 || totalDeviceSize <= 0 ? 0 : (float) (totalDeviceSize - totalDeviceFreeSize) / totalDeviceSize);
+        }
         if (listAdapter != null) {
             if (animated) {
                 listAdapter.setItems(oldItems, itemInners);
@@ -803,6 +814,254 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
         }
     }
 
+    private void refreshPackageStorage() {
+        int request = ++packageStorageRequest;
+        Utilities.cacheClearQueue.postRunnable(() -> {
+            PackageStorageUsage usage = new PackageStorageUsage(ApplicationLoader.applicationContext);
+            AndroidUtilities.runOnUIThread(() -> {
+                if (request == packageStorageRequest && listAdapter != null) {
+                    packageStorageUsage = usage;
+                    updateRows();
+                }
+            });
+        });
+    }
+
+    private void addPackageStorageRows() {
+        displayedStorageTotal = Math.max(0, totalSize);
+        if (calculating || packageStorageUsage == null) {
+            return;
+        }
+
+        PackageStorageUsage usage = packageStorageUsage;
+        long mediaShown = Math.max(0, photoSize) + Math.max(0, videoSize)
+                + Math.max(0, documentsSize) + Math.max(0, musicSize)
+                + Math.max(0, audioSize) + Math.max(0, storiesSize);
+        long cacheShown = Math.max(0, stickersCacheSize) + Math.max(0, cacheSize) + Math.max(0, cacheTempSize);
+        displayedStorageTotal = mediaShown + cacheShown + Math.max(0, logsSize);
+        for (PackageStorageUsage.Category category : PackageStorageUsage.Category.values()) {
+            long size = usage.sizes[category.ordinal()];
+            switch (category) {
+                case MEDIA:
+                    size = Math.max(0, size - mediaShown);
+                    break;
+                case CACHE:
+                    size = Math.max(0, size - cacheShown);
+                    break;
+                case LOGS:
+                    size = Math.max(0, size - Math.max(0, logsSize));
+                    break;
+                case ANDROID_OTHER:
+                    size = Math.max(0, usage.systemTotal - displayedStorageTotal);
+                    break;
+            }
+            if (size > 0) {
+                displayedStorageTotal += size;
+                itemInners.add(ItemInner.asPackageSize(LocaleController.getString(category.label), size, category));
+            }
+        }
+        if (usage.systemTotal >= 0 && usage.systemTotal != displayedStorageTotal) {
+            itemInners.add(ItemInner.asPackageSize(LocaleController.getString(R.string.PackageStorageTotal), usage.systemTotal, null));
+        }
+        itemInners.add(ItemInner.asInfo(LocaleController.getString(R.string.PackageStorageCacheBreakdown)));
+    }
+
+    private void showPackageStorageAction(PackageStorageUsage.Category category) {
+        if (getParentActivity() == null || category == null || !category.canClear()) {
+            return;
+        }
+        if (category == PackageStorageUsage.Category.ARCHIVED_MEDIA) {
+            clearMessageArchive();
+            return;
+        }
+        if (category == PackageStorageUsage.Category.MESSAGE_DATABASES) {
+            clearDatabase(false);
+            return;
+        }
+
+        boolean[] selection = new boolean[10];
+        int message;
+        switch (category) {
+            case MEDIA:
+                Arrays.fill(selection, 0, 6, true);
+                message = R.string.StorageUsageInfo;
+                break;
+            case CACHE:
+                Arrays.fill(selection, 6, 9, true);
+                message = R.string.PackageStorageClearCacheConfirm;
+                break;
+            case LOGS:
+                selection[9] = true;
+                message = R.string.PackageStorageClearLogsConfirm;
+                break;
+            default:
+                return;
+        }
+        showDialog(new AlertDialog.Builder(getParentActivity())
+                .setTitle(LocaleController.getString(category.label))
+                .setMessage(LocaleController.getString(message))
+                .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
+                .setPositiveButton(LocaleController.getString(R.string.CacheClear),
+                        (dialog, which) -> doClearCache(selection, false))
+                .create());
+    }
+
+    private static class PackageStorageUsage {
+        private enum Category {
+            APP(R.string.PackageStorageApp, Theme.key_statisticChartLine_indigo, R.raw.cache_documents),
+            ARCHIVED_MEDIA(R.string.PackageStorageArchivedMedia, Theme.key_statisticChartLine_purple, R.raw.cache_videos),
+            MESSAGE_DATABASES(R.string.PackageStorageMessageDatabases, Theme.key_statisticChartLine_blue, R.raw.cache_documents),
+            LOGS(R.string.LocalLogsCache, Theme.key_statisticChartLine_golden, R.raw.cache_other),
+            MEDIA(R.string.PackageStorageMedia, Theme.key_statisticChartLine_green, R.raw.cache_photos),
+            CACHE(R.string.PackageStorageCache, Theme.key_statisticChartLine_cyan, R.raw.cache_stickers),
+            OTHER(R.string.PackageStorageOther, Theme.key_statisticChartLine_orange, R.raw.cache_other),
+            ANDROID_OTHER(R.string.PackageStorageUnattributed, Theme.key_statisticChartLine_lightblue, R.raw.cache_other);
+
+            final int label;
+            final int color;
+            final int particle;
+
+            Category(int label, int color, int particle) {
+                this.label = label;
+                this.color = color;
+                this.particle = particle;
+            }
+
+            boolean canClear() {
+                return this == ARCHIVED_MEDIA || this == MESSAGE_DATABASES || this == LOGS
+                        || this == MEDIA || this == CACHE;
+            }
+        }
+
+        final long[] sizes = new long[Category.values().length];
+        final long systemTotal;
+        final long[] archivedMediaByAccount = new long[UserConfig.MAX_ACCOUNT_COUNT];
+        long unassignedArchiveMedia;
+
+        PackageStorageUsage(Context context) {
+            ApplicationInfo info = context.getApplicationInfo();
+            HashMap<File, Category> categories = new HashMap<>();
+            HashSet<File> roots = new HashSet<>();
+            addDataDirectory(context, roots, categories);
+            if (Build.VERSION.SDK_INT >= 24) {
+                addDataDirectory(context.createDeviceProtectedStorageContext(), roots, categories);
+            }
+            categories.put(MessagesStorage.getArchiveMediaRoot(), Category.ARCHIVED_MEDIA);
+            for (File directory : context.getExternalFilesDirs(null)) {
+                if (directory != null) {
+                    roots.add(directory);
+                    categories.put(new File(directory, "logs"), Category.LOGS);
+                }
+            }
+            for (File directory : context.getExternalCacheDirs()) {
+                if (directory != null) {
+                    roots.add(directory);
+                    categories.put(directory, Category.CACHE);
+                    categories.put(new File(directory, "logs"), Category.LOGS);
+                }
+            }
+            for (File directory : context.getExternalMediaDirs()) {
+                if (directory != null) {
+                    roots.add(directory);
+                }
+            }
+            int[] mediaTypes = {
+                    FileLoader.MEDIA_DIR_IMAGE, FileLoader.MEDIA_DIR_VIDEO, FileLoader.MEDIA_DIR_AUDIO,
+                    FileLoader.MEDIA_DIR_DOCUMENT, FileLoader.MEDIA_DIR_FILES, FileLoader.MEDIA_DIR_STORIES
+            };
+            for (int type : mediaTypes) {
+                File directory = FileLoader.checkDirectory(type);
+                if (directory != null) {
+                    categories.put(directory, Category.MEDIA);
+                }
+            }
+            File mediaCache = FileLoader.checkDirectory(FileLoader.MEDIA_DIR_CACHE);
+            if (mediaCache != null) {
+                categories.put(mediaCache, Category.CACHE);
+            }
+
+            for (File root : roots) {
+                measure(root, Category.OTHER, categories);
+            }
+            long appBytes = 0;
+            long dataBytes = -1;
+            if (Build.VERSION.SDK_INT >= 26) {
+                try {
+                    StorageStatsManager manager = context.getSystemService(StorageStatsManager.class);
+                    StorageStats stats = manager.queryStatsForPackage(
+                            info.storageUuid == null ? StorageManager.UUID_DEFAULT : info.storageUuid,
+                            context.getPackageName(), android.os.Process.myUserHandle());
+                    appBytes = stats.getAppBytes();
+                    dataBytes = stats.getDataBytes(); // Android includes cache bytes in data bytes.
+                } catch (Exception e) {
+                    FileLog.e(e);
+                }
+            }
+            if (dataBytes < 0) {
+                measure(new File(info.sourceDir), Category.APP, categories);
+                if (info.splitSourceDirs != null) {
+                    for (String apk : info.splitSourceDirs) {
+                        measure(new File(apk), Category.APP, categories);
+                    }
+                }
+                if (info.nativeLibraryDir != null) {
+                    measure(new File(info.nativeLibraryDir), Category.APP, categories);
+                }
+            } else {
+                sizes[Category.APP.ordinal()] = appBytes;
+            }
+            systemTotal = dataBytes < 0 ? -1 : appBytes + dataBytes;
+        }
+
+        private static void addDataDirectory(Context context, HashSet<File> roots, HashMap<File, Category> categories) {
+            File directory = Build.VERSION.SDK_INT >= 24
+                    ? context.getDataDir() : new File(context.getApplicationInfo().dataDir);
+            roots.add(directory);
+            File cache = context.getCacheDir();
+            categories.put(cache, Category.CACHE);
+            categories.put(new File(cache, "logs"), Category.LOGS);
+            categories.put(context.getCodeCacheDir(), Category.CACHE);
+            categories.put(new File(context.getFilesDir(), "logs"), Category.LOGS);
+        }
+
+        private void measure(File file, Category inherited, HashMap<File, Category> categories) {
+            try {
+                StructStat stat = Os.lstat(file.getAbsolutePath());
+                Category category = categories.get(file);
+                if (category == null) {
+                    category = inherited;
+                }
+                if (category == Category.OTHER && (file.getName().equals("cache4.db")
+                        || file.getName().startsWith("cache4.db-"))) {
+                    category = Category.MESSAGE_DATABASES;
+                }
+                sizes[category.ordinal()] += stat.st_blocks * 512L;
+                if (OsConstants.S_ISDIR(stat.st_mode)) {
+                    File[] children = file.listFiles();
+                    if (children != null) {
+                        for (File child : children) {
+                            if (category == Category.ARCHIVED_MEDIA && inherited != Category.ARCHIVED_MEDIA) {
+                                long previousSize = sizes[category.ordinal()];
+                                measure(child, category, categories);
+                                long childSize = sizes[category.ordinal()] - previousSize;
+                                int account = MessagesStorage.getArchiveMediaAccount(child);
+                                if (account >= 0) {
+                                    archivedMediaByAccount[account] += childSize;
+                                } else {
+                                    unassignedArchiveMedia += childSize;
+                                }
+                            } else {
+                                measure(child, category, categories);
+                            }
+                        }
+                    }
+                }
+            } catch (ErrnoException ignored) {
+                // A download or cleanup can move a file while the scan is running.
+            }
+        }
+    }
+
     @Override
     public boolean needDelayOpenAnimation() {
         return true;
@@ -811,6 +1070,7 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
     @Override
     public void onFragmentDestroy() {
         super.onFragmentDestroy();
+        ++packageStorageRequest;
         getNotificationCenter().removeObserver(this, NotificationCenter.didClearDatabase);
         try {
             if (progressDialog != null) {
@@ -837,7 +1097,7 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
         return size;
     }
 
-    private void cleanupFolders(Utilities.Callback2<Float, Boolean> onProgress, Runnable onDone) {
+    private void cleanupFolders(boolean[] selection, boolean includePublicMedia, Utilities.Callback2<Float, Boolean> onProgress, Runnable onDone) {
         if (cacheModel != null) {
             cacheModel.clearSelection();
         }
@@ -851,7 +1111,7 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
 //        progressDialog.showDelayed(500);
         getFileLoader().cancelLoadAllFiles();
         getFileLoader().getFileLoaderQueue().postRunnable(() -> Utilities.globalQueue.postRunnable(() -> {
-            cleanupFoldersInternal(onProgress, onDone);
+            cleanupFoldersInternal(selection, includePublicMedia, onProgress, onDone);
         }));
         setCacheModel(null);
         loadingDialogs = true;
@@ -958,12 +1218,12 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
         }
     }
 
-    private void cleanupFoldersInternal(Utilities.Callback2<Float, Boolean> onProgress, Runnable onDone) {
+    private void cleanupFoldersInternal(boolean[] selection, boolean includePublicMedia, Utilities.Callback2<Float, Boolean> onProgress, Runnable onDone) {
         boolean imagesCleared = false;
         long clearedSize = 0;
         boolean allItemsClear = true;
         final int[] clearDirI = new int[] { 0 };
-        int clearDirCount = (selected[0] ? 2 : 0) + (selected[1] ? 2 : 0) + (selected[2] ? 2 : 0) + (selected[3] ? 2 : 0) + (selected[4] ? 1 : 0) + (selected[5] ? 2 : 0) + (selected[6] ? 1 : 0) + (selected[7] ? 1 : 0) + (selected[8] ? 1 : 0) + (selected[9] ? 1 : 0);
+        int clearDirCount = (selection[0] ? (includePublicMedia ? 2 : 1) : 0) + (selection[1] ? (includePublicMedia ? 2 : 1) : 0) + (selection[2] ? 2 : 0) + (selection[3] ? 2 : 0) + (selection[4] ? 1 : 0) + (selection[5] ? 2 : 0) + (selection[6] ? 1 : 0) + (selection[7] ? 1 : 0) + (selection[8] ? 1 : 0) + (selection[9] ? 1 : 0);
         long time = System.currentTimeMillis();
         Utilities.Callback<Float> updateProgress = t -> {
             onProgress.run(clearDirI[0] / (float) clearDirCount + (1f / clearDirCount) * MathUtils.clamp(t, 0, 1), false);
@@ -973,7 +1233,7 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
             onProgress.run(clearDirI[0] / (float) clearDirCount, now - time > 250);
         };
         for (int a = 0; a < 10; a++) {
-            if (!selected[a]) {
+            if (!selection[a]) {
                 allItemsClear = false;
                 continue;
             }
@@ -981,10 +1241,12 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
             int documentsMusicType = 0;
             if (a == 0) {
                 type = FileLoader.MEDIA_DIR_IMAGE;
-                clearedSize += photoSize;
+                clearedSize += includePublicMedia ? photoSize
+                        : getDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_IMAGE), 0);
             } else if (a == 1) {
                 type = FileLoader.MEDIA_DIR_VIDEO;
-                clearedSize += videoSize;
+                clearedSize += includePublicMedia ? videoSize
+                        : getDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_VIDEO), 0);
             } else if (a == 2) {
                 type = FileLoader.MEDIA_DIR_DOCUMENT;
                 documentsMusicType = 1;
@@ -1011,14 +1273,14 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
                 documentsMusicType = 4;
                 type = FileLoader.MEDIA_DIR_CACHE;
             } else if (a == 9) {
-                clearedSize += logsSize;
+                clearedSize += getDirectorySize(AndroidUtilities.getLogsDir(), 1);
                 documentsMusicType = 1;
                 type = 0;
             }
             if (type == -1) {
                 continue;
             }
-            if (a == 7) {
+            if (a == 7 && includePublicMedia) {
                 try {
                     cleanDirJava(ApplicationLoader.getFilesDirFixed("rasterized/wallpaper").getAbsolutePath(), 0, null, null);
                 } catch (Exception e) {
@@ -1046,7 +1308,7 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
                 clearDirI[0]++;
                 next.run();
             }
-            if (type == FileLoader.MEDIA_DIR_IMAGE || type == FileLoader.MEDIA_DIR_VIDEO) {
+            if (includePublicMedia && (type == FileLoader.MEDIA_DIR_IMAGE || type == FileLoader.MEDIA_DIR_VIDEO)) {
                 int publicDirectoryType;
                 if (type == FileLoader.MEDIA_DIR_IMAGE) {
                     publicDirectoryType = FileLoader.MEDIA_DIR_IMAGE_PUBLIC;
@@ -1144,6 +1406,7 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
             MediaDataController.getInstance(currentAccount).checkAllMedia(true);
 
             loadDialogEntities();
+            refreshPackageStorage();
 
             if (onDone != null) {
                 onDone.run();
@@ -1228,6 +1491,8 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
                     clearSelectedFiles();
                 } else if (id == clear_database_id) {
                     clearDatabase(false);
+                } else if (id == clear_message_archive_id) {
+                    clearMessageArchive();
                 } else if (id == reset_database_id) {
                     clearDatabase(true);
                 }
@@ -1243,6 +1508,11 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
         clearDatabaseItem.setIconColor(Theme.getColor(Theme.key_text_RedRegular));
         clearDatabaseItem.setTextColor(Theme.getColor(Theme.key_text_RedBold));
         clearDatabaseItem.setSelectorColorKey(Theme.key_text_RedRegular, .12f);
+
+        ActionBarMenuSubItem clearArchiveItem = otherItem.addSubItem(clear_message_archive_id, R.drawable.msg_delete, LocaleController.getString(R.string.ClearMessageArchive));
+        clearArchiveItem.setIconColor(Theme.getColor(Theme.key_text_RedRegular));
+        clearArchiveItem.setTextColor(Theme.getColor(Theme.key_text_RedBold));
+        clearArchiveItem.setSelectorColorKey(Theme.key_text_RedRegular, .12f);
 
         if (BuildVars.DEBUG_PRIVATE_VERSION) {
             resetDatabaseItem = otherItem.addSubItem(reset_database_id, R.drawable.msg_delete, "Full Reset Database");
@@ -1314,7 +1584,9 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
 //            if (position == databaseRow) {
 //                clearDatabase();
 //            } else
-            if (item.viewType == VIEW_TYPE_SECTION && view instanceof CheckBoxCell) {
+            if (item.viewType == VIEW_TYPE_PACKAGE_SIZE) {
+                showPackageStorageAction(item.packageCategory);
+            } else if (item.viewType == VIEW_TYPE_SECTION && view instanceof CheckBoxCell) {
                 if (item.index < 0) {
                     collapsed = !collapsed;
                     updateRows();
@@ -1606,6 +1878,7 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
 
             AndroidUtilities.runOnUIThread(() -> {
                 FileLoader.getInstance(currentAccount).checkCurrentDownloadsFiles();
+                refreshPackageStorage();
                 try {
                     progressDialog.dismiss();
                 } catch (Exception e) {
@@ -1646,6 +1919,68 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
         FilesMigrationService.checkBottomSheet(this);
     }
 
+    private CharSequence getArchiveCleanupMessage() {
+        StringBuilder message = new StringBuilder(LocaleController.getString(R.string.ClearMessageArchiveConfirm));
+        if (packageStorageUsage == null) {
+            return message;
+        }
+        message.append("\n");
+        for (int account = 0; account < UserConfig.MAX_ACCOUNT_COUNT; account++) {
+            long size = packageStorageUsage.archivedMediaByAccount[account];
+            if (account == currentAccount || size > 0 || UserConfig.isValidAccount(account)) {
+                TLRPC.User user = UserConfig.getInstance(account).getCurrentUser();
+                String accountLabel = user == null
+                        ? formatString("ArchiveAccountSlot", R.string.ArchiveAccountSlot, account + 1)
+                        : UserObject.getUserName(user);
+                if (account == currentAccount) {
+                    accountLabel = formatString("ArchiveCurrentAccount", R.string.ArchiveCurrentAccount, accountLabel);
+                }
+                message.append("\n").append(accountLabel).append(" — ")
+                        .append(Formatter.formatFileSize(getContext(), size));
+            }
+        }
+        if (packageStorageUsage.unassignedArchiveMedia > 0) {
+            message.append("\n").append(LocaleController.getString(R.string.ArchiveUnassignedFiles)).append(" — ")
+                    .append(Formatter.formatFileSize(getContext(), packageStorageUsage.unassignedArchiveMedia));
+        }
+        return message;
+    }
+
+    private void clearMessageArchive() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
+        builder.setTitle(LocaleController.getString(R.string.ClearMessageArchive));
+        builder.setMessage(getArchiveCleanupMessage());
+        builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
+        builder.setPositiveButton(LocaleController.getString(R.string.CacheClear), (dialog, which) -> {
+            if (getParentActivity() == null) {
+                return;
+            }
+            AlertDialog archiveProgress = new AlertDialog(getParentActivity(), AlertDialog.ALERT_TYPE_SPINNER);
+            archiveProgress.setCanCancel(false);
+            archiveProgress.showDelayed(500);
+            Utilities.Callback<Boolean> onComplete = success -> {
+                archiveProgress.dismiss();
+                if (getParentActivity() == null) {
+                    return;
+                }
+                refreshPackageStorage();
+                if (!success) {
+                    AlertDialog.Builder error = new AlertDialog.Builder(getParentActivity());
+                    error.setMessage(LocaleController.getString(R.string.ErrorOccurred));
+                    error.setPositiveButton(LocaleController.getString(R.string.OK), null);
+                    showDialog(error.create());
+                }
+            };
+            getMessagesStorage().clearMessageArchive(onComplete);
+        });
+        AlertDialog dialog = builder.create();
+        showDialog(dialog);
+        View button = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+        if (button instanceof TextView) {
+            ((TextView) button).setTextColor(Theme.getColor(Theme.key_text_RedBold));
+        }
+    }
+
     private void clearDatabase(boolean fullReset) {
         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
         builder.setTitle(LocaleController.getString(R.string.LocalDatabaseClearTextTitle));
@@ -1680,6 +2015,7 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
     @Override
     public void onResume() {
         super.onResume();
+        refreshPackageStorage();
         listAdapter.notifyDataSetChanged();
         if (!calculating) {
 //            loadDialogEntities();
@@ -1689,6 +2025,7 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
     @Override
     public void didReceivedNotification(int id, int account, Object... args) {
         if (id == NotificationCenter.didClearDatabase) {
+            refreshPackageStorage();
             try {
                 if (progressDialog != null) {
                     progressDialog.dismiss();
@@ -2034,6 +2371,59 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
 }
     }
 
+    private void doClearCache(boolean[] selection, boolean includePublicMedia) {
+        if (getContext() == null) {
+            return;
+        }
+        BottomSheet bottomSheet = new BottomSheet(getContext(), false) {
+            @Override
+            protected boolean canDismissWithTouchOutside() {
+                return false;
+            }
+        };
+        bottomSheet.fixNavigationBar();
+        bottomSheet.setCanDismissWithSwipe(false);
+        bottomSheet.setCancelable(false);
+        ClearingCacheView cacheView = new ClearingCacheView(getContext());
+        bottomSheet.setCustomView(cacheView);
+
+        final boolean[] done = new boolean[] { false };
+        final float[] progress = new float[] { 0 };
+        final boolean[] nextSection = new boolean[] { false };
+        Runnable updateProgress = () -> {
+            cacheView.setProgress(progress[0]);
+            if (nextSection[0]) {
+                updateRows();
+            }
+        };
+
+        final long[] start = new long[] { -1 };
+        AndroidUtilities.runOnUIThread(() -> {
+            if (!done[0]) {
+                start[0] = System.currentTimeMillis();
+                showDialog(bottomSheet);
+            }
+        }, 150);
+
+        cleanupFolders(selection, includePublicMedia,
+                (progressValue, next) -> {
+                    progress[0] = progressValue;
+                    nextSection[0] = next;
+                    AndroidUtilities.cancelRunOnUIThread(updateProgress);
+                    AndroidUtilities.runOnUIThread(updateProgress);
+                },
+                () -> AndroidUtilities.runOnUIThread(() -> {
+                    done[0] = true;
+                    cacheView.setProgress(1F);
+                    if (start[0] > 0) {
+                        AndroidUtilities.runOnUIThread(bottomSheet::dismiss, Math.max(0, 1000 - (System.currentTimeMillis() - start[0])));
+                    } else {
+                        bottomSheet.dismiss();
+                    }
+                })
+        );
+    }
+
     private class ClearCacheButtonInternal extends ClearCacheButton {
 
         public ClearCacheButtonInternal(Context context) {
@@ -2043,7 +2433,7 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
                 AlertDialog dialog =  new AlertDialog.Builder(getContext())
                         .setTitle(LocaleController.getString(R.string.ClearCache) + (TextUtils.isEmpty(valueTextView.getText()) ? "" : " (" + valueTextView.getText() + ")"))
                         .setMessage(LocaleController.getString(R.string.StorageUsageInfo))
-                        .setPositiveButton(textView.getText(), (di, v) -> doClearCache())
+                        .setPositiveButton(textView.getText(), (di, v) -> doClearCache(selected.clone(), true))
                         .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
                         .create();
                 showDialog(dialog);
@@ -2053,56 +2443,6 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
                     clearButton.setBackground(Theme.getRoundRectSelectorDrawable(AndroidUtilities.dp(6), Theme.multAlpha(Theme.getColor(Theme.key_text_RedRegular), .12f)));
                 }
             });
-        }
-
-        private void doClearCache() {
-            BottomSheet bottomSheet = new BottomSheet(getContext(), false) {
-                @Override
-                protected boolean canDismissWithTouchOutside() {
-                    return false;
-                }
-            };
-            bottomSheet.fixNavigationBar();
-            bottomSheet.setCanDismissWithSwipe(false);
-            bottomSheet.setCancelable(false);
-            ClearingCacheView cacheView = new ClearingCacheView(getContext());
-            bottomSheet.setCustomView(cacheView);
-
-            final boolean[] done = new boolean[] { false };
-            final float[] progress = new float[] { 0 };
-            final boolean[] nextSection = new boolean[] { false };
-            Runnable updateProgress = () -> {
-                cacheView.setProgress(progress[0]);
-                if (nextSection[0]) {
-                    updateRows();
-                }
-            };
-
-            final long[] start = new long[] { -1 };
-            AndroidUtilities.runOnUIThread(() -> {
-                if (!done[0]) {
-                    start[0] = System.currentTimeMillis();
-                    showDialog(bottomSheet);
-                }
-            }, 150);
-
-            cleanupFolders(
-                    (progressValue, next) -> {
-                        progress[0] = progressValue;
-                        nextSection[0] = next;
-                        AndroidUtilities.cancelRunOnUIThread(updateProgress);
-                        AndroidUtilities.runOnUIThread(updateProgress);
-                    },
-                    () -> AndroidUtilities.runOnUIThread(() -> {
-                        done[0] = true;
-                        cacheView.setProgress(1F);
-                        if (start[0] > 0) {
-                            AndroidUtilities.runOnUIThread(bottomSheet::dismiss, Math.max(0, 1000 - (System.currentTimeMillis() - start[0])));
-                        } else {
-                            bottomSheet.dismiss();
-                        }
-                    })
-            );
         }
 
         public void updateSize() {
@@ -2403,6 +2743,13 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
         @Override
         public boolean isEnabled(RecyclerView.ViewHolder holder) {
             int position = holder.getAdapterPosition();
+            if (holder.getItemViewType() == VIEW_TYPE_PACKAGE_SIZE) {
+                if (position < 0 || position >= itemInners.size()) {
+                    return false;
+                }
+                PackageStorageUsage.Category category = itemInners.get(position).packageCategory;
+                return category != null && category.canClear();
+            }
             return position == migrateOldFolderRow || (holder.getItemViewType() == VIEW_TYPE_STORAGE && (totalSize > 0) && !calculating) || holder.getItemViewType() == VIEW_TYPE_CHAT || holder.getItemViewType() == VIEW_TYPE_KEEP_MEDIA_CELL || holder.getItemViewType() == VIEW_TYPE_SECTION;
         }
 
@@ -2459,23 +2806,37 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
                     flickerLoadingView.setViewType(FlickerLoadingView.DIALOG_CACHE_CONTROL);
                     view = flickerLoadingView;
                     break;
+                case VIEW_TYPE_PACKAGE_SIZE:
+                    view = new TextSettingsCell(mContext, getResourceProvider());
+                    break;
                 case VIEW_TYPE_KEEP_MEDIA_CELL:
                     view = new TextCell(mContext);
                     break;
                 case VIEW_TYPE_CHART:
-                    view = cacheChart = new CacheChart(mContext) {
+                    PackageStorageUsage.Category[] categories = PackageStorageUsage.Category.values();
+                    int[] colors = new int[categories.length];
+                    int[] particles = new int[categories.length];
+                    for (int i = 0; i < categories.length; i++) {
+                        colors[i] = categories[i].color;
+                        particles[i] = categories[i].particle;
+                    }
+                    view = cacheChart = new CacheChart(mContext, colors, particles) {
+                        @Override
+                        protected String formatSegmentSize(long size) {
+                            return Formatter.formatShortFileSize(getContext(), size);
+                        }
+
                         @Override
                         protected void onSectionClick(int index) {
-//                            if (index == 8) {
-//                                index = -1;
-//                            }
-//                            for (int i = 0; i < itemInners.size(); ++i) {
-//                                ItemInner item = itemInners.get(i);
-//                                if (item != null && item.index == index) {
-//                                    toggleSection(item, null);
-//                                    return;
-//                                }
-//                            }
+                            if (index >= PACKAGE_SEGMENT_START) {
+                                PackageStorageUsage.Category category = categories[index - PACKAGE_SEGMENT_START];
+                                for (ItemInner item : itemInners) {
+                                    if (item.packageCategory == category) {
+                                        showPackageStorageAction(category);
+                                        return;
+                                    }
+                                }
+                            }
                         }
 
                         @Override
@@ -2484,7 +2845,7 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
                                 listView.removeHighlightRow();
                                 return;
                             }
-                            if (index == 8) {
+                            if (index == 10) {
                                 index = -1;
                             }
                             int position = -1;
@@ -2590,8 +2951,8 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
                 case VIEW_TYPE_CHART_HEADER:
                     if (cacheChartHeader != null && !calculating) {
                         cacheChartHeader.setData(
-                                totalSize > 0,
-                                totalDeviceSize <= 0 ? 0 : (float) totalSize / totalDeviceSize,
+                                displayedStorageTotal > 0,
+                                totalDeviceSize <= 0 ? 0 : (float) displayedStorageTotal / totalDeviceSize,
                                 totalDeviceFreeSize <= 0 || totalDeviceSize <= 0 ? 0 : (float) (totalDeviceSize - totalDeviceFreeSize) / totalDeviceSize
                         );
                     }
@@ -2604,7 +2965,9 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
                     } else {
                         selected = CacheControlActivity.this.selected[item.index];
                     }
-                    cell.setText(getCheckBoxTitle(item.headerName, percents[item.index < 0 ? 9 : item.index], item.index < 0), AndroidUtilities.formatFileSize(item.size), selected, item.index < 0 ? !collapsed : !item.last);
+                    int percent = displayedStorageTotal == 0 ? 0 : (int) Math.round(100.0 * item.size / displayedStorageTotal);
+                    cell.setText(getCheckBoxTitle(item.headerName, percent, item.index < 0),
+                            Formatter.formatFileSize(getContext(), item.size), selected, item.index < 0 ? !collapsed : !item.last);
                     cell.setCheckBoxColor(item.colorKey, Theme.key_windowBackgroundWhiteGrayIcon, Theme.key_checkboxCheck);
                     cell.setCollapsed(item.index < 0 ? collapsed : null);
                     if (item.index == -1) {
@@ -2638,6 +3001,20 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
                         textCell2.setTextAndValueAndColorfulIcon(LocaleController.getString(R.string.CacheStories), value, false, R.drawable.msg_filled_stories, 0xFFF45255, 0xFFDF3955, false);
                     }
                     textCell2.setSubtitle(subtitle);
+                    break;
+                case VIEW_TYPE_PACKAGE_SIZE:
+                    CharSequence label = item.text;
+                    if (item.packageCategory != null) {
+                        SpannableString coloredLabel = new SpannableString("●  " + label);
+                        coloredLabel.setSpan(new ForegroundColorSpan(Theme.getColor(item.packageCategory.color, getResourceProvider())),
+                                0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                        label = coloredLabel;
+                    }
+                    TextSettingsCell packageCell = (TextSettingsCell) holder.itemView;
+                    packageCell.setTextAndValue(label, Formatter.formatFileSize(getContext(), item.size), true);
+                    packageCell.setTextColor(Theme.getColor(item.packageCategory != null && item.packageCategory.canClear()
+                            ? Theme.key_windowBackgroundWhiteBlueText : Theme.key_windowBackgroundWhiteBlackText,
+                            getResourceProvider()));
                     break;
                 case VIEW_TYPE_TEXT_SETTINGS:
                     TextSettingsCell textCell = (TextSettingsCell) holder.itemView;
@@ -3093,6 +3470,16 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
             return item;
         }
 
+        private PackageStorageUsage.Category packageCategory;
+
+        public static ItemInner asPackageSize(String text, long size, PackageStorageUsage.Category category) {
+            ItemInner item = new ItemInner(VIEW_TYPE_PACKAGE_SIZE);
+            item.text = text;
+            item.size = size;
+            item.packageCategory = category;
+            return item;
+        }
+
         public static ItemInner asInfo(String text) {
             ItemInner item = new ItemInner(VIEW_TYPE_INFO);
             item.text = text;
@@ -3116,6 +3503,9 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
                 }
                 if (viewType == VIEW_TYPE_HEADER) {
                     return Objects.equals(headerName, itemInner.headerName);
+                }
+                if (viewType == VIEW_TYPE_PACKAGE_SIZE) {
+                    return size == itemInner.size && Objects.equals(text, itemInner.text);
                 }
                 if (viewType == VIEW_TYPE_INFO) {
                     return Objects.equals(text, itemInner.text);

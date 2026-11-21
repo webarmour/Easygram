@@ -364,6 +364,17 @@ public class CacheChart extends View implements Theme.Colorable {
         this(context, DEFAULT_SECTIONS_COUNT, DEFAULT_COLORS, TYPE_CACHE, DEFAULT_PARTICLES);
     }
 
+    public CacheChart(Context context, int[] additionalColors, int[] additionalParticles) {
+        this(context, DEFAULT_SECTIONS_COUNT + additionalColors.length,
+                append(DEFAULT_COLORS, additionalColors), TYPE_CACHE, append(DEFAULT_PARTICLES, additionalParticles));
+    }
+
+    private static int[] append(int[] initial, int[] additional) {
+        int[] result = Arrays.copyOf(initial, initial.length + additional.length);
+        System.arraycopy(additional, 0, result, initial.length, additional.length);
+        return result;
+    }
+
     public CacheChart(Context context, int count, int[] colorKeys, int type, int[] particles) {
         super(context);
         setLayerType(LAYER_TYPE_HARDWARE, null);
@@ -562,6 +573,10 @@ public class CacheChart extends View implements Theme.Colorable {
         }
     }
 
+    protected String formatSegmentSize(long size) {
+        return AndroidUtilities.formatFileSize(size, true, true);
+    }
+
     public void setSegments(long totalSize, boolean animated, SegmentSize ...segments) {
         if (segments == null || segments.length == 0) {
             loading = false;
@@ -715,7 +730,7 @@ public class CacheChart extends View implements Theme.Colorable {
             k++;
         }
 
-        String[] fileSize = AndroidUtilities.formatFileSize(segmentsSum, true, true).split(" ");
+        String[] fileSize = formatSegmentSize(segmentsSum).split("[\\s\\p{Zs}]+", 2);
         String top = fileSize.length > 0 ? fileSize[0] : "";
         if (top.length() >= 4 && segmentsSum < 1024L * 1024L * 1024L) {
             top = top.split("\\.")[0];

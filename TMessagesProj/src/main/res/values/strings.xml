@@ -11917,6 +11917,11 @@
     <string name="NoPaidMessagesTokenUsedOut">You used the QR code of un1 and can message them for free</string>
     <string name="NoPaidMessagesTokenImported">You can now message **%1$s** for free.</string>
     <string name="MessageArchiveHistory">Message history</string>
+    <string name="ClearMessageArchive">Clear message archive</string>
+    <string name="ArchiveAccountSlot">Account slot %1$d</string>
+    <string name="ArchiveUnassignedFiles">Files without an account</string>
+    <string name="ArchiveCurrentAccount">%1$s (current account)</string>
+    <string name="ClearMessageArchiveConfirm">Clear the saved versions of messages and archived copies of photos, videos and other attachments for this account? Deleted messages will disappear from chats.</string>
     <string name="MessageArchiveDeleted">Deleted</string>
     <string name="MessageArchiveEditedAndDeleted">Edited and deleted</string>
     <string name="MessageArchiveEmpty">No saved versions</string>
@@ -11949,4 +11954,15 @@
     <string name="FpnvConsentSimSlot">SIM Slot</string>
     <string name="FpnvConsentSimSlotValue">SIM %1$d</string>
     <string name="FpnvConsentPhoneNumber">Phone Number</string>
+    <string name="PackageStorageTotal">Total reported by Android</string>
+    <string name="PackageStorageApp">App installation</string>
+    <string name="PackageStorageArchivedMedia">Archived attachments</string>
+    <string name="PackageStorageMessageDatabases">Message databases</string>
+    <string name="PackageStorageMedia">Downloaded media</string>
+    <string name="PackageStorageCache">Cache folders</string>
+    <string name="PackageStorageOther">Other app files</string>
+    <string name="PackageStorageUnattributed">Other data reported by Android</string>
+    <string name="PackageStorageCacheBreakdown">Tap a highlighted category to clear it. Archive and local database cleanup apply to the current account.</string>
+    <string name="PackageStorageClearCacheConfirm">Clear the media cache managed by Easygram?</string>
+    <string name="PackageStorageClearLogsConfirm">Delete the active Easygram log files?</string>
 </resources>

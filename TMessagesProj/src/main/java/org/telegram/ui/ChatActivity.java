@@ -2980,6 +2980,7 @@ public class ChatActivity extends BaseFragment implements
             .add(NotificationCenter.userIsPremiumBlockedUpadted)
             .add(NotificationCenter.didLoadSendAsPeers)
             .add(NotificationCenter.closeChatActivity)
+            .add(NotificationCenter.messageArchiveCleared)
             .add(NotificationCenter.messagesDeleted)
             .add(NotificationCenter.historyCleared)
             .add(NotificationCenter.messageReceivedByServer)
@@ -23415,6 +23416,20 @@ public class ChatActivity extends BaseFragment implements
             removeUnreadPlane(true);
             if (updated && chatAdapter != null) {
                 chatAdapter.notifyDataSetChanged(false);
+            }
+        } else if (id == NotificationCenter.messageArchiveCleared) {
+            for (int loadIndex = 0; loadIndex < messagesDict.length; loadIndex++) {
+                ArrayList<Integer> archivedIds = new ArrayList<>();
+                for (int i = 0; i < messagesDict[loadIndex].size(); i++) {
+                    MessageObject message = messagesDict[loadIndex].valueAt(i);
+                    if (message.messageOwner.localArchiveDeleted) {
+                        archivedIds.add(message.getId());
+                    }
+                }
+                if (!archivedIds.isEmpty()) {
+                    long channelId = loadIndex == 0 && ChatObject.isChannel(currentChat) ? -dialog_id : 0;
+                    processDeletedMessages(archivedIds, channelId, false, false);
+                }
             }
         } else if (id == NotificationCenter.messagesDeleted) {
             boolean scheduled = (Boolean) args[2];
