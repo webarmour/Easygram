@@ -150,6 +150,9 @@ import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
 import org.telegram.messenger.VideoEditedInfo;
+import org.telegram.messenger.asr.EasygramAsrModelManager;
+import org.telegram.messenger.asr.EasygramAsrModels;
+import org.telegram.messenger.asr.EasygramDictation;
 import org.telegram.messenger.browser.Browser;
 import org.telegram.messenger.camera.CameraController;
 import org.telegram.messenger.utils.DrawableUtils;
@@ -616,6 +619,18 @@ public class ChatActivityEnterView extends FrameLayout implements
     private boolean audioVideoButtonContainerForbidden;
     private ChatActivityEnterViewAnimatedIconView audioVideoSendButton;
     private boolean isInVideoMode;
+    private boolean dictationMode;
+    private boolean dictationForcedByRestrictions;
+    private boolean dictationReleased;
+    private boolean dictationLive;
+    private boolean insertingDictationText;
+    private InputFilter[] dictationPreviousFilters;
+    private int dictationPreviewBottomMargin = -1;
+    private float dictationTouchStartY;
+    private EasygramDictation dictation;
+    private final Runnable startDictationRunnable = this::startDictation;
+    private boolean dictationHoldPending;
+    private boolean dictationGestureActive;
     @Nullable
     private FrameLayout recordPanel;
     @Nullable
@@ -904,9 +919,13 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (delegate == null || parentActivity == null) {
                 return;
             }
+            recordAudioVideoRunnableStarted = false;
+            if (isMediaRecordingForbidden()) {
+                delegate.needShowMediaBanHint();
+                return;
+            }
             delegate.onPreAudioVideoRecord();
             calledRecordRunnable = true;
-            recordAudioVideoRunnableStarted = false;
             if (slideText != null) {
                 slideText.setAlpha(1.0f);
                 slideText.setTranslationY(0);
@@ -1509,7 +1528,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             float progressToSeekbarStep1 = 0f;
             float progressToSeekbarStep2 = 0;
             float exitProgress2 = 0f;
-            float hidePause = hidePauseT.set(isInVideoMode && millisecondsRecorded >= 59_000);
+            float hidePause = hidePauseT.set(dictation != null && sendButtonVisible || isInVideoMode && millisecondsRecorded >= 59_000);
 
             if (transformToSeekbar != 0 && audioTimelineView != null) {
                 float step1Time = 0.38f;
@@ -1687,7 +1706,7 @@ public class ChatActivityEnterView extends FrameLayout implements
 
             final float cy = lerp(lockY, getMeasuredHeight() - dp(118), Math.max(exitTransition, Math.min(progressToSeekbarStep1, slideToCancelLockProgress))) + dy + dp(38) * hidePause;
             rectF.set(cx - dpf2(18), cy, cx + dpf2(18), cy + lockSize);
-            onceVisible = delegate != null && delegate.onceVoiceAvailable();
+            onceVisible = dictation == null && delegate != null && delegate.onceVoiceAvailable();
             if (onceVisible) {
                 final float onceOffset = dpf2(12);
                 rectF.set(
@@ -1812,6 +1831,9 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         @Override
         public boolean onTouchEvent(MotionEvent event) {
+            if (dictation != null) {
+                return false;
+            }
             final int x = (int) event.getX();
             final int y = (int) event.getY();
 
@@ -2177,7 +2199,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
             if (startTranslation - lockAnimatedTranslation >= dp(57)) {
                 sendButtonVisible = true;
-                if (controlsView != null) {
+                if (controlsView != null && dictation == null) {
                     controlsView.showPauseHint();
                 }
                 return 2;
@@ -2471,8 +2493,55 @@ public class ChatActivityEnterView extends FrameLayout implements
             drawIconInternal(canvas, drawable, replaceDrawable, progressToSendButton, (int) (255 * alpha));
         }
 
+        private M3ExpressiveLoader.Morph dictationLoader;
+        private final Paint dictationProgressPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private boolean dictationSendPressed;
+
+        @Override
+        public boolean onTouchEvent(MotionEvent event) {
+            if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                dictationSendPressed = dictation != null && !dictationReleased && isSendButtonVisible()
+                        && Math.hypot(event.getX() - sendRect.centerX(), event.getY() - sendRect.centerY()) <= drawingCircleRadius;
+                return dictationSendPressed;
+            }
+            if (!dictationSendPressed) {
+                return false;
+            }
+            if (event.getActionMasked() == MotionEvent.ACTION_UP) {
+                dictationSendPressed = false;
+                if (Math.hypot(event.getX() - sendRect.centerX(), event.getY() - sendRect.centerY()) <= drawingCircleRadius) {
+                    stopDictation();
+                }
+            } else if (event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+                dictationSendPressed = false;
+            }
+            return true;
+        }
+
         private void drawIconInternal(Canvas canvas, Drawable drawable, Drawable replaceDrawable, float progressToSendButton, int alpha) {
             checkDrawables();
+            if (dictation != null && dictationReleased) {
+                float cx = sendRect.exactCenterX();
+                float cy = sendRect.exactCenterY();
+                if (M3ExpressiveLoader.enabled()) {
+                    if (dictationLoader == null) {
+                        dictationLoader = new M3ExpressiveLoader.Morph();
+                    }
+                    dictationLoader.draw(canvas, cx, cy, dpf2(12), Theme.multAlpha(Color.WHITE, alpha / 255f));
+                } else {
+                    float radius = dpf2(10);
+                    dictationProgressPaint.setColor(Color.WHITE);
+                    dictationProgressPaint.setAlpha(alpha);
+                    dictationProgressPaint.setStyle(Paint.Style.STROKE);
+                    dictationProgressPaint.setStrokeWidth(dpf2(2));
+                    dictationProgressPaint.setStrokeCap(Paint.Cap.ROUND);
+                    canvas.drawArc(cx - radius, cy - radius, cx + radius, cy + radius,
+                            SystemClock.uptimeMillis() % 900 * 0.4f, 110, false, dictationProgressPaint);
+                }
+                postInvalidateOnAnimation();
+                return;
+            }
+            dictationLoader = null;
             if (progressToSendButton == 0 || progressToSendButton == 1 || replaceDrawable == null) {
                 if (canceledByGesture && slideToCancelProgress == 1f) {
                     View v = audioVideoSendButton;
@@ -2601,7 +2670,11 @@ public class ChatActivityEnterView extends FrameLayout implements
             protected void onPopulateNodeForVirtualView(int id, @NonNull AccessibilityNodeInfoCompat info) {
                 if (id == 1) {
                     info.setBoundsInParent(sendRect);
-                    info.setText(getString("Send", R.string.Send));
+                    info.setText(getString(dictation == null ? R.string.Send
+                            : dictationReleased ? R.string.EasygramDictationRecognizing : R.string.EasygramDictationProcess));
+                    if (dictation != null && !dictationReleased) {
+                        info.addAction(AccessibilityNodeInfoCompat.ACTION_CLICK);
+                    }
                 } else if (id == 2) {
                     rect.set((int) pauseRect.left, (int) pauseRect.top, (int) pauseRect.right, (int) pauseRect.bottom);
                     info.setBoundsInParent(rect);
@@ -2616,11 +2689,24 @@ public class ChatActivityEnterView extends FrameLayout implements
                         info.setBoundsInParent(AndroidUtilities.rectTmp2);
                     }
                     info.setText(getString("Cancel", R.string.Cancel));
+                    if (dictation != null) {
+                        info.addAction(AccessibilityNodeInfoCompat.ACTION_CLICK);
+                    }
                 }
             }
 
             @Override
             protected boolean onPerformActionForVirtualView(int id, int action, @Nullable Bundle args) {
+                if (dictation != null && action == AccessibilityNodeInfoCompat.ACTION_CLICK) {
+                    if (id == 1 && !dictationReleased) {
+                        stopDictation();
+                        return true;
+                    }
+                    if (id == 3) {
+                        cancelDictation();
+                        return true;
+                    }
+                }
                 return true;
             }
         }
@@ -3050,6 +3136,9 @@ public class ChatActivityEnterView extends FrameLayout implements
             @Override
             public boolean onTouchEvent(MotionEvent motionEvent) {
                 if (isLiveComment) return false;
+                if (dictationMode) {
+                    return handleDictationTouch(motionEvent);
+                }
                 createRecordCircle();
                 if (motionEvent.getAction() == MotionEvent.ACTION_DOWN) {
                     // CUSTOM_RECORDER_PREWARM_V1: the dominant cost before the first recorded
@@ -3119,22 +3208,22 @@ public class ChatActivityEnterView extends FrameLayout implements
                         return true;
                     }
 
-                    TLRPC.Chat chat = parentFragment == null ? null : parentFragment.getCurrentChat();
-                    TLRPC.UserFull userFull = parentFragment == null ? userInfo : parentFragment.getCurrentUserInfo();
-                    if (chat != null && !(ChatObject.canSendVoice(chat) || (ChatObject.canSendRoundVideo(chat) && hasRecordVideo)) || userFull != null && userFull.voice_messages_forbidden) {
-                        delegate.needShowMediaBanHint();
-                        return true;
-                    }
-
-                    if (hasRecordVideo) {
+                    if (hasRecordVideo || canUseDictation()) {
                         calledRecordRunnable = false;
                         recordAudioVideoRunnableStarted = true;
                         AndroidUtilities.runOnUIThread(recordAudioVideoRunnable, 150);
                     } else {
-                        recordAudioVideoRunnable.run();
+                        calledRecordRunnable = false;
+                        recordAudioVideoRunnableStarted = true;
+                        AndroidUtilities.runOnUIThread(recordAudioVideoRunnable, 150);
                     }
                     return true;
                 } else if (motionEvent.getAction() == MotionEvent.ACTION_UP || motionEvent.getAction() == MotionEvent.ACTION_CANCEL) {
+                    if (motionEvent.getAction() == MotionEvent.ACTION_CANCEL && recordAudioVideoRunnableStarted) {
+                        AndroidUtilities.cancelRunOnUIThread(recordAudioVideoRunnable);
+                        recordAudioVideoRunnableStarted = false;
+                        return true;
+                    }
                     if (motionEvent.getAction() == MotionEvent.ACTION_CANCEL && recordingAudioVideo) {
                         if (slideToCancelProgress < 0.7f) {
                             if (hasRecordVideo && isInVideoMode()) {
@@ -3157,8 +3246,30 @@ public class ChatActivityEnterView extends FrameLayout implements
                     if (recordCircle != null && recordCircle.isSendButtonVisible() || recordedAudioPanel != null && recordedAudioPanel.getVisibility() == VISIBLE) {
                         if (recordAudioVideoRunnableStarted) {
                             AndroidUtilities.cancelRunOnUIThread(recordAudioVideoRunnable);
+                            recordAudioVideoRunnableStarted = false;
                         }
                         return false;
+                    }
+
+                    if (recordAudioVideoRunnableStarted) {
+                        AndroidUtilities.cancelRunOnUIThread(recordAudioVideoRunnable);
+                        recordAudioVideoRunnableStarted = false;
+                        if (!isInVideoMode() && hasRecordVideo && sendVoiceEnabled && sendRoundEnabled
+                                && !audioVideoButtonContainerForbidden) {
+                            delegate.onSwitchRecordMode(true);
+                            setRecordVideoButtonVisible(true, true);
+                        } else if (canUseDictation()) {
+                            dictationMode = true;
+                            setRecordVideoButtonVisible(false, true);
+                        } else if (sendVoiceEnabled && sendRoundEnabled && hasRecordVideo) {
+                            delegate.onSwitchRecordMode(false);
+                            setRecordVideoButtonVisible(false, true);
+                        } else {
+                            delegate.needShowMediaBanHint();
+                        }
+                        performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                        sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_CLICKED);
+                        return true;
                     }
 
                     float x = motionEvent.getX() + audioVideoButtonContainer.getX();
@@ -3177,17 +3288,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                         recordingAudioVideo = false;
                         updateRecordInterface(RECORD_STATE_CANCEL_BY_GESTURE, true);
                     } else {
-                        if (recordAudioVideoRunnableStarted) {
-                            AndroidUtilities.cancelRunOnUIThread(recordAudioVideoRunnable);
-                            if (sendVoiceEnabled && sendRoundEnabled) {
-                                delegate.onSwitchRecordMode(!isInVideoMode());
-                                setRecordVideoButtonVisible(!isInVideoMode(), true);
-                            } else {
-                                delegate.needShowMediaBanHint();
-                            }
-                            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
-                            sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_CLICKED);
-                        } else if (!hasRecordVideo || calledRecordRunnable) {
+                        if (calledRecordRunnable) {
                             startedDraggingX = -1;
                             if (hasRecordVideo && isInVideoMode()) {
                                 if (AlertsCreator.needsPaidMessageAlert(currentAccount, dialog_id)) {
@@ -3293,29 +3394,17 @@ public class ChatActivityEnterView extends FrameLayout implements
 
             @Override
             protected void dispatchDraw(@NonNull Canvas canvas) {
-                if (!audioVideoButtonContainerForbidden) {
-                    float s = 1;
-                    if (expandStickersButton != null) {
-                        if (expandStickersButton.getVisibility() == View.VISIBLE) {
-                            s = 1f - expandStickersButton.getAlpha();
-                        }
-                    }
-
-                    final float r = dpf2(19);
+                if (!audioVideoButtonContainerForbidden || dictationMode) {
+                    float scale = expandStickersButton != null && expandStickersButton.getVisibility() == VISIBLE
+                            ? 1f - expandStickersButton.getAlpha() : 1f;
+                    float radius = dpf2(19);
+                    float right = getMeasuredWidth() - dpf2(3);
+                    float bottom = getMeasuredHeight() - dpf2(3);
+                    backgroundRect.set(right - radius * 2, bottom - radius * 2, right, bottom);
                     paint.setColor(getThemedColor(Theme.key_chat_messagePanelSend));
-                    final float margin = dpf2(3);
-                    final float height = dpf2(38);
-                    final float width = dpf2(38);
-                    backgroundRect.set(
-                            getMeasuredWidth() - width - margin,
-                            getMeasuredHeight() - height - margin,
-                            getMeasuredWidth() - margin,
-                            getMeasuredHeight() - margin
-                    );
-
                     canvas.save();
-                    canvas.scale(s, s, backgroundRect.centerX(), backgroundRect.centerY());
-                    canvas.drawRoundRect(backgroundRect, r, r, paint);
+                    canvas.scale(scale, scale, backgroundRect.centerX(), backgroundRect.centerY());
+                    canvas.drawRoundRect(backgroundRect, radius, radius, paint);
                     canvas.restore();
                 }
                 super.dispatchDraw(canvas);
@@ -3504,7 +3593,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             private final Rect tmpRectF = new Rect();
             @Override
             public void draw(@NonNull Canvas canvas) {
-                if (audioVideoButtonContainerForbidden) {
+                if (audioVideoButtonContainerForbidden && !dictationMode) {
                     tmpRectF.set(0, 0, getMeasuredWidth(), getMeasuredHeight());
                     tmpRectF.inset(dp(7.5f), dp(7.5f));
                     Drawable d = getCurrentState() == State.VIDEO ? cameraOutline : micOutline;
@@ -5977,7 +6066,8 @@ public class ChatActivityEnterView extends FrameLayout implements
                 if (ignorePrevTextChange) {
                     return;
                 }
-                if (recordingAudioVideo) {
+                // Dictation keeps the recording panel open while inserting text into the disabled field.
+                if (recordingAudioVideo && dictation == null) {
                     prevText = charSequence.toString();
                 }
             }
@@ -6233,22 +6323,291 @@ public class ChatActivityEnterView extends FrameLayout implements
         return sendButton.getVisibility() == VISIBLE;
     }
 
+    private boolean isMediaRecordingForbidden() {
+        TLRPC.Chat chat = parentFragment == null ? null : parentFragment.getCurrentChat();
+        TLRPC.UserFull userFull = parentFragment == null ? userInfo : parentFragment.getCurrentUserInfo();
+        if (userFull != null && userFull.voice_messages_forbidden) {
+            return true;
+        }
+        if (chat == null) {
+            return false;
+        }
+        return isInVideoMode() ? !hasRecordVideo || !ChatObject.canSendRoundVideo(chat)
+                : !ChatObject.canSendVoice(chat);
+    }
+
+    private boolean canUseDictation() {
+        return sendPlainEnabled && messageEditText != null && messageEditTextEnabled
+                && parentFragment != null && !isEditingMessage() && !richDraftActive;
+    }
+
+    private boolean handleDictationTouch(MotionEvent event) {
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                audioVideoButtonContainer.getParent().requestDisallowInterceptTouchEvent(true);
+                if (dictation == null) {
+                    dictationGestureActive = true;
+                    dictationHoldPending = true;
+                    startedDraggingX = event.getRawX();
+                    dictationTouchStartY = event.getRawY();
+                    AndroidUtilities.runOnUIThread(startDictationRunnable, android.view.ViewConfiguration.getLongPressTimeout());
+                } else if (isRecordLocked()) {
+                    stopDictation();
+                }
+                return true;
+            case MotionEvent.ACTION_MOVE:
+                if (dictationGestureActive && dictation != null && !dictationReleased && !isRecordLocked()) {
+                    recordCircle.setMovingCords(event.getX(), event.getY());
+                    float distance = Math.max(1f, Math.min(sizeNotifierLayout.getMeasuredWidth() * 0.35f, dp(140)));
+                    float slide = Math.max(0f, Math.min(1f, 1f + (event.getRawX() - startedDraggingX) / distance));
+                    slideText.setSlideX(slide);
+                    setSlideToCancelProgress(slide);
+                    if (recordCircle.setLockTranslation(event.getRawY()) == 2) {
+                        startLockTransition();
+                    } else if (slide == 0f) {
+                        cancelDictation();
+                    }
+                }
+                return true;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                finishDictationGesture(event.getActionMasked() == MotionEvent.ACTION_UP);
+                return true;
+            default:
+                return true;
+        }
+    }
+
+    private void finishDictationGesture(boolean released) {
+        if (!dictationGestureActive) {
+            return;
+        }
+        dictationGestureActive = false;
+        if (dictationHoldPending) {
+            cancelDictationHold();
+            if (released && !audioVideoButtonContainerForbidden) {
+                dictationMode = false;
+                boolean video = !sendVoiceEnabled && hasRecordVideo && sendRoundEnabled;
+                setRecordVideoButtonVisible(video, true);
+                performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_CLICKED);
+            }
+        } else if (dictation != null && !isRecordLocked()) {
+            if (slideToCancelProgress < 0.45f) {
+                cancelDictation();
+            } else {
+                stopDictation();
+            }
+        }
+    }
+
+    private void stopDictation() {
+        if (dictation != null && !dictationReleased) {
+            dictation.stop();
+            showDictationProcessing();
+        }
+    }
+
+    private void startDictation() {
+        dictationHoldPending = false;
+        if (!canUseDictation() || destroyed || isPaused || parentActivity == null || MediaController.getInstance().isRecordingAudio()) {
+            return;
+        }
+        EasygramAsrModels.Model model = EasygramDictation.getModel();
+        if (model == null || !EasygramAsrModelManager.isReady(model)) {
+            BulletinFactory.of(parentFragment).createSimpleBulletin(R.raw.error,
+                    getString(R.string.EasygramDictationMissingModel)).show();
+            return;
+        }
+        if (parentActivity.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            parentActivity.requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 3);
+            return;
+        }
+        dictationReleased = false;
+        dictationLive = EasygramDictation.isLive();
+        dictation = new EasygramDictation(model, dictationLive, new EasygramDictation.Listener() {
+            private String expectedText = messageEditText.getText().toString();
+            private int start = Math.max(0, Math.min(messageEditText.getSelectionStart(), messageEditText.getSelectionEnd()));
+            private int end = Math.max(start, Math.max(messageEditText.getSelectionStart(), messageEditText.getSelectionEnd()));
+            private boolean receivedText;
+
+            @Override
+            public void onText(String text) {
+                if (destroyed || !TextUtils.equals(messageEditText.getText(), expectedText)) {
+                    dictation.cancel();
+                    closeDictationPanel();
+                    return;
+                }
+                if (start > 0 && !Character.isWhitespace(expectedText.charAt(start - 1))) {
+                    text = " " + text;
+                }
+                if (end < expectedText.length() && !Character.isWhitespace(expectedText.charAt(end))) {
+                    text += " ";
+                }
+                Editable draft = messageEditText.getText();
+                int beforeLength = draft.length();
+                insertingDictationText = true;
+                try {
+                    draft.replace(start, end, text);
+                } finally {
+                    insertingDictationText = false;
+                }
+                start = end = end + draft.length() - beforeLength;
+                messageEditText.setSelection(start);
+                expectedText = messageEditText.getText().toString();
+                receivedText = true;
+            }
+
+            @Override
+            public void onAmplitude(double amplitude) {
+                if (!dictationReleased) {
+                    recordCircle.setAmplitude(amplitude);
+                }
+            }
+
+            @Override
+            public void onCaptureStopped() {
+                showDictationProcessing();
+            }
+
+            @Override
+            public void onFinished(boolean failed) {
+                closeDictationPanel();
+                if (failed || !receivedText) {
+                    BulletinFactory.of(parentFragment).createSimpleBulletin(R.raw.error,
+                            getString(R.string.EasygramDictationFailed)).show();
+                }
+            }
+        });
+        dictationPreviousFilters = messageEditText.getFilters();
+        InputFilter[] filters = Arrays.copyOf(dictationPreviousFilters, dictationPreviousFilters.length + 1);
+        filters[filters.length - 1] = (source, start, end, dest, dstart, dend) ->
+                insertingDictationText ? null : dest.subSequence(dstart, dend);
+        messageEditText.setFilters(filters);
+        messageEditText.setCursorVisible(false);
+        if (dictationLive) {
+            setDictationPreviewVisible(true);
+        }
+        setSlideToCancelProgress(1f);
+        recordingAudioVideo = true;
+        updateRecordInterface(RECORD_STATE_ENTER, true);
+        recordCircle.setLockTranslation(dictationTouchStartY);
+        recordCircle.showWaves(true, true);
+        recordDot.enterAnimation = false;
+        dictation.start();
+        performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+    }
+
+    private void showDictationProcessing() {
+        if (dictationReleased) {
+            return;
+        }
+        dictationReleased = true;
+        if (!isRecordLocked()) {
+            sendButtonVisible = true;
+            startLockTransition();
+        }
+        recordTimerView.stop();
+        recordCircle.setAmplitude(0);
+        recordCircle.invalidate();
+        updateFieldHint(true);
+    }
+
+    private void setDictationPreviewVisible(boolean visible) {
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) messageEditText.getLayoutParams();
+        if (visible) {
+            dictationPreviewBottomMargin = params.bottomMargin;
+            params.bottomMargin += dp(DEFAULT_HEIGHT);
+            messageEditText.setAlpha(1f);
+            messageTextTranslationX = 0;
+            updateMessageTextParams();
+        } else if (dictationPreviewBottomMargin >= 0) {
+            params.bottomMargin = dictationPreviewBottomMargin;
+            dictationPreviewBottomMargin = -1;
+        } else {
+            return;
+        }
+        messageEditText.setLayoutParams(params);
+    }
+
+    private void closeDictationPanel() {
+        setDictationPreviewVisible(false);
+        recordingAudioVideo = false;
+        updateRecordInterface(RECORD_STATE_CANCEL_BY_TIME, true);
+        dictation = null;
+        if (dictationPreviousFilters != null) {
+            messageEditText.setFilters(dictationPreviousFilters);
+            dictationPreviousFilters = null;
+        }
+        messageEditText.setCursorVisible(true);
+        messageEditText.setEnabled(messageEditTextEnabled);
+        updateFieldHint(false);
+        checkSendButton(true);
+    }
+
+    private void cancelDictationHold() {
+        dictationHoldPending = false;
+        AndroidUtilities.cancelRunOnUIThread(startDictationRunnable);
+    }
+
+    private void cancelDictation() {
+        dictationGestureActive = false;
+        cancelDictationHold();
+        if (dictation != null) {
+            dictation.cancel();
+            insertingDictationText = true;
+            try {
+                messageEditText.getText().clear();
+            } finally {
+                insertingDictationText = false;
+            }
+            closeDictationPanel();
+        }
+    }
+
+    public boolean isDictating() {
+        return dictation != null;
+    }
+
+    private ChatActivityEnterViewAnimatedIconView.State getRecordButtonState() {
+        if (dictationMode) {
+            return ChatActivityEnterViewAnimatedIconView.State.DICTATION;
+        }
+        return isInVideoMode() ? ChatActivityEnterViewAnimatedIconView.State.VIDEO
+                : ChatActivityEnterViewAnimatedIconView.State.VOICE;
+    }
+
     private void setRecordVideoButtonVisible(boolean visible, boolean animated) {
         if (audioVideoSendButton == null) {
             return;
         }
         isInVideoMode = visible;
-
+        dictationMode = dictationMode && canUseDictation();
+        audioVideoButtonContainer.setAlpha(audioVideoButtonContainerForbidden && !dictationMode ? 0.5f : 1.0f);
+        audioVideoSendButton.setColorFilter(new PorterDuffColorFilter(audioVideoButtonContainerForbidden && !dictationMode
+                ? getThemedColor(Theme.key_glass_defaultIcon) : Color.WHITE, PorterDuff.Mode.SRC_IN));
+        audioVideoButtonContainer.invalidate();
         if (animated) {
-            SharedPreferences preferences = MessagesController.getGlobalMainSettings();
             boolean isChannel = false;
             if (DialogObject.isChatDialog(dialog_id)) {
                 TLRPC.Chat chat = accountInstance.getMessagesController().getChat(-dialog_id);
                 isChannel = ChatObject.isChannel(chat) && !chat.megagroup;
             }
-            preferences.edit().putBoolean(isChannel ? "currentModeVideoChannel" : "currentModeVideo", visible).apply();
+            SharedPreferences.Editor editor = MessagesController.getGlobalMainSettings().edit();
+            editor.putBoolean(isChannel ? "currentModeDictationChannel" : "currentModeDictation", dictationMode);
+            if (!dictationMode) {
+                editor.putBoolean(isChannel ? "currentModeVideoChannel" : "currentModeVideo", visible);
+            }
+            editor.apply();
         }
-        audioVideoSendButton.setState(isInVideoMode() ? ChatActivityEnterViewAnimatedIconView.State.VIDEO : ChatActivityEnterViewAnimatedIconView.State.VOICE, animated);
+        if (dictationMode) {
+            isInVideoMode = false;
+            audioVideoSendButton.setState(ChatActivityEnterViewAnimatedIconView.State.DICTATION, animated);
+            audioVideoButtonContainer.setContentDescription(getString(R.string.EasygramDictationTitle));
+            return;
+        }
+
+        audioVideoSendButton.setState(getRecordButtonState(), animated);
         audioVideoSendButton.setContentDescription(getString(isInVideoMode() ? R.string.AccDescrVideoMessage : R.string.AccDescrVoiceMessage));
         audioVideoButtonContainer.setContentDescription(getString(isInVideoMode() ? R.string.AccDescrVideoMessage : R.string.AccDescrVoiceMessage));
         audioVideoSendButton.sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_FOCUSED);
@@ -6276,6 +6635,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (destroyed || recordingAudioVideo || !mediaController.isRecordingAudio() || mediaController.isRecordingPaused() || mediaController.getRecordingGuid() != recordingGuid) {
             return;
         }
+        dictationMode = false;
         isInVideoMode = false;
         if (audioVideoSendButton != null) {
             audioVideoSendButton.setState(ChatActivityEnterViewAnimatedIconView.State.VOICE, false);
@@ -6303,6 +6663,10 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     public void cancelRecordingAudioVideo() {
+        if (dictation != null) {
+            cancelDictation();
+            return;
+        }
         if (hasRecordVideo && isInVideoMode()) {
             CameraController.getInstance().cancelOnInitRunnable(onFinishInitCameraRunnable);
             delegate.needStartRecordVideo(5, true, 0, 0, voiceOnce ? 0x7FFFFFFF : 0, effectId, 0);
@@ -6602,6 +6966,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     public void onDestroy() {
+        cancelDictation();
         if (audioTimelineView != null) {
             audioTimelineView.destroy();
         }
@@ -6669,6 +7034,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         sendPlainEnabled = true;
         sendRoundEnabled = true;
         sendVoiceEnabled = true;
+        audioVideoButtonContainerForbidden = false;
 
         if (chat != null) {
             audioVideoButtonContainerForbidden = !(ChatObject.canSendVoice(chat) || (ChatObject.canSendRoundVideo(chat) && hasRecordVideo));
@@ -6689,11 +7055,18 @@ public class ChatActivityEnterView extends FrameLayout implements
             userInfo = userFull;
         }
 
-        audioVideoButtonContainer.setAlpha(audioVideoButtonContainerForbidden ? 0.5f : 1.0f);
-        audioVideoButtonContainer.invalidate();
-        audioVideoSendButton.setColorFilter(new PorterDuffColorFilter(audioVideoButtonContainerForbidden ?
-            getThemedColor(Theme.key_glass_defaultIcon) : Color.WHITE, PorterDuff.Mode.SRC_IN));
-        audioVideoSendButton.invalidate();
+        boolean forceDictation = audioVideoButtonContainerForbidden && canUseDictation();
+        if (forceDictation) {
+            dictationMode = true;
+        } else if (dictationForcedByRestrictions) {
+            boolean isChannel = chat != null && ChatObject.isChannel(chat) && !chat.megagroup;
+            SharedPreferences preferences = MessagesController.getGlobalMainSettings();
+            dictationMode = preferences.getBoolean(isChannel ? "currentModeDictationChannel" : "currentModeDictation", false);
+            isInVideoMode = hasRecordVideo && preferences.getBoolean(
+                    isChannel ? "currentModeVideoChannel" : "currentModeVideo", isChannel);
+        }
+        dictationForcedByRestrictions = forceDictation;
+
         updateFieldHint(false);
         boolean currentModeVideo = isInVideoMode;
         if (!sendRoundEnabled && currentModeVideo) {
@@ -6710,6 +7083,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     public void onBeginHide() {
+        cancelDictation();
         if (focusRunnable != null) {
             AndroidUtilities.cancelRunOnUIThread(focusRunnable);
             focusRunnable = null;
@@ -6729,6 +7103,7 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     public void onPause() {
         isPaused = true;
+        cancelDictation();
         if (senderSelectPopupWindow != null) {
             senderSelectPopupWindow.setPauseNotifications(false);
             senderSelectPopupWindow.dismiss();
@@ -6783,6 +7158,9 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     public void setDialogId(long id, int account) {
+        if (dialog_id != id || currentAccount != account) {
+            cancelDictation();
+        }
         dialog_id = id;
         if (currentAccount != account) {
             notificationsLocker.unlock();
@@ -6834,6 +7212,14 @@ public class ChatActivityEnterView extends FrameLayout implements
         updateGiftButton(false);
         checkRoundVideo();
         checkChannelRights();
+        boolean isChannel = false;
+        if (DialogObject.isChatDialog(dialog_id)) {
+            TLRPC.Chat chat = accountInstance.getMessagesController().getChat(-dialog_id);
+            isChannel = ChatObject.isChannel(chat) && !chat.megagroup;
+        }
+        dictationMode = (audioVideoButtonContainerForbidden || MessagesController.getGlobalMainSettings().getBoolean(
+                isChannel ? "currentModeDictationChannel" : "currentModeDictation", false)) && canUseDictation();
+        setRecordVideoButtonVisible(isInVideoMode, false);
         updateFieldHint(false);
         if (messageEditText != null) {
             updateSendAsButton(parentFragment != null && parentFragment.getFragmentBeginToShow());
@@ -6932,7 +7318,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             messageEditText.setInputType(EditorInfo.IME_ACTION_NONE);
             return;
         } else {
-            messageEditText.setEnabled(true);
+            messageEditText.setEnabled(messageEditTextEnabled);
             if (messageEditText.getInputType() != commonInputType) {
                 messageEditText.setInputType(commonInputType);
             }
@@ -7396,6 +7782,9 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     protected boolean sendMessageInternal(boolean notify, int scheduleDate, int scheduleRepeatPeriod, long payStars, boolean allowConfirm) {
+        if (dictation != null) {
+            return false;
+        }
         final boolean allowConfirmFinal = allowConfirm && !animatorEphemeralMessageVisibility.getValue();
 
         final Runnable send = () -> {
@@ -8038,7 +8427,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     public void checkSendButton(boolean animated) {
-        if (editingMessageObject != null || recordingAudioVideo) {
+        if (editingMessageObject != null || recordingAudioVideo || dictation != null) {
             return;
         }
         if (isPaused) {
@@ -8964,7 +9353,9 @@ public class ChatActivityEnterView extends FrameLayout implements
                 if (controlsView != null) {
                     controlsView.periodDrawable.setValue(1, false, false);
                 }
-                MediaDataController.getInstance(currentAccount).toggleDraftVoiceOnce(dialog_id, parentFragment != null && parentFragment.isTopic ? parentFragment.getTopicId() : 0, voiceOnce);
+                if (dictation == null) {
+                    MediaDataController.getInstance(currentAccount).toggleDraftVoiceOnce(dialog_id, parentFragment != null && parentFragment.isTopic ? parentFragment.getTopicId() : 0, voiceOnce);
+                }
                 millisecondsRecorded = 0;
             }
 
@@ -8982,9 +9373,11 @@ public class ChatActivityEnterView extends FrameLayout implements
             } catch (Exception e) {
                 FileLog.e(e);
             }
-            AndroidUtilities.lockOrientation(parentActivity);
+            if (dictation == null) {
+                AndroidUtilities.lockOrientation(parentActivity);
+            }
 
-            if (delegate != null) {
+            if (delegate != null && dictation == null) {
                 delegate.needStartRecordAudio(0);
             }
 
@@ -9065,11 +9458,13 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
 
             AnimatorSet viewTransition = new AnimatorSet();
-            viewTransition.playTogether(
-                    ObjectAnimator.ofFloat(messageEditText, MESSAGE_TEXT_TRANSLATION_X, dp(20)),
-                    ObjectAnimator.ofFloat(messageEditText, View.ALPHA, 0),
-                    ObjectAnimator.ofFloat(recordedAudioPanel, View.ALPHA, 1f)
-            );
+            if (dictation == null || !dictationLive) {
+                viewTransition.playTogether(
+                        ObjectAnimator.ofFloat(messageEditText, MESSAGE_TEXT_TRANSLATION_X, dp(20)),
+                        ObjectAnimator.ofFloat(messageEditText, View.ALPHA, 0),
+                        ObjectAnimator.ofFloat(recordedAudioPanel, View.ALPHA, 1f)
+                );
+            }
             if (fromPause) {
                 viewTransition.playTogether(ObjectAnimator.ofFloat(audioTimelineView, View.ALPHA, 0.0f));
 //                viewTransition.playTogether(ObjectAnimator.ofFloat(recordedAudioSeekBar, View.ALPHA, 0.0f));
@@ -9130,7 +9525,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                     if (controlsView != null) {
                         controlsView.showTooltipIfNeed();
                     }
-                    if (messageEditText != null) {
+                    if (messageEditText != null && (dictation == null || !dictationLive)) {
                         messageEditText.setAlpha(0f);
                     }
                     if (fromPause) {
@@ -9162,13 +9557,17 @@ public class ChatActivityEnterView extends FrameLayout implements
                     FileLog.e(e);
                 }
             }
-            AndroidUtilities.unlockOrientation(parentActivity);
+            if (dictation == null) {
+                AndroidUtilities.unlockOrientation(parentActivity);
+            }
             wasSendTyping = false;
             if (recordInterfaceState == 0) {
                 lastRecordState = recordState;
                 return;
             }
-            accountInstance.getMessagesController().sendTyping(dialog_id, getThreadMessageId(), 2, 0);
+            if (dictation == null) {
+                accountInstance.getMessagesController().sendTyping(dialog_id, getThreadMessageId(), 2, 0);
+            }
             recordInterfaceState = 0;
             if (emojiView != null) {
                 emojiView.setEnabled(true);
@@ -9227,7 +9626,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                     audioVideoSendButton.setScaleX(1f);
                     audioVideoSendButton.setScaleY(1f);
                     runningAnimationAudio.playTogether(ObjectAnimator.ofFloat(audioVideoButtonContainer, View.ALPHA, 1));
-                    audioVideoSendButton.setState(isInVideoMode() ? ChatActivityEnterViewAnimatedIconView.State.VIDEO : ChatActivityEnterViewAnimatedIconView.State.VOICE, true);
+                    audioVideoSendButton.setState(getRecordButtonState(), true);
                 }
                 if (scheduledButton != null) {
                     runningAnimationAudio.playTogether(
@@ -9397,7 +9796,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                     messageEditText.setAlpha(0f);
 
                     if (audioVideoSendButton != null) {
-                        audioVideoSendButton.setState(isInVideoMode() ? ChatActivityEnterViewAnimatedIconView.State.VIDEO : ChatActivityEnterViewAnimatedIconView.State.VOICE, animated);
+                        audioVideoSendButton.setState(getRecordButtonState(), animated);
                         audioVideoButtonContainer.setAlpha(1f);
                         audioVideoButtonContainer.setScaleX(1f);
                         audioVideoButtonContainer.setScaleY(1f);
@@ -9480,7 +9879,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                             ObjectAnimator.ofFloat(audioVideoButtonContainer, View.SCALE_X, 1),
                             ObjectAnimator.ofFloat(audioVideoButtonContainer, View.SCALE_Y, 1)
                         );
-                        audioVideoSendButton.setState(isInVideoMode() ? ChatActivityEnterViewAnimatedIconView.State.VIDEO : ChatActivityEnterViewAnimatedIconView.State.VOICE, true);
+                        audioVideoSendButton.setState(getRecordButtonState(), true);
                     }
                     if (botCommandsMenuButton != null) {
                         iconsAnimator.playTogether(
@@ -9633,7 +10032,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                         iconsAnimator.playTogether(ObjectAnimator.ofFloat(audioVideoButtonContainer, View.ALPHA, 1));
                         iconsAnimator.playTogether(ObjectAnimator.ofFloat(audioVideoButtonContainer, View.SCALE_X, 1));
                         iconsAnimator.playTogether(ObjectAnimator.ofFloat(audioVideoButtonContainer, View.SCALE_Y, 1));
-                        audioVideoSendButton.setState(isInVideoMode() ? ChatActivityEnterViewAnimatedIconView.State.VIDEO : ChatActivityEnterViewAnimatedIconView.State.VOICE, true);
+                        audioVideoSendButton.setState(getRecordButtonState(), true);
                     }
                     if (scheduledButton != null) {
                         iconsAnimator.playTogether(
@@ -9749,7 +10148,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                     audioVideoSendButton.setScaleX(1f);
                     audioVideoSendButton.setScaleY(1f);
                     iconsAnimator.playTogether(ObjectAnimator.ofFloat(audioVideoButtonContainer, View.ALPHA, 1));
-                    audioVideoSendButton.setState(isInVideoMode() ? ChatActivityEnterViewAnimatedIconView.State.VIDEO : ChatActivityEnterViewAnimatedIconView.State.VOICE, true);
+                    audioVideoSendButton.setState(getRecordButtonState(), true);
                 }
                 if (attachLayout != null) {
                     if (attachButtonAnimator != null) {
@@ -9876,7 +10275,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         };
         recordPanel.setClipChildren(false);
         recordPanel.setVisibility(GONE);
-        messageEditTextContainer.addView(recordPanel, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, DEFAULT_HEIGHT));
+        messageEditTextContainer.addView(recordPanel, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, DEFAULT_HEIGHT, Gravity.BOTTOM));
         recordPanel.setOnTouchListener((v, event) -> true);
         recordPanel.addView(slideText = new SlideTextView(getContext()), LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.NO_GRAVITY, 45, 0, 0, 0));
 
@@ -9889,6 +10288,18 @@ public class ChatActivityEnterView extends FrameLayout implements
         recordTimeContainer.addView(recordTimerView = new TimerView(getContext()), LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.CENTER_VERTICAL, 6, 0, 0, 0));
 
         recordPanel.addView(recordTimeContainer, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.CENTER_VERTICAL));
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        boolean handled = super.dispatchTouchEvent(event);
+        int action = event.getActionMasked();
+        if (dictationGestureActive && (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL)) {
+            // The record panel changes the composer's layout while the finger is still down.
+            finishDictationGesture(action == MotionEvent.ACTION_UP);
+            return true;
+        }
+        return handled;
     }
 
     @Override
@@ -10542,7 +10953,8 @@ public class ChatActivityEnterView extends FrameLayout implements
             botKeyboardView.updateColors();
         }
         // emojiButton / deleteRichDraftButton / sendOutlineView icon colors are ThemeBind bindings
-        final int audioVideoColor = audioVideoButtonContainerForbidden ? getThemedColor(Theme.key_glass_defaultIcon) : Color.WHITE;
+        final int audioVideoColor = audioVideoButtonContainerForbidden && !dictationMode
+                ? getThemedColor(Theme.key_glass_defaultIcon) : Color.WHITE;
         if (audioVideoSendButton != null && (!audioVideoColorApplied || audioVideoColor != lastAudioVideoColor)) {
             audioVideoColorApplied = true;
             lastAudioVideoColor = audioVideoColor;
@@ -13634,6 +14046,8 @@ public class ChatActivityEnterView extends FrameLayout implements
                 return;
             }
             boolean audio = (Boolean) args[1];
+            cancelDictation();
+            dictationMode = false;
             isInVideoMode = !audio;
             if (audioVideoSendButton != null) {
                 audioVideoSendButton.setState(audio ? ChatActivityEnterViewAnimatedIconView.State.VOICE : ChatActivityEnterViewAnimatedIconView.State.VIDEO, true);
@@ -14300,6 +14714,10 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
 
         public void onCancelButtonPressed() {
+            if (dictation != null) {
+                cancelDictation();
+                return;
+            }
             if (hasRecordVideo && isInVideoMode()) {
                 CameraController.getInstance().cancelOnInitRunnable(onFinishInitCameraRunnable);
                 delegate.needStartRecordVideo(5, true, 0, 0, voiceOnce ? 0x7FFFFFFF : 0, effectId, 0);
@@ -14578,6 +14996,11 @@ public class ChatActivityEnterView extends FrameLayout implements
                 textPaint.setTypeface(AndroidUtilities.bold());
                 textPaint.setColor(getThemedColor(Theme.key_chat_recordTime));
             }
+            if (dictation != null && dictationReleased) {
+                float baseline = (getHeight() - textPaint.ascent() - textPaint.descent()) / 2f;
+                canvas.drawText(getString(R.string.EasygramDictationRecognizing), 0, baseline, textPaint);
+                return;
+            }
             long currentTimeMillis = System.currentTimeMillis();
             long t = isRunning
                     ? externalFrameClock ? externalElapsedMs : currentTimeMillis - startTime
@@ -14594,7 +15017,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
             }
 
-            if (isRunning && currentTimeMillis > lastSendTypingTime + 5000) {
+            if (dictation == null && isRunning && currentTimeMillis > lastSendTypingTime + 5000) {
                 lastSendTypingTime = currentTimeMillis;
                 MessagesController.getInstance(currentAccount).sendTyping(dialog_id, getThreadMessageId(), isInVideoMode() ? 7 : 1, 0);
             }

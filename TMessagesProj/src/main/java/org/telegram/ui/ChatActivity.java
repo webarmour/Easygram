@@ -14601,7 +14601,7 @@ public class ChatActivity extends BaseFragment implements
 
     // remembers an active voice recording so the next createView shows it again in the new input view
     private boolean saveVoiceRecordingForRestore() {
-        if (chatActivityEnterView == null || !chatActivityEnterView.isRecordingAudioVideo() || chatActivityEnterView.isInVideoMode() || MediaController.getInstance().isRecordingPaused()) {
+        if (chatActivityEnterView == null || chatActivityEnterView.isDictating() || !chatActivityEnterView.isRecordingAudioVideo() || chatActivityEnterView.isInVideoMode() || MediaController.getInstance().isRecordingPaused()) {
             return false;
         }
         restoreVoiceRecording = true;
@@ -36158,6 +36158,12 @@ public class ChatActivity extends BaseFragment implements
 
     public boolean checkRecordLocked(boolean invoked, boolean forceCloseOnDiscard) {
         if (chatActivityEnterView != null && chatActivityEnterView.isRecordLocked()) {
+            if (chatActivityEnterView.isDictating()) {
+                if (invoked) {
+                    chatActivityEnterView.cancelRecordingAudioVideo();
+                }
+                return true;
+            }
             if (invoked) {
                 final AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity(), themeDelegate);
                 if (chatActivityEnterView.isInVideoMode()) {

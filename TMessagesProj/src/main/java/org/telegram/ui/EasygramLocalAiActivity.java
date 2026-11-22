@@ -26,6 +26,7 @@ import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.asr.EasygramAsrModelManager;
 import org.telegram.messenger.asr.EasygramAsrModels;
 import org.telegram.messenger.asr.EasygramAsrSettings;
+import org.telegram.messenger.asr.EasygramDictation;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
@@ -39,8 +40,7 @@ import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.RecyclerListView;
 
 /**
- * Settings → Local AI: the neural network features that run on the device, one section each (for now voice and
- * video message transcription), and the space their models take.
+ * Settings → Local AI: on-device speech recognition features and model storage.
  */
 public class EasygramLocalAiActivity extends BaseFragment implements EasygramAsrModelManager.Listener {
 
@@ -50,13 +50,14 @@ public class EasygramLocalAiActivity extends BaseFragment implements EasygramAsr
     private ListAdapter adapter;
 
     private int rowCount;
-    private int voiceHeaderRow, voiceRow, voiceInfoRow;
+    private int voiceHeaderRow, voiceRow, dictationRow, voiceInfoRow;
     private int storageHeaderRow, storageRow, deleteAllRow, storageInfoRow;
 
     private void updateRows() {
         rowCount = 0;
         voiceHeaderRow = rowCount++;
         voiceRow = rowCount++;
+        dictationRow = rowCount++;
         voiceInfoRow = rowCount++;
         storageHeaderRow = rowCount++;
         storageRow = rowCount++;
@@ -91,6 +92,7 @@ public class EasygramLocalAiActivity extends BaseFragment implements EasygramAsr
         int state = model == null ? -1 : EasygramAsrModelManager.getState(model);
         if (adapter != null && (state == EasygramAsrModelManager.STATE_READY || state == EasygramAsrModelManager.STATE_NONE)) {
             adapter.notifyItemChanged(voiceRow);
+            adapter.notifyItemChanged(dictationRow);
             adapter.notifyItemChanged(storageRow);
         }
     }
@@ -118,6 +120,8 @@ public class EasygramLocalAiActivity extends BaseFragment implements EasygramAsr
         listView.setOnItemClickListener((view, position) -> {
             if (position == voiceRow) {
                 presentFragment(new EasygramAsrSettingsActivity());
+            } else if (position == dictationRow) {
+                presentFragment(new EasygramAsrSettingsActivity(true));
             } else if (position == deleteAllRow) {
                 if (EasygramAsrModelManager.getUsedSpace() == 0) {
                     return;
@@ -172,7 +176,7 @@ public class EasygramLocalAiActivity extends BaseFragment implements EasygramAsr
         @Override
         public boolean isEnabled(RecyclerView.ViewHolder holder) {
             int position = holder.getAdapterPosition();
-            return position == voiceRow || position == deleteAllRow;
+            return position == voiceRow || position == dictationRow || position == deleteAllRow;
         }
 
         @Override
@@ -183,7 +187,7 @@ public class EasygramLocalAiActivity extends BaseFragment implements EasygramAsr
         @Override
         public int getItemViewType(int position) {
             if (position == voiceHeaderRow || position == storageHeaderRow) return TYPE_HEADER;
-            if (position == voiceRow) return TYPE_FEATURE;
+            if (position == voiceRow || position == dictationRow) return TYPE_FEATURE;
             if (position == storageRow || position == deleteAllRow) return TYPE_SETTING;
             if (position == voiceInfoRow || position == storageInfoRow) return TYPE_INFO;
             return TYPE_SHADOW;
@@ -227,7 +231,15 @@ public class EasygramLocalAiActivity extends BaseFragment implements EasygramAsr
                     break;
                 case TYPE_FEATURE: {
                     TextCell cell = (TextCell) holder.itemView;
-                    cell.setTextAndValueAndIcon(LocaleController.getString(R.string.EasygramAsrTitle), voiceStatus(), R.drawable.settings_asr, false);
+                    if (position == dictationRow) {
+                        EasygramAsrModels.Model model = EasygramDictation.getModel();
+                        String status = model == null ? LocaleController.getString(R.string.EasygramDictationSelectModel)
+                                : EasygramAsrModelManager.isReady(model) ? model.title
+                                : LocaleController.formatString(R.string.EasygramAsrNotDownloaded, model.title);
+                        cell.setTextAndValueAndIcon(LocaleController.getString(R.string.EasygramDictationTitle), status, R.drawable.input_dictation, false);
+                    } else {
+                        cell.setTextAndValueAndIcon(LocaleController.getString(R.string.EasygramAsrTitle), voiceStatus(), R.drawable.settings_asr, true);
+                    }
                     cell.setColors(Theme.key_windowBackgroundWhiteGrayIcon, Theme.key_windowBackgroundWhiteBlackText);
                     break;
                 }

@@ -11782,7 +11782,7 @@
     <string name="EasygramM3eSettingsInfo">Waves, loaders and buttons</string>
     <string name="EasygramLocalAiTitle">Local AI</string>
     <string name="EasygramLocalAiSettingsInfo">Neural networks on the device</string>
-    <string name="EasygramLocalAiVoiceHeader">Voice and video messages</string>
+    <string name="EasygramLocalAiVoiceHeader">Speech recognition</string>
     <string name="EasygramLocalAiVoiceInfo">Speech to text right on the phone: no Premium needed, and the audio never leaves the device.</string>
     <string name="EasygramLocalAiStorageHeader">Storage</string>
     <string name="EasygramLocalAiStorageInfo">Models are downloaded on demand and stored on the device, outside of the cache: clearing the cache keeps them.</string>
@@ -11965,4 +11965,15 @@
     <string name="PackageStorageCacheBreakdown">Tap a highlighted category to clear it. Archive and local database cleanup apply to the current account.</string>
     <string name="PackageStorageClearCacheConfirm">Clear the media cache managed by Easygram?</string>
     <string name="PackageStorageClearLogsConfirm">Delete the active Easygram log files?</string>
+    <string name="EasygramDictationTitle">Dictation</string>
+    <string name="EasygramDictationTiming">Show text</string>
+    <string name="EasygramDictationAfterRelease">After release</string>
+    <string name="EasygramDictationLive">While speaking</string>
+    <string name="EasygramDictationMissingModel">Choose a downloaded model in Local AI → Dictation.</string>
+    <string name="EasygramDictationFailed">Couldn’t recognize speech</string>
+    <string name="EasygramDictationSelectModel">Choose a model</string>
+    <string name="EasygramDictationRecognizing">Recognizing…</string>
+    <string name="EasygramDictationTimingInfo">In a chat, tap the recording button to switch to dictation. Hold it to speak. Swipe up while holding to lock the recording, then tap Send to transcribe or Cancel to clear the input. After release shows the full result when recognition finishes. Live dictation is temporarily unavailable. You can edit and send the text once dictation ends.</string>
+    <string name="EasygramDictationModelsInfo">Choose one model for the language you want to dictate. Recognition runs on your device. Dictation and message transcription have independent model selections and can share downloaded files.</string>
+    <string name="EasygramDictationProcess">Transcribe dictation</string>
 </resources>

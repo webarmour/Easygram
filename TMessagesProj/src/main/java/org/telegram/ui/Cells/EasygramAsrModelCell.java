@@ -117,7 +117,7 @@ public class EasygramAsrModelCell extends FrameLayout {
         return model;
     }
 
-    public void set(EasygramAsrModels.Model model, boolean divider, boolean animated) {
+    public void set(EasygramAsrModels.Model model, boolean divider, boolean animated, boolean selected) {
         boolean sameModel = this.model == model;
         this.model = model;
         this.divider = divider;
@@ -132,7 +132,7 @@ public class EasygramAsrModelCell extends FrameLayout {
         state = newState;
         boolean lid = EasygramAsrModels.LANG_ID.equals(model.lang);
         radio.setVisibility(lid ? INVISIBLE : VISIBLE); // nothing to choose: it is used whenever it is downloaded
-        radio.setChecked(!lid && model.id.equals(EasygramAsrSettings.getSelectedModelId(model.lang)), animated);
+        radio.setChecked(!lid && selected, animated);
 
         if (lid) {
             title.setText(model.title);

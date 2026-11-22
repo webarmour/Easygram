@@ -2,6 +2,9 @@ package org.telegram.ui.Components;
 
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.Color;
+import android.os.SystemClock;
 import android.graphics.drawable.Drawable;
 
 import androidx.annotation.Nullable;
@@ -18,6 +21,9 @@ public class ChatActivityEnterViewAnimatedIconView extends RLottieImageView {
     private TransitState animatingState;
     private final int sizeDp;
 
+    private final Paint dictationPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final AnimatedFloat dictationProgress = new AnimatedFloat(this, 0, 320, CubicBezierInterpolator.EASE_OUT_QUINT);
+    private long dictationAnimationStart;
     private boolean formatMode;
     private Drawable formatDrawable;
     private final AnimatedFloat formatProgress = new AnimatedFloat(this, 0, 320, CubicBezierInterpolator.EASE_OUT_QUINT);
@@ -53,6 +59,19 @@ public class ChatActivityEnterViewAnimatedIconView extends RLottieImageView {
         }
         State fromState = currentState;
         currentState = state;
+        if (state == State.DICTATION) {
+            animatingState = null;
+            dictationAnimationStart = SystemClock.uptimeMillis();
+            if (!animate) {
+                dictationProgress.set(true, true);
+            }
+            setContentDescription(LocaleController.getString(R.string.EasygramDictationTitle));
+            invalidate();
+            return;
+        }
+        if (!animate) {
+            dictationProgress.set(false, true);
+        }
         if (!animate || fromState == null || getState(fromState, currentState) == null) {
             RLottieDrawable drawable = stateMap.get(getAnyState(currentState));
             drawable.stop();
@@ -112,17 +131,42 @@ public class ChatActivityEnterViewAnimatedIconView extends RLottieImageView {
     protected void onDraw(Canvas canvas) {
         final float p = formatProgress.set(formatMode);
         final float cx = getWidth() / 2f, cy = getHeight() / 2f;
-        if (p < 1) {
+        final float dictation = dictationProgress.set(currentState == State.DICTATION);
+        if (p < 1 && dictation < 1) {
             final boolean layer = p > 0;
             if (layer) {
                 canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(), (int) (0xFF * (1f - p)), Canvas.ALL_SAVE_FLAG);
             } else {
                 canvas.save();
             }
-            final float s = 0.4f + 0.6f * (1f - p);
+            final float s = (0.4f + 0.6f * (1f - p)) * (1f - 0.3f * dictation);
             canvas.scale(s, s, cx, cy);
+            if (dictation > 0) {
+                canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(), (int) (255 * (1f - dictation)), Canvas.ALL_SAVE_FLAG);
+            }
             super.onDraw(canvas);
+            if (dictation > 0) {
+                canvas.restore();
+            }
             canvas.restore();
+        }
+        if (dictation > 0 && p < 1) {
+            float elapsed = Math.min(1f, (SystemClock.uptimeMillis() - dictationAnimationStart) / 450f);
+            dictationPaint.setColor(Color.WHITE);
+            dictationPaint.setColorFilter(getColorFilter());
+            dictationPaint.setStrokeWidth(AndroidUtilities.dpf2(2.2f));
+            dictationPaint.setStrokeCap(Paint.Cap.ROUND);
+            dictationPaint.setAlpha((int) (255 * dictation * (1f - p)));
+            for (int i = -2; i <= 2; i++) {
+                float shape = i == 0 ? 7.5f : Math.abs(i) == 1 ? 5f : 2.5f;
+                float wave = (1f - elapsed) * (float) Math.sin(elapsed * Math.PI * 3 + i * 0.8f) * 1.5f;
+                float half = AndroidUtilities.dpf2(Math.max(0.5f, shape + wave)) * dictation;
+                float x = cx + AndroidUtilities.dpf2(i * 4.5f);
+                canvas.drawLine(x, cy - half, x, cy + half, dictationPaint);
+            }
+            if (elapsed < 1f) {
+                invalidate();
+            }
         }
         if (p > 0) {
             if (formatDrawable == null) {
@@ -189,6 +233,7 @@ public class ChatActivityEnterViewAnimatedIconView extends RLottieImageView {
     public enum State {
         VOICE,
         VIDEO,
+        DICTATION,
         STICKER,
         KEYBOARD,
         SMILE,

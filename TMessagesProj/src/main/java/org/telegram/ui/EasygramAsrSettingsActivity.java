@@ -27,6 +27,7 @@ import org.telegram.messenger.Utilities;
 import org.telegram.messenger.asr.EasygramAsrModelManager;
 import org.telegram.messenger.asr.EasygramAsrModels;
 import org.telegram.messenger.asr.EasygramAsrSettings;
+import org.telegram.messenger.asr.EasygramDictation;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
@@ -43,13 +44,13 @@ import org.telegram.ui.Components.RecyclerListView;
 import java.util.List;
 
 /**
- * Settings → Voice transcription: on-device speech recognition on/off, the downloadable models of each language
- * (choose, download, cancel, delete) and the language and performance options. Opened from Local AI.
+ * Local AI settings screens for message transcription and dictation, with shared model downloads.
  */
 public class EasygramAsrSettingsActivity extends BaseFragment implements EasygramAsrModelManager.Listener {
 
     private static final int TYPE_HEADER = 0, TYPE_CHECK = 1, TYPE_INFO = 2, TYPE_SHADOW = 3, TYPE_MODEL = 4, TYPE_SETTING = 5;
 
+    private final boolean dictation;
     private RecyclerListView listView;
     private ListAdapter adapter;
 
@@ -58,15 +59,27 @@ public class EasygramAsrSettingsActivity extends BaseFragment implements Easygra
     private final List<EasygramAsrModels.Model> lidModels = EasygramAsrModels.forLang(EasygramAsrModels.LANG_ID);
 
     private int rowCount;
-    private int enableRow, enableInfoRow;
+    private int enableRow = -1, enableInfoRow, timingRow = -1;
     private int ruHeaderRow, ruStartRow, ruShadowRow;
     private int enHeaderRow, enStartRow, enInfoRow;
-    private int lidHeaderRow, lidStartRow, lidInfoRow;
-    private int settingsHeaderRow, langRow, perfRow, hapticRow, wifiRow, langInfoRow;
+    private int lidHeaderRow = -1, lidStartRow = -1, lidInfoRow = -1;
+    private int settingsHeaderRow = -1, langRow = -1, perfRow = -1, hapticRow = -1, wifiRow = -1, langInfoRow = -1;
+
+    public EasygramAsrSettingsActivity() {
+        this(false);
+    }
+
+    EasygramAsrSettingsActivity(boolean dictation) {
+        this.dictation = dictation;
+    }
 
     private void updateRows() {
         rowCount = 0;
-        enableRow = rowCount++;
+        if (dictation) {
+            timingRow = rowCount++;
+        } else {
+            enableRow = rowCount++;
+        }
         enableInfoRow = rowCount++;
         ruHeaderRow = rowCount++;
         ruStartRow = rowCount;
@@ -76,6 +89,9 @@ public class EasygramAsrSettingsActivity extends BaseFragment implements Easygra
         enStartRow = rowCount;
         rowCount += enModels.size();
         enInfoRow = rowCount++;
+        if (dictation) {
+            return;
+        }
         lidHeaderRow = rowCount++;
         lidStartRow = rowCount;
         rowCount += lidModels.size();
@@ -95,7 +111,7 @@ public class EasygramAsrSettingsActivity extends BaseFragment implements Easygra
         if (position >= enStartRow && position < enStartRow + enModels.size()) {
             return enModels.get(position - enStartRow);
         }
-        if (position >= lidStartRow && position < lidStartRow + lidModels.size()) {
+        if (!dictation && position >= lidStartRow && position < lidStartRow + lidModels.size()) {
             return lidModels.get(position - lidStartRow);
         }
         return null;
@@ -119,7 +135,7 @@ public class EasygramAsrSettingsActivity extends BaseFragment implements Easygra
     public View createView(Context context) {
         actionBar.setBackButtonImage(R.drawable.ic_ab_back);
         actionBar.setAllowOverlayTitle(true);
-        actionBar.setTitle(LocaleController.getString(R.string.EasygramAsrTitle));
+        actionBar.setTitle(LocaleController.getString(dictation ? R.string.EasygramDictationTitle : R.string.EasygramAsrTitle));
         actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
             @Override
             public void onItemClick(int id) {
@@ -201,6 +217,15 @@ public class EasygramAsrSettingsActivity extends BaseFragment implements Easygra
     }
 
     private void selectModel(EasygramAsrModels.Model model) {
+        if (dictation) {
+            EasygramAsrModels.Model previous = EasygramDictation.getModel();
+            EasygramDictation.setModel(model);
+            if (previous != null && previous != model) {
+                updateModelCell(previous);
+            }
+            updateModelCell(model);
+            return;
+        }
         EasygramAsrSettings.setSelectedModelId(model.lang, model.id);
         List<EasygramAsrModels.Model> list = model.lang.equals(EasygramAsrModels.LANG_RU) ? ruModels : enModels;
         for (EasygramAsrModels.Model m : list) {
@@ -266,9 +291,14 @@ public class EasygramAsrSettingsActivity extends BaseFragment implements Easygra
             View child = listView.getChildAt(i);
             if (child instanceof EasygramAsrModelCell && ((EasygramAsrModelCell) child).getModel() == model) {
                 int position = listView.getChildAdapterPosition(child);
-                ((EasygramAsrModelCell) child).set(model, hasDivider(position), true);
+                ((EasygramAsrModelCell) child).set(model, hasDivider(position), true, isModelSelected(model));
             }
         }
+    }
+
+    private boolean isModelSelected(EasygramAsrModels.Model model) {
+        return dictation ? model == EasygramDictation.getModel()
+                : model.id.equals(EasygramAsrSettings.getSelectedModelId(model.lang));
     }
 
     private boolean hasDivider(int position) {
@@ -294,7 +324,8 @@ public class EasygramAsrSettingsActivity extends BaseFragment implements Easygra
         @Override
         public boolean isEnabled(RecyclerView.ViewHolder holder) {
             int type = holder.getItemViewType();
-            return type == TYPE_CHECK || type == TYPE_MODEL || type == TYPE_SETTING;
+            return holder.getAdapterPosition() != timingRow
+                    && (type == TYPE_CHECK || type == TYPE_MODEL || type == TYPE_SETTING);
         }
 
         @Override
@@ -307,7 +338,7 @@ public class EasygramAsrSettingsActivity extends BaseFragment implements Easygra
             if (modelAt(position) != null) return TYPE_MODEL;
             if (position == ruHeaderRow || position == enHeaderRow || position == lidHeaderRow || position == settingsHeaderRow) return TYPE_HEADER;
             if (position == enableRow || position == hapticRow || position == wifiRow) return TYPE_CHECK;
-            if (position == langRow || position == perfRow) return TYPE_SETTING;
+            if (position == langRow || position == perfRow || position == timingRow) return TYPE_SETTING;
             if (position == enableInfoRow || position == enInfoRow || position == lidInfoRow || position == langInfoRow) return TYPE_INFO;
             return TYPE_SHADOW;
         }
@@ -375,13 +406,19 @@ public class EasygramAsrSettingsActivity extends BaseFragment implements Easygra
                     }
                     break;
                 }
-                case TYPE_MODEL:
-                    ((EasygramAsrModelCell) holder.itemView).set(modelAt(position), hasDivider(position), false);
+                case TYPE_MODEL: {
+                    EasygramAsrModels.Model model = modelAt(position);
+                    ((EasygramAsrModelCell) holder.itemView).set(model, hasDivider(position), false, isModelSelected(model));
                     break;
+                }
                 case TYPE_SETTING: {
                     TextSettingsCell cell = (TextSettingsCell) holder.itemView;
                     cell.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
-                    if (position == langRow) {
+                    if (position == timingRow) {
+                        cell.setTextAndValue(LocaleController.getString(R.string.EasygramDictationTiming),
+                                LocaleController.getString(EasygramDictation.isLive()
+                                        ? R.string.EasygramDictationLive : R.string.EasygramDictationAfterRelease), false);
+                    } else if (position == langRow) {
                         int mode = EasygramAsrSettings.getLangMode();
                         cell.setTextAndValue(LocaleController.getString(R.string.EasygramAsrLanguage), LocaleController.getString(
                                 mode == EasygramAsrSettings.LANG_RU ? R.string.EasygramAsrRussian
@@ -397,9 +434,9 @@ public class EasygramAsrSettingsActivity extends BaseFragment implements Easygra
                     TextInfoPrivacyCell cell = (TextInfoPrivacyCell) holder.itemView;
                     int res;
                     if (position == enableInfoRow) {
-                        res = R.string.EasygramAsrEnableInfo;
+                        res = dictation ? R.string.EasygramDictationTimingInfo : R.string.EasygramAsrEnableInfo;
                     } else if (position == enInfoRow) {
-                        res = R.string.EasygramAsrModelsInfo;
+                        res = dictation ? R.string.EasygramDictationModelsInfo : R.string.EasygramAsrModelsInfo;
                     } else if (position == lidInfoRow) {
                         res = R.string.EasygramAsrLidInfo;
                     } else {

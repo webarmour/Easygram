@@ -766,9 +766,14 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
         if (hasCache) {
             sectionsEndRow = itemInners.size();
             itemInners.add(new ItemInner(VIEW_TYPE_CLEAR_CACHE_BUTTON, null, null));
-            itemInners.add(ItemInner.asInfo(LocaleController.getString(R.string.StorageUsageInfo)));
         } else {
             sectionsEndRow = -1;
+        }
+        if (!calculating && packageStorageUsage != null) {
+            itemInners.add(ItemInner.asInfo(LocaleController.getString(R.string.PackageStorageCacheBreakdown)));
+        }
+        if (hasCache) {
+            itemInners.add(ItemInner.asInfo(LocaleController.getString(R.string.StorageUsageInfo)));
         }
 
         itemInners.add(new ItemInner(VIEW_TYPE_HEADER, LocaleController.getString(R.string.AutoDeleteCachedMedia), null));
@@ -863,7 +868,6 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
         if (usage.systemTotal >= 0 && usage.systemTotal != displayedStorageTotal) {
             itemInners.add(ItemInner.asPackageSize(LocaleController.getString(R.string.PackageStorageTotal), usage.systemTotal, null));
         }
-        itemInners.add(ItemInner.asInfo(LocaleController.getString(R.string.PackageStorageCacheBreakdown)));
     }
 
     private void showPackageStorageAction(PackageStorageUsage.Category category) {

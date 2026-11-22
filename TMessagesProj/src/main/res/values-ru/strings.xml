@@ -434,7 +434,7 @@
     <string name="EasygramM3eSettingsInfo">Волны, лоадеры и кнопки</string>
     <string name="EasygramLocalAiTitle">Локальные ИИ</string>
     <string name="EasygramLocalAiSettingsInfo">Нейросети на устройстве</string>
-    <string name="EasygramLocalAiVoiceHeader">Голосовые и видеосообщения</string>
+    <string name="EasygramLocalAiVoiceHeader">Распознавание речи</string>
     <string name="EasygramLocalAiVoiceInfo">Распознавание речи прямо на телефоне: без Premium, а звук не покидает устройство.</string>
     <string name="EasygramLocalAiStorageHeader">Память</string>
     <string name="EasygramLocalAiStorageInfo">Модели скачиваются по требованию и хранятся на устройстве отдельно от кеша: очистка кеша их не удаляет.</string>
@@ -547,4 +547,15 @@
     <string name="PackageStorageCacheBreakdown">Нажмите на выделенную строку, чтобы открыть очистку. Архив и локальная база очищаются для текущего аккаунта.</string>
     <string name="PackageStorageClearCacheConfirm">Очистить медиакеш Easygram?</string>
     <string name="PackageStorageClearLogsConfirm">Удалить текущие файлы журналов Easygram?</string>
+    <string name="EasygramDictationTitle">Диктовка</string>
+    <string name="EasygramDictationTiming">Показывать текст</string>
+    <string name="EasygramDictationAfterRelease">После отпускания</string>
+    <string name="EasygramDictationLive">Во время речи</string>
+    <string name="EasygramDictationMissingModel">Выберите скачанную модель в разделе «Локальный ИИ → Диктовка».</string>
+    <string name="EasygramDictationFailed">Не удалось распознать речь</string>
+    <string name="EasygramDictationSelectModel">Выбрать модель</string>
+    <string name="EasygramDictationRecognizing">Распознаю…</string>
+    <string name="EasygramDictationTimingInfo">В чате коротким нажатием на кнопку записи переключитесь на диктовку, затем удерживайте кнопку и говорите. Чтобы закрепить запись, проведите пальцем вверх, не отпуская кнопку. Затем нажмите кнопку отправки для распознавания или «Отмена», чтобы очистить поле. В режиме «После отпускания» весь текст появится по завершении распознавания. Режим «Во время речи» временно недоступен. После завершения диктовки его можно отредактировать и отправить.</string>
+    <string name="EasygramDictationModelsInfo">Выберите одну модель для языка, на котором будете диктовать. Распознавание идёт на устройстве. Модели для диктовки и расшифровки сообщений выбираются отдельно и могут использовать одни и те же скачанные файлы.</string>
+    <string name="EasygramDictationProcess">Распознать диктовку</string>
 </resources>
