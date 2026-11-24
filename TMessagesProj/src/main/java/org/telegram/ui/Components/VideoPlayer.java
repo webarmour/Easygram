@@ -44,9 +44,11 @@ import androidx.media3.datasource.DataSpec;
 import androidx.media3.datasource.TransferListener;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
+import androidx.media3.exoplayer.ExoPlaybackException;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.common.Format;
 import androidx.media3.common.MediaItem;
+import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.PlaybackParameters;
 import androidx.media3.common.Player;
@@ -182,7 +184,6 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     private ArrayList<VideoUri> manifestUris;
     private Uri videoUri, audioUri;
     private long lastVideoByteOffset;
-    private int lastVideoPriority = FileLoader.PRIORITY_HIGH;
     private String videoType, audioType;
     private boolean loopingMediaSource;
     private boolean looping;
@@ -387,7 +388,6 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
 
     public void preparePlayer(Uri uri, String type, int priority, long videoByteOffset) {
         this.lastVideoByteOffset = videoByteOffset;
-        this.lastVideoPriority = priority;
         this.videoQualities = null;
         this.videoQualityToSelect = null;
         this.videoUri = uri;
@@ -1080,6 +1080,14 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
             uris.add(uri);
         }
 
+        private Quality(Quality originalQuality, VideoUri failedVariant) {
+            original = originalQuality.original;
+            width = originalQuality.width;
+            height = originalQuality.height;
+            uris.addAll(originalQuality.uris);
+            uris.remove(failedVariant);
+        }
+
         public static ArrayList<Quality> group(ArrayList<VideoUri> uris) {
             final ArrayList<Quality> qualities = new ArrayList<>();
 
@@ -1115,26 +1123,6 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
 //            }
 
             return qualities;
-        }
-
-        private static boolean filterByCodec(ArrayList<Quality> qualities) {
-            boolean removedVariant = false;
-            for (int i = 0; i < qualities.size(); ++i) {
-                Quality q = qualities.get(i);
-                for (int j = 0; j < q.uris.size(); ++j) {
-                    VideoUri u = q.uris.get(j);
-                    if (!TextUtils.isEmpty(u.codec) && !supportsHardwareDecoder(u.codec)) {
-                        q.uris.remove(j);
-                        removedVariant = true;
-                        j--;
-                    }
-                }
-                if (q.uris.isEmpty()) {
-                    qualities.remove(i);
-                    i--;
-                }
-            }
-            return removedVariant;
         }
 
         @NonNull
@@ -1699,10 +1687,36 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     public void onPlayerError(PlaybackException error) {
         // Called on the player's application thread: snapshot everything that requires player access here,
         // because for story players (workerQueue != null) touching the player from the UI thread throws.
-        final Format failedFormat = player != null ? player.getVideoFormat() : null;
-        final boolean wasPlayWhenReady = player != null ? player.getPlayWhenReady() : autoplay;
-        final long failedPosition = player != null ? player.getCurrentPosition() : 0;
-        AndroidUtilities.runOnUIThread(() -> handlePlayerError(error, failedFormat, wasPlayWhenReady, failedPosition));
+        final ExoPlayer failedPlayer = player;
+        final MediaItem failedItem = failedPlayer != null ? failedPlayer.getCurrentMediaItem() : null;
+        final Uri failedUri = failedItem != null && failedItem.localConfiguration != null ? failedItem.localConfiguration.uri : null;
+        final boolean videoDecoderError = isVideoDecoderError(failedPlayer, error);
+        Format rendererFormat = videoDecoderError ? ((ExoPlaybackException) error).rendererFormat : null;
+        final Format failedFormat = rendererFormat == null && videoDecoderError && failedPlayer != null ? failedPlayer.getVideoFormat() : rendererFormat;
+        final boolean wasPlayWhenReady = failedPlayer != null ? failedPlayer.getPlayWhenReady() : autoplay;
+        final long failedPosition = failedPlayer != null ? failedPlayer.getCurrentPosition() : 0;
+        AndroidUtilities.runOnUIThread(() -> {
+            if (player == failedPlayer) {
+                handlePlayerError(error, videoDecoderError, failedFormat, failedUri, wasPlayWhenReady, failedPosition);
+            }
+        });
+    }
+
+    private static boolean isVideoDecoderError(ExoPlayer player, PlaybackException error) {
+        Throwable cause = error.getCause();
+        if (!(cause instanceof MediaCodecDecoderException || cause instanceof MediaCodecRenderer.DecoderInitializationException)
+                || !(error instanceof ExoPlaybackException)) {
+            return false;
+        }
+        ExoPlaybackException rendererError = (ExoPlaybackException) error;
+        if (rendererError.type != ExoPlaybackException.TYPE_RENDERER) {
+            return false;
+        }
+        int index = rendererError.rendererIndex;
+        if (player != null && index >= 0 && index < player.getRendererCount()) {
+            return player.getRendererType(index) == C.TRACK_TYPE_VIDEO;
+        }
+        return rendererError.rendererFormat != null && MimeTypes.isVideo(rendererError.rendererFormat.sampleMimeType);
     }
 
     private void runOnPlayerThread(Runnable runnable) {
@@ -1721,49 +1735,94 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
         }
     }
 
-    private Quality findFailedQuality(Format failedFormat) {
-        if (videoQualities == null) return null;
-        if (videoQualityToSelect != null && videoQualities.contains(videoQualityToSelect)) {
-            return videoQualityToSelect;
-        }
-        if (autoIsOriginal) {
-            return getOriginalQuality();
-        }
-        if (failedFormat != null) {
-            if (failedFormat.documentId != 0) {
-                for (Quality q : videoQualities) {
-                    for (VideoUri u : q.uris) {
-                        if (u.docId == failedFormat.documentId) return q;
-                    }
+    private static VideoUri findFailedVideoVariant(ArrayList<Quality> qualities, Format format, Uri sourceUri) {
+        long documentId = format != null ? format.documentId : 0;
+        VideoUri formatMatch = null;
+        boolean ambiguousFormat = false;
+        for (Quality quality : qualities) {
+            for (VideoUri variant : quality.uris) {
+                if (documentId != 0) {
+                    if (variant.docId == documentId) return variant;
+                } else if (sourceUri != null && sourceUri.equals(variant.uri)) {
+                    return variant;
+                } else if (format != null && format.width > 0 && format.height > 0
+                        && variant.width == format.width && variant.height == format.height
+                        && (format.sampleMimeType == null || format.sampleMimeType.equals(toMime(variant.codec)))) {
+                    ambiguousFormat |= formatMatch != null;
+                    formatMatch = variant;
                 }
             }
-            for (Quality q : videoQualities) {
-                if (!q.original && q.width == failedFormat.width && q.height == failedFormat.height) return q;
-            }
         }
-        return null;
+        return ambiguousFormat ? null : formatMatch;
     }
 
-    private void handlePlayerError(PlaybackException error, Format failedFormat, boolean wasPlayWhenReady, long failedPosition) {
+    private boolean isRetryableReadError(PlaybackException error) {
+        if (!(error instanceof ExoPlaybackException)
+                || ((ExoPlaybackException) error).type != ExoPlaybackException.TYPE_SOURCE
+                || !(error.getCause() instanceof IOException)) {
+            return false;
+        }
+        switch (error.errorCode) {
+            case PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED:
+            case PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT:
+                return true;
+            case PlaybackException.ERROR_CODE_IO_UNSPECIFIED:
+                return isStreaming;
+            default:
+                return false;
+        }
+    }
+
+    private void handlePlayerError(PlaybackException error, boolean videoDecoderError, Format failedFormat, Uri failedUri, boolean wasPlayWhenReady, long failedPosition) {
         final Throwable cause = error.getCause();
         final ArrayList<Quality> qualities = videoQualities;
 
         // AV1: permanently mark as unsupported only on a real decoding failure (not on init failure,
         // which may be transient, e.g. when all hardware decoder instances are busy).
-        if (cause instanceof MediaCodecDecoderException) {
-            final String causeStr = cause.toString().toLowerCase();
-            if (causeStr.contains("av1") || causeStr.contains("av01")) {
+        if (videoDecoderError && cause instanceof MediaCodecDecoderException) {
+            final String causeStr = cause.toString().toLowerCase(java.util.Locale.ROOT);
+            if ((failedFormat != null && MimeTypes.VIDEO_AV1.equals(failedFormat.sampleMimeType))
+                    || causeStr.contains("av1") || causeStr.contains("av01")) {
                 FileLog.e(error);
                 FileLog.e("av1 codec failed, we think this codec is not supported");
                 MessagesController.getGlobalMainSettings().edit().putBoolean("unsupport_video/av01", true).commit();
                 if (cachedSupportedCodec != null) {
                     cachedSupportedCodec.clear();
                 }
-                if (qualities != null && Quality.filterByCodec(qualities) && !qualities.isEmpty()) {
-                    final Quality select = qualities.contains(videoQualityToSelect) ? videoQualityToSelect : null;
+            }
+        }
+
+        if (videoDecoderError && qualities != null) {
+            final VideoUri failedVariant = findFailedVideoVariant(qualities, failedFormat, failedUri);
+            if (failedVariant != null) {
+                final ArrayList<Quality> remaining = new ArrayList<>(qualities);
+                Quality fallback = null;
+                for (int i = 0; i < qualities.size(); i++) {
+                    Quality quality = qualities.get(i);
+                    if (quality.uris.contains(failedVariant)) {
+                        Quality replacement = new Quality(quality, failedVariant);
+                        if (replacement.uris.isEmpty()) {
+                            remaining.remove(i);
+                        } else {
+                            remaining.set(i, replacement);
+                            fallback = replacement;
+                        }
+                        break;
+                    }
+                }
+                if (!remaining.isEmpty()) {
+                    if (fallback == null) {
+                        for (Quality quality : remaining) {
+                            if (!quality.original && (fallback == null || quality.width * quality.height > fallback.width * fallback.height)) {
+                                fallback = quality;
+                            }
+                        }
+                        if (fallback == null) fallback = remaining.get(0);
+                    }
+                    final Quality finalFallback = fallback;
                     runOnPlayerThread(() -> {
                         if (player == null) return;
-                        preparePlayer(qualities, select);
+                        preparePlayer(remaining, finalFallback);
                         restorePlayWhenReady(wasPlayWhenReady);
                     });
                     return;
@@ -1771,36 +1830,12 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
             }
         }
 
-        // Any decoder failure with several qualities available: drop the failed one and fall back.
-        if ((cause instanceof MediaCodecDecoderException || cause instanceof MediaCodecRenderer.DecoderInitializationException) && qualities != null && qualities.size() > 1) {
-            final Quality failedQuality = findFailedQuality(failedFormat);
-            if (failedQuality != null) {
-                final ArrayList<Quality> remaining = new ArrayList<>(qualities);
-                remaining.remove(failedQuality);
-                Quality fallback = null;
-                for (Quality q : remaining) {
-                    if (!q.original && (fallback == null || q.width * q.height > fallback.width * fallback.height)) {
-                        fallback = q;
-                    }
-                }
-                if (fallback == null && !remaining.isEmpty()) {
-                    fallback = remaining.get(0);
-                }
-                final Quality finalFallback = fallback;
-                runOnPlayerThread(() -> {
-                    if (player == null) return;
-                    preparePlayer(remaining, finalFallback);
-                    restorePlayWhenReady(wasPlayWhenReady);
-                });
-                return;
-            }
-        }
-
-        final boolean isIoError = cause instanceof IOException;
+        final boolean retryRead = isRetryableReadError(error);
+        final boolean videoDecoderInitError = videoDecoderError && cause instanceof MediaCodecRenderer.DecoderInitializationException;
         final android.view.View videoView = textureView != null ? textureView : surfaceView;
-        if (videoView != null && player != null && ((!triedReinit && (cause instanceof MediaCodecRenderer.DecoderInitializationException || isIoError)) || cause instanceof SurfaceNotValidException)) {
+        if (videoView != null && player != null && ((!triedReinit && (videoDecoderInitError || retryRead)) || cause instanceof SurfaceNotValidException)) {
             triedReinit = true;
-            if (!isIoError) {
+            if (!retryRead) {
                 // Recreate the output surface only for decoder/surface problems; for IO errors it is
                 // pointless and destroys the surface (flicker, PiP onSurfaceDestroyed logic).
                 ViewGroup parent = (ViewGroup) videoView.getParent();
@@ -1812,7 +1847,7 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
             }
             final Runnable reinitRunnable = () -> {
                 if (player == null) return;
-                if (!isIoError) {
+                if (!retryRead) {
                     if (textureView != null) {
                         player.clearVideoTextureView(textureView);
                         player.setVideoTextureView(textureView);
@@ -1826,14 +1861,14 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
                 } else if (loopingMediaSource) {
                     preparePlayerLoop(videoUri, videoType, audioUri, audioType);
                 } else {
-                    preparePlayer(videoUri, videoType, lastVideoPriority, lastVideoByteOffset);
+                    preparePlayer(videoUri, videoType, FileLoader.PRIORITY_HIGH, lastVideoByteOffset);
                     if (failedPosition > 0) {
                         seekTo(failedPosition);
                     }
                 }
                 restorePlayWhenReady(wasPlayWhenReady);
             };
-            if (isIoError && qualities != null) {
+            if (retryRead && qualities != null) {
                 // The stream may have been fully downloaded meanwhile: switch uris to local files.
                 // Done off the UI thread because it queries the file path database.
                 Utilities.globalQueue.postRunnable(() -> {
