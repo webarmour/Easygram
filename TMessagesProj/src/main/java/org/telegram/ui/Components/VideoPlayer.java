@@ -181,6 +181,8 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     private Quality videoQualityToSelect;
     private ArrayList<VideoUri> manifestUris;
     private Uri videoUri, audioUri;
+    private long lastVideoByteOffset;
+    private int lastVideoPriority = FileLoader.PRIORITY_HIGH;
     private String videoType, audioType;
     private boolean loopingMediaSource;
     private boolean looping;
@@ -255,6 +257,9 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
                 factory = new DefaultRenderersFactory(ApplicationLoader.applicationContext);
             }
             factory.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON);
+            // If the preferred (usually hardware) decoder fails to initialize, try the next one
+            // (including platform software decoders) instead of failing playback.
+            factory.setEnableDecoderFallback(true);
             // factory.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER);
             ExoPlayer.Builder builder = new ExoPlayer.Builder(ApplicationLoader.applicationContext).setRenderersFactory(factory)
                     .setTrackSelector(trackSelector)
@@ -381,6 +386,8 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     }
 
     public void preparePlayer(Uri uri, String type, int priority, long videoByteOffset) {
+        this.lastVideoByteOffset = videoByteOffset;
+        this.lastVideoPriority = priority;
         this.videoQualities = null;
         this.videoQualityToSelect = null;
         this.videoUri = uri;
@@ -1110,14 +1117,15 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
             return qualities;
         }
 
-        public static ArrayList<Quality> filterByCodec(ArrayList<Quality> qualities) {
-            if (qualities == null) return null;
+        private static boolean filterByCodec(ArrayList<Quality> qualities) {
+            boolean removedVariant = false;
             for (int i = 0; i < qualities.size(); ++i) {
                 Quality q = qualities.get(i);
                 for (int j = 0; j < q.uris.size(); ++j) {
                     VideoUri u = q.uris.get(j);
                     if (!TextUtils.isEmpty(u.codec) && !supportsHardwareDecoder(u.codec)) {
                         q.uris.remove(j);
+                        removedVariant = true;
                         j--;
                     }
                 }
@@ -1126,7 +1134,7 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
                     i--;
                 }
             }
-            return qualities;
+            return removedVariant;
         }
 
         @NonNull
@@ -1689,64 +1697,159 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
 
     @Override
     public void onPlayerError(PlaybackException error) {
-        AndroidUtilities.runOnUIThread(() -> {
-            Throwable cause = error.getCause();
-            if (cause instanceof MediaCodecDecoderException) {
-                if (cause.toString().contains("av1") || cause.toString().contains("av01")) {
-                    FileLog.e(error);
-                    FileLog.e("av1 codec failed, we think this codec is not supported");
-                    MessagesController.getGlobalMainSettings().edit().putBoolean("unsupport_video/av01", true).commit();
-                    if (cachedSupportedCodec != null) {
-                        cachedSupportedCodec.clear();
+        // Called on the player's application thread: snapshot everything that requires player access here,
+        // because for story players (workerQueue != null) touching the player from the UI thread throws.
+        final Format failedFormat = player != null ? player.getVideoFormat() : null;
+        final boolean wasPlayWhenReady = player != null ? player.getPlayWhenReady() : autoplay;
+        final long failedPosition = player != null ? player.getCurrentPosition() : 0;
+        AndroidUtilities.runOnUIThread(() -> handlePlayerError(error, failedFormat, wasPlayWhenReady, failedPosition));
+    }
+
+    private void runOnPlayerThread(Runnable runnable) {
+        if (workerQueue != null) {
+            workerQueue.postRunnable(runnable);
+        } else {
+            runnable.run();
+        }
+    }
+
+    private void restorePlayWhenReady(boolean wasPlayWhenReady) {
+        if (wasPlayWhenReady) {
+            play();
+        } else {
+            setPlayWhenReady(false);
+        }
+    }
+
+    private Quality findFailedQuality(Format failedFormat) {
+        if (videoQualities == null) return null;
+        if (videoQualityToSelect != null && videoQualities.contains(videoQualityToSelect)) {
+            return videoQualityToSelect;
+        }
+        if (autoIsOriginal) {
+            return getOriginalQuality();
+        }
+        if (failedFormat != null) {
+            if (failedFormat.documentId != 0) {
+                for (Quality q : videoQualities) {
+                    for (VideoUri u : q.uris) {
+                        if (u.docId == failedFormat.documentId) return q;
                     }
-                    videoQualities = Quality.filterByCodec(videoQualities);
-                    if (videoQualities != null) {
-                        preparePlayer(videoQualities, videoQualityToSelect);
-                    }
+                }
+            }
+            for (Quality q : videoQualities) {
+                if (!q.original && q.width == failedFormat.width && q.height == failedFormat.height) return q;
+            }
+        }
+        return null;
+    }
+
+    private void handlePlayerError(PlaybackException error, Format failedFormat, boolean wasPlayWhenReady, long failedPosition) {
+        final Throwable cause = error.getCause();
+        final ArrayList<Quality> qualities = videoQualities;
+
+        // AV1: permanently mark as unsupported only on a real decoding failure (not on init failure,
+        // which may be transient, e.g. when all hardware decoder instances are busy).
+        if (cause instanceof MediaCodecDecoderException) {
+            final String causeStr = cause.toString().toLowerCase();
+            if (causeStr.contains("av1") || causeStr.contains("av01")) {
+                FileLog.e(error);
+                FileLog.e("av1 codec failed, we think this codec is not supported");
+                MessagesController.getGlobalMainSettings().edit().putBoolean("unsupport_video/av01", true).commit();
+                if (cachedSupportedCodec != null) {
+                    cachedSupportedCodec.clear();
+                }
+                if (qualities != null && Quality.filterByCodec(qualities) && !qualities.isEmpty()) {
+                    final Quality select = qualities.contains(videoQualityToSelect) ? videoQualityToSelect : null;
+                    runOnPlayerThread(() -> {
+                        if (player == null) return;
+                        preparePlayer(qualities, select);
+                        restorePlayWhenReady(wasPlayWhenReady);
+                    });
                     return;
                 }
             }
-            if (textureView != null && (!triedReinit && cause instanceof MediaCodecRenderer.DecoderInitializationException || cause instanceof SurfaceNotValidException)) {
-                triedReinit = true;
-                if (player != null) {
-                    ViewGroup parent = (ViewGroup) textureView.getParent();
-                    if (parent != null) {
-                        int i = parent.indexOfChild(textureView);
-                        parent.removeView(textureView);
-                        parent.addView(textureView, i);
-                    }
-                    if (workerQueue != null) {
-                        workerQueue.postRunnable(() -> {
-                            if (player != null) {
-                                player.clearVideoTextureView(textureView);
-                                player.setVideoTextureView(textureView);
-                                if (videoQualities != null) {
-                                    preparePlayer(videoQualities, videoQualityToSelect);
-                                } else if (loopingMediaSource) {
-                                    preparePlayerLoop(videoUri, videoType, audioUri, audioType);
-                                } else {
-                                    preparePlayer(videoUri, videoType);
-                                }
-                                play();
-                            }
-                        });
-                    } else {
-                        player.clearVideoTextureView(textureView);
-                        player.setVideoTextureView(textureView);
-                        if (videoQualities != null) {
-                            preparePlayer(videoQualities, videoQualityToSelect);
-                        } else if (loopingMediaSource) {
-                            preparePlayerLoop(videoUri, videoType, audioUri, audioType);
-                        } else {
-                            preparePlayer(videoUri, videoType);
-                        }
-                        play();
+        }
+
+        // Any decoder failure with several qualities available: drop the failed one and fall back.
+        if ((cause instanceof MediaCodecDecoderException || cause instanceof MediaCodecRenderer.DecoderInitializationException) && qualities != null && qualities.size() > 1) {
+            final Quality failedQuality = findFailedQuality(failedFormat);
+            if (failedQuality != null) {
+                final ArrayList<Quality> remaining = new ArrayList<>(qualities);
+                remaining.remove(failedQuality);
+                Quality fallback = null;
+                for (Quality q : remaining) {
+                    if (!q.original && (fallback == null || q.width * q.height > fallback.width * fallback.height)) {
+                        fallback = q;
                     }
                 }
-            } else {
-                delegate.onError(this, error);
+                if (fallback == null && !remaining.isEmpty()) {
+                    fallback = remaining.get(0);
+                }
+                final Quality finalFallback = fallback;
+                runOnPlayerThread(() -> {
+                    if (player == null) return;
+                    preparePlayer(remaining, finalFallback);
+                    restorePlayWhenReady(wasPlayWhenReady);
+                });
+                return;
             }
-        });
+        }
+
+        final boolean isIoError = cause instanceof IOException;
+        final android.view.View videoView = textureView != null ? textureView : surfaceView;
+        if (videoView != null && player != null && ((!triedReinit && (cause instanceof MediaCodecRenderer.DecoderInitializationException || isIoError)) || cause instanceof SurfaceNotValidException)) {
+            triedReinit = true;
+            if (!isIoError) {
+                // Recreate the output surface only for decoder/surface problems; for IO errors it is
+                // pointless and destroys the surface (flicker, PiP onSurfaceDestroyed logic).
+                ViewGroup parent = (ViewGroup) videoView.getParent();
+                if (parent != null) {
+                    int i = parent.indexOfChild(videoView);
+                    parent.removeView(videoView);
+                    parent.addView(videoView, i);
+                }
+            }
+            final Runnable reinitRunnable = () -> {
+                if (player == null) return;
+                if (!isIoError) {
+                    if (textureView != null) {
+                        player.clearVideoTextureView(textureView);
+                        player.setVideoTextureView(textureView);
+                    } else if (surfaceView != null) {
+                        player.clearVideoSurfaceView(surfaceView);
+                        player.setVideoSurfaceView(surfaceView);
+                    }
+                }
+                if (videoQualities != null) {
+                    preparePlayer(videoQualities, videoQualityToSelect);
+                } else if (loopingMediaSource) {
+                    preparePlayerLoop(videoUri, videoType, audioUri, audioType);
+                } else {
+                    preparePlayer(videoUri, videoType, lastVideoPriority, lastVideoByteOffset);
+                    if (failedPosition > 0) {
+                        seekTo(failedPosition);
+                    }
+                }
+                restorePlayWhenReady(wasPlayWhenReady);
+            };
+            if (isIoError && qualities != null) {
+                // The stream may have been fully downloaded meanwhile: switch uris to local files.
+                // Done off the UI thread because it queries the file path database.
+                Utilities.globalQueue.postRunnable(() -> {
+                    for (Quality q : qualities) {
+                        for (VideoUri u : q.uris) {
+                            u.updateCached(true);
+                        }
+                    }
+                    AndroidUtilities.runOnUIThread(() -> runOnPlayerThread(reinitRunnable));
+                });
+            } else {
+                runOnPlayerThread(reinitRunnable);
+            }
+        } else {
+            delegate.onError(this, error);
+        }
     }
 
     public VideoSize getVideoSize() {

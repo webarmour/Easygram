@@ -267,7 +267,8 @@ public class FileLoadOperation {
     private File cacheFileFinal;
     private File cacheIvTemp;
     private File cacheFileParts;
-    private boolean cacheFileFinalReady;
+    private volatile boolean cacheFileFinalReady;
+    private final Object cacheFileRenameLock = new Object();
 
     private String ext;
     private RandomAccessFile fileOutputStream;
@@ -701,11 +702,7 @@ public class FileLoadOperation {
         final CountDownLatch countDownLatch = new CountDownLatch(1);
         final File[] result = new File[1];
         Utilities.stageQueue.postRunnable(() -> {
-            if (state == stateFinished && !preloadFinished) {
-                result[0] = cacheFileFinal;
-            } else {
-                result[0] = cacheFileTemp;
-            }
+            result[0] = getCurrentFileFast();
             countDownLatch.countDown();
         });
         try {
@@ -721,6 +718,12 @@ public class FileLoadOperation {
             return cacheFileFinal;
         } else {
             return cacheFileTemp;
+        }
+    }
+
+    protected File getCurrentFileAfterRename() {
+        synchronized (cacheFileRenameLock) {
+            return getCurrentFileFast();
         }
     }
 
@@ -1049,7 +1052,7 @@ public class FileLoadOperation {
                 cacheFileFinal = new File(storePath, fileNameFinal);
             }
         }
-        boolean finalFileExist = cacheFileFinalReady = cacheFileFinal.exists();
+        boolean finalFileExist = cacheFileFinal.exists();
         if (finalFileExist && (parentObject instanceof TLRPC.TL_theme || (totalBytesCount != 0 && !ungzip && totalBytesCount != cacheFileFinal.length())) && !delegate.isLocallyCreatedFile(cacheFileFinal.toString())) {
             if (BuildVars.LOGS_ENABLED) {
                 FileLog.d("debug_loading: delete existing file cause file size mismatch " + cacheFileFinal.getName() + " totalSize=" + totalBytesCount + " existingFileSize=" + cacheFileFinal.length());
@@ -1059,6 +1062,7 @@ public class FileLoadOperation {
             }
             finalFileExist = false;
         }
+        cacheFileFinalReady = finalFileExist;
 
 
         if (!finalFileExist) {
@@ -1674,7 +1678,12 @@ public class FileLoadOperation {
                                         }
                                     }
                                 }
-                                renameResult = cacheFileTempLocal.renameTo(cacheFileFinal);
+                                synchronized (cacheFileRenameLock) {
+                                    renameResult = cacheFileTempLocal.renameTo(cacheFileFinal);
+                                    if (renameResult) {
+                                        cacheFileFinalReady = true;
+                                    }
+                                }
                             } catch (Exception e) {
                                 renameResult = false;
                                 FileLog.e(e);
@@ -1710,7 +1719,7 @@ public class FileLoadOperation {
                             cacheFileFinalReady = false;
                         } else {
                             cacheFileFinalReady = true;
-                            if (pathSaveData != null && cacheFileFinal.exists()) {
+                            if (pathSaveData != null && cacheFileFinal != null && cacheFileFinal.exists()) {
                                 delegate.saveFilePath(pathSaveData, cacheFileFinal);
                             }
                         }
@@ -1722,6 +1731,7 @@ public class FileLoadOperation {
                     }
                 }
                 Utilities.stageQueue.postRunnable(() -> {
+                    notifyStreamListeners();
                     if (BuildVars.LOGS_ENABLED) {
                         FileLog.d("finished downloading file to " + cacheFileFinal + " time = " + (System.currentTimeMillis() - startTime) + " dc = " + datacenterId + " size = " + AndroidUtilities.formatFileSize(totalBytesCount));
                     }

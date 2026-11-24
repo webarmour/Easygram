@@ -129,6 +129,22 @@ public class FileStreamLoadOperation implements DataSource, FileLoadOperationStr
                         }
                     }
                 } catch (Throwable e) {
+                    File finalFile = loadOperation.getCurrentFileAfterRename();
+                    if (finalFile != null && !Objects.equals(finalFile, currentFile) && finalFile.exists()) {
+                        try {
+                            currentFile = finalFile;
+                            file = new RandomAccessFile(currentFile, "r");
+                            file.seek(currentOffset);
+                            if (loadOperation.isFinished()) {
+                                isNetwork = false;
+                                bytesRemaining = currentFile.length() - currentOffset;
+                                if (requestedLength != C.LENGTH_UNSET) {
+                                    bytesRemaining = Math.min(bytesRemaining, requestedLength - bytesTransferred);
+                                }
+                            }
+                        } catch (Throwable ignore) {
+                        }
+                    }
                 }
             }
         }
@@ -161,6 +177,10 @@ public class FileStreamLoadOperation implements DataSource, FileLoadOperationStr
                     readLength = (int) bytesRemaining;
                 }
                 while ((availableLength == 0 && opened) || file == null) {
+                    if (!opened) {
+                        // close() was called (possibly from another thread) - don't keep looping on file == null
+                        break;
+                    }
                     availableLength = (int) loadOperation.getDownloadedLengthFromOffset(currentOffset, readLength)[0];
                     if (availableLength == 0) {
                         countDownLatch = new CountDownLatch(1);
@@ -188,9 +208,11 @@ public class FileStreamLoadOperation implements DataSource, FileLoadOperationStr
                             } catch (Exception ignore) {
 
                             }
+                            file = null;
                         }
 //                        FileLog.e("FileStreamLoadOperation " + document.id + " read update file from " + currentFile + " to " + currentFileFast + " me=" + this);
                         currentFile = currentFileFast;
+                        boolean restarted = false;
                         if (currentFile != null) {
                             try {
                                 file = new RandomAccessFile(currentFile, "r");
@@ -203,7 +225,24 @@ public class FileStreamLoadOperation implements DataSource, FileLoadOperationStr
                                     }
                                 }
                             } catch (Throwable e) {
-                                if (loadOperation.isFinished() && !currentFile.exists()) {
+                                File finalFile = loadOperation.getCurrentFileAfterRename();
+                                if (finalFile != null && !Objects.equals(finalFile, currentFile) && finalFile.exists()) {
+                                    try {
+                                        currentFile = finalFile;
+                                        file = new RandomAccessFile(currentFile, "r");
+                                        file.seek(currentOffset);
+                                        if (loadOperation.isFinished()) {
+                                            isNetwork = false;
+                                            bytesRemaining = currentFile.length() - currentOffset;
+                                            if (requestedLength != C.LENGTH_UNSET) {
+                                                bytesRemaining = Math.min(bytesRemaining, requestedLength - bytesTransferred);
+                                            }
+                                        }
+                                    } catch (Throwable ignore) {
+                                    }
+                                }
+                                if (file == null && loadOperation.isFinished() && !currentFile.exists()) {
+                                    restarted = true;
                                     FileLoader.getInstance(currentAccount).cancelLoadFile(loadOperation.getFileName());
                                     FileLoadOperation newLoadOperation = FileLoader.getInstance(currentAccount).loadStreamFile(this, document, null, parentObject, currentOffset, false, getCurrentPriority());
                                     if (this.loadOperation != newLoadOperation) {
@@ -213,6 +252,11 @@ public class FileStreamLoadOperation implements DataSource, FileLoadOperationStr
                                     }
                                 }
                             }
+                        }
+                        if (file == null && !restarted && availableLength != 0) {
+                            // Data is available but the file can't be opened: fail this read instead of
+                            // busy-looping. ExoPlayer will retry the load according to its error policy.
+                            throw new IOException("can't open stream file " + currentFile + " for document " + document.id);
                         }
                     } else {
 //                        FileLog.e("FileStreamLoadOperation " + document.id + " read have exact same file");

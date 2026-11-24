@@ -10810,7 +10810,8 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         lastSaveTime = 0;
         if (newPlayerCreated) {
             seekToProgressPending = seekToProgressPending2;
-            videoPlayerSeekbar.setProgress(0);
+            seekToProgressPending2 = 0;
+            videoPlayerSeekbar.setProgress(seekToProgressPending);
             videoTimelineView.setProgress(videoTimelineView.getLeftProgress());
             videoPlayerSeekbar.setBufferedProgress(0);
 
@@ -10820,7 +10821,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                 if (!TextUtils.isEmpty(name)) {
                     if (duration >= 10) {
                         SavedVideoPosition videoPosition = savedVideoPositions.get(name);
-                        if (currentMessageObject.forceSeekTo < 0 && videoPosition != null) {
+                        if (currentMessageObject.forceSeekTo < 0 && seekToProgressPending <= 0 && videoPosition != null) {
                             float pos = videoPosition.position;
                             if (pos > 0 && pos < 0.999f) {
                                 currentMessageObject.forceSeekTo = pos;
@@ -10830,7 +10831,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                         shouldSavePositionForCurrentVideoShortTerm = name;
                     }
                     if (duration >= 5 * 60) {
-                        if (currentMessageObject.forceSeekTo < 0) {
+                        if (currentMessageObject.forceSeekTo < 0 && seekToProgressPending <= 0) {
                             SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("media_saved_pos", Activity.MODE_PRIVATE);
                             float pos = preferences.getFloat(name, -1);
                             if (pos > 0 && pos < 0.999f) {
@@ -10887,6 +10888,16 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         if (currentMessageObject != null && currentMessageObject.forceSeekTo >= 0) {
             seekToProgressPending = currentMessageObject.forceSeekTo;
             currentMessageObject.forceSeekTo = -1;
+        }
+        if (newPlayerCreated && seekToProgressPending > 0 && currentMessageObject != null) {
+            double durationSec = currentMessageObject.getDuration();
+            if (durationSec > 0) {
+                videoPlayer.seekTo((long) (seekToProgressPending * durationSec * 1000L));
+                seekToProgressPending = 0;
+                if (!FileLoader.getInstance(currentMessageObject.currentAccount).isLoadingVideoAny(currentMessageObject.getDocument())) {
+                    skipFirstBufferingProgress = true;
+                }
+            }
         }
 
         if (currentBotInlineResult != null && (currentBotInlineResult.type.equals("video") || MessageObject.isVideoDocument(currentBotInlineResult.document))) {
@@ -17295,20 +17306,6 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         return openPhoto(null, null, null, null, null, null, null, index, provider, null, 0, 0, 0, true, pageBlocksAdapter, null);
     }
 
-    private static String attrsToString(TLRPC.Document document) {
-        if (document == null) return "null";
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < document.attributes.size(); ++i) {
-            TLRPC.DocumentAttribute a = document.attributes.get(i);
-            if (sb.length() > 0) sb.append(",");
-            sb.append(a.getClass().getSimpleName());
-            if (a instanceof TLRPC.TL_documentAttributeVideo) {
-                sb.append("(w=").append(a.w).append(",h=").append(a.h).append(",dur=").append(a.duration).append(")");
-            }
-        }
-        return sb.toString();
-    }
-
     public boolean openPhotoForSelect(final ArrayList<Object> photos, final int index, int type, boolean documentsPicker, final PhotoViewerProvider provider, ChatActivity chatActivity) {
         return openPhotoForSelect(null, null, photos, index, type, documentsPicker, provider, chatActivity);
     }
@@ -17802,6 +17799,11 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                         object.imageReceiver.stopAnimation();
                         if (MediaController.getInstance().isPlayingMessage(messageObject)) {
                             seekToProgressPending2 = messageObject.audioProgress;
+                        } else {
+                            float animProgress = currentAnimation.getCurrentProgress();
+                            if (animProgress > 0 && animProgress < 0.999f) {
+                                seekToProgressPending2 = animProgress;
+                            }
                         }
                         skipFirstBufferingProgress = injectingVideoPlayer == null && !FileLoader.getInstance(messageObject.currentAccount).isLoadingVideo(messageObject.getDocument(), true) && (currentAnimation.hasBitmap() || !FileLoader.getInstance(messageObject.currentAccount).isLoadingVideo(messageObject.getDocument(), false));
                         currentAnimation = null;
