@@ -2020,6 +2020,14 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                     BulletinFactory.createMuteBulletin(TopicsFragment.this, mute ? NotificationsController.SETTING_MUTE_FOREVER : NotificationsController.SETTING_MUTE_UNMUTE, mute ? Integer.MAX_VALUE : 0, getResourceProvider()).show();
                 }
             }
+
+            @Override
+            public void openSchedule() {
+                finishPreviewFragment();
+                AndroidUtilities.runOnUIThread(() -> {
+                    presentFragment(new NotificationMuteScheduleActivity(-chatId, topic.id, themeDelegate));
+                }, 500);
+            }
         }, getResourceProvider());
 
         int muteForegroundIndex = previewMenu[0].addViewToSwipeBack(chatNotificationsPopupWrapper.windowLayout);

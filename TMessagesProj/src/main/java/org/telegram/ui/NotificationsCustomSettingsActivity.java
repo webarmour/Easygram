@@ -631,6 +631,13 @@ public class NotificationsCustomSettingsActivity extends BaseFragment implements
                         update();
                     }
 
+                    @Override
+                    public void openSchedule() {
+                        if (did != 0) {
+                            presentFragment(new NotificationMuteScheduleActivity(did, topicId, getResourceProvider()));
+                        }
+                    }
+
                     private void update() {
                         if (getMessagesController().isDialogMuted(did, topicId) != defaultEnabled) {
                             setDefault();

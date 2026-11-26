@@ -275,6 +275,7 @@ public class ApplicationLoader extends Application {
             DownloadController.getInstance(a);
         }
         BillingController.getInstance().startConnection();
+        AndroidUtilities.runOnUIThread(() -> NotificationMuteScheduleController.checkAllAccounts(false, null));
         // HTML widgets: the isolated engine's process up front, after the app's own start, so that a widget's first
         // frame does not wait for it.
         AndroidUtilities.runOnUIThread(() -> Utilities.globalQueue.postRunnable(
@@ -348,6 +349,9 @@ public class ApplicationLoader extends Application {
                 super.onActivityStarted(activity);
                 if (wasInBackground) {
                     ensureCurrentNetworkGet(true);
+                    if (applicationInited) {
+                        NotificationMuteScheduleController.checkAllAccounts(false, null);
+                    }
                 }
             }
         };

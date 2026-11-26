@@ -117,6 +117,7 @@ public class NotificationsSettingsActivity extends BaseFragment implements Notif
     private int storiesRow;
     @Keep
     private int reactionsRow;
+    private int scheduleRow;
     private int notificationsSection2Row;
 
     private int inappSectionRow;
@@ -184,6 +185,7 @@ public class NotificationsSettingsActivity extends BaseFragment implements Notif
         channelsRow = rowCount++;
         storiesRow = rowCount++;
         reactionsRow = rowCount++;
+        scheduleRow = rowCount++;
         notificationsSection2Row = rowCount++;
 
         callsSectionRow = rowCount++;
@@ -582,6 +584,8 @@ public class NotificationsSettingsActivity extends BaseFragment implements Notif
                 } else {
                     presentFragment(new NotificationsCustomSettingsActivity(type, exceptions, autoExceptions));
                 }
+            } else if (position == scheduleRow) {
+                presentFragment(new NotificationMuteSchedulesActivity());
             } else if (position == callsRingtoneRow) {
                 try {
                     SharedPreferences preferences = MessagesController.getNotificationsSettings(currentAccount);
@@ -1149,7 +1153,7 @@ public class NotificationsSettingsActivity extends BaseFragment implements Notif
                     } else {
                         builder.append(getString("TapToChange", R.string.TapToChange));
                     }
-                    checkCell.setTextAndValueAndIconAndCheck(text, builder, icon, enabled, iconType, false, position != reactionsRow);
+                    checkCell.setTextAndValueAndIconAndCheck(text, builder, icon, enabled, iconType, false, true);
                     break;
                 }
                 case 4: {
@@ -1191,6 +1195,12 @@ public class NotificationsSettingsActivity extends BaseFragment implements Notif
                         }
                         textCell.setTextAndValue(getString("RepeatNotifications", R.string.RepeatNotifications), value, updateRepeatNotifications, false);
                         updateRepeatNotifications = false;
+                    } else if (position == scheduleRow) {
+                        int count = org.telegram.messenger.NotificationMuteScheduleController.getInstance(currentAccount).getEnabledSchedulesCount();
+                        String value = count > 0
+                                ? LocaleController.formatString(R.string.NotificationMuteScheduleScheduledChats, count)
+                                : getString(R.string.NotificationMuteScheduleOff);
+                        textCell.setTextAndValue(getString(R.string.NotificationMuteScheduleTitle), value, false, false);
                     }
                     break;
                 }

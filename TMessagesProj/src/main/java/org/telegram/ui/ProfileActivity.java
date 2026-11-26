@@ -6755,6 +6755,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 notifySettings.setExceptions(notificationsExceptionTopics);
                 presentFragment(notifySettings);
             }
+
+            @Override
+            public void openSchedule() {
+                if (did != 0) {
+                    presentFragment(new NotificationMuteScheduleActivity(did, topicId, resourcesProvider));
+                }
+            }
         }, getResourceProvider());
         chatNotificationsPopupWrapper.update(did, topicId, notificationsExceptionTopics);
         if (AndroidUtilities.isTablet()) {
@@ -14129,6 +14136,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         }
                         if (val == null) {
                             val = LocaleController.getString(R.string.NotificationsOff);
+                        }
+                        String scheduleSummary = org.telegram.messenger.NotificationMuteScheduleController.getInstance(currentAccount).getScheduleSummary(did, topicId);
+                        if (scheduleSummary != null) {
+                            val = val + " · " + scheduleSummary;
                         }
                         if (notificationsExceptionTopics != null && !notificationsExceptionTopics.isEmpty()) {
                             val = String.format(Locale.US, LocaleController.getPluralString("NotificationTopicExceptionsDesctription", notificationsExceptionTopics.size()), val, notificationsExceptionTopics.size());

@@ -113,6 +113,7 @@ public class UsersSelectActivity extends BaseFragment implements NotificationCen
     public boolean allowSelf;
     public boolean allowBots;
     public boolean doNotNewChats;
+    public CharSequence customTitle;
     private boolean isInclude;
     private int filterFlags;
     private ArrayList<Long> initialIds;
@@ -460,7 +461,9 @@ public class UsersSelectActivity extends BaseFragment implements NotificationCen
         }
         actionBar.setBackButtonImage(R.drawable.ic_ab_back);
         actionBar.setAllowOverlayTitle(true);
-        if (type == TYPE_FILTER || type == TYPE_PRIVATE) {
+        if (!TextUtils.isEmpty(customTitle)) {
+            actionBar.setTitle(customTitle);
+        } else if (type == TYPE_FILTER || type == TYPE_PRIVATE) {
             if (isInclude) {
                 actionBar.setTitle(getString(R.string.FilterAlwaysShow));
             } else {

@@ -519,6 +519,16 @@
         </receiver>
 
         <receiver
+            android:name=".NotificationMuteScheduleReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="org.telegram.messenger.ACTION_CHECK_NOTIFICATION_MUTE_SCHEDULE"/>
+                <action android:name="android.intent.action.TIME_SET"/>
+                <action android:name="android.intent.action.TIMEZONE_CHANGED"/>
+            </intent-filter>
+        </receiver>
+
+        <receiver
             android:name=".SmsReceiver"
             android:exported="true">
             <intent-filter>

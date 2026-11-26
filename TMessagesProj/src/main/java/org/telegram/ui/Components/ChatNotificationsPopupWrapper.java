@@ -15,6 +15,7 @@ import android.widget.TextView;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessagesController;
+import org.telegram.messenger.NotificationMuteScheduleController;
 import org.telegram.messenger.NotificationsController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.Utilities;
@@ -24,6 +25,8 @@ import org.telegram.ui.ActionBar.ActionBarPopupWindow;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ActionBar.ThemeBind;
+import org.telegram.ui.LaunchActivity;
+import org.telegram.ui.NotificationMuteScheduleActivity;
 import org.telegram.ui.ProfileNotificationsActivity;
 
 import java.util.HashSet;
@@ -35,6 +38,7 @@ public class ChatNotificationsPopupWrapper {
     ActionBarMenuSubItem muteUnmuteButton;
     ActionBarMenuSubItem muteForLastSelected;
     ActionBarMenuSubItem muteForLastSelected2;
+    ActionBarMenuSubItem muteScheduleItem;
     public ActionBarPopupWindow.ActionBarPopupWindowLayout windowLayout;
     int currentAccount;
     ActionBarPopupWindow popupWindow;
@@ -48,6 +52,8 @@ public class ChatNotificationsPopupWrapper {
     private int muteForLastSelected1Time;
     private final View gap;
     private final TextView topicsExceptionsTextView;
+    private long lastDialogId;
+    private long lastTopicId;
 
     public final static int TYPE_PREVIEW_MENU = 1;
 
@@ -120,6 +126,17 @@ public class ChatNotificationsPopupWrapper {
             });
         });
 
+        muteScheduleItem = ActionBarMenuItem.addItem(windowLayout, R.drawable.menu_premium_clock, LocaleController.getString(R.string.MuteSchedule), false, resourcesProvider);
+        muteScheduleItem.setOnClickListener(view -> {
+            dismiss();
+            if (!callback.handleOpenSchedule() && lastDialogId != 0) {
+                android.app.Activity activity = AndroidUtilities.findActivity(context);
+                if (activity instanceof LaunchActivity) {
+                    ((LaunchActivity) activity).presentFragment(new NotificationMuteScheduleActivity(lastDialogId, lastTopicId, resourcesProvider));
+                }
+            }
+        });
+
         item = ActionBarMenuItem.addItem(windowLayout, R.drawable.msg_customize, LocaleController.getString(R.string.NotificationsCustomize), false, resourcesProvider);
         item.setOnClickListener(view -> {
             dismiss();
@@ -166,6 +183,8 @@ public class ChatNotificationsPopupWrapper {
     }
 
     public void update(long dialogId, long topicId, HashSet<Integer> topicExceptions) {
+        lastDialogId = dialogId;
+        lastTopicId = topicId;
         if (System.currentTimeMillis() - lastDismissTime < 200) {
             //do on popup close
             AndroidUtilities.runOnUIThread(() -> {
@@ -225,6 +244,11 @@ public class ChatNotificationsPopupWrapper {
         }
 
         setMuteButtonColorKey(muteUnmuteButton, color);
+
+        if (muteScheduleItem != null) {
+            String scheduleSummary = NotificationMuteScheduleController.getInstance(currentAccount).getScheduleSummary(dialogId, topicId);
+            muteScheduleItem.setSubtext(scheduleSummary);
+        }
 
         if (topicExceptions == null || topicExceptions.isEmpty()) {
             gap.setVisibility(View.GONE);
@@ -318,6 +342,20 @@ public class ChatNotificationsPopupWrapper {
         default void openExceptions() {
 
         }
+
+        default void openSchedule() {
+
+        }
+
+        default boolean handleOpenSchedule() {
+            try {
+                if (getClass().getMethod("openSchedule").getDeclaringClass() != Callback.class) {
+                    openSchedule();
+                    return true;
+                }
+            } catch (Exception ignore) {}
+            return false;
+        }
     }
 
     // same as setColors(Theme.getColor(key)) + setSelectorColor(multAlpha(.1f)), following theme changes when the item resolves the same color
@@ -384,6 +422,16 @@ public class ChatNotificationsPopupWrapper {
                 }, 16);
             });
         });
+
+        options.add(R.drawable.menu_premium_clock, getString(R.string.MuteSchedule), () -> {
+            o.dismiss();
+            fragment.presentFragment(new NotificationMuteScheduleActivity(dialogId, topicId, resourcesProvider));
+        });
+        final ActionBarMenuSubItem muteScheduleItem = options.getLast();
+        String scheduleSummary = NotificationMuteScheduleController.getInstance(currentAccount).getScheduleSummary(dialogId, topicId);
+        if (scheduleSummary != null) {
+            muteScheduleItem.setSubtext(scheduleSummary);
+        }
 
         options.add(R.drawable.msg_customize, getString(R.string.NotificationsCustomize), () -> {
             o.dismiss();

@@ -23,6 +23,8 @@ public class AppStartReceiver extends BroadcastReceiver {
                     SharedConfig.saveConfig();
                 }
                 ApplicationLoader.startPushService();
+                ApplicationLoader.postInitApplication();
+                NotificationMuteScheduleController.checkAllAccounts(true, null);
             });
         }
     }

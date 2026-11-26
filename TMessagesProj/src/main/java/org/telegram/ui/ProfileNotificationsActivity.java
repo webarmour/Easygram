@@ -97,6 +97,7 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
     private int avatarSectionRow;
     private int enableRow;
     private int previewRow;
+    private int scheduleRow;
     private int soundRow;
     private int vibrateRow;
     private int smartRow;
@@ -178,6 +179,7 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
         } else {
             previewRow = -1;
         }
+        scheduleRow = rowCount++;
         soundRow = rowCount++;
         vibrateRow = rowCount++;
         if (DialogObject.isChatDialog(dialogId)) {
@@ -405,6 +407,8 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
                 if (button != null) {
                     ThemeBind.textColor(button, Theme.key_text_RedBold);
                 }
+            } else if (position == scheduleRow) {
+                presentFragment(new NotificationMuteScheduleActivity(dialogId, topicId, resourcesProvider));
             } else if (position == soundRow) {
                 Bundle bundle = new Bundle();
                 bundle.putLong("dialog_id", dialogId);
@@ -623,7 +627,7 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
             RecyclerListView.Holder holder = (RecyclerListView.Holder) listView.getChildViewHolder(child);
             int type = holder.getItemViewType();
             int position = holder.getAdapterPosition();
-            if (position != enableRow && position != customResetRow) {
+            if (position != enableRow && position != customResetRow && position != scheduleRow) {
                 switch (type) {
                     case ListAdapter.VIEW_TYPE_HEADER: {
                         HeaderCell textCell = (HeaderCell) holder.itemView;
@@ -704,7 +708,7 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
         public boolean isEnabled(RecyclerView.ViewHolder holder) {
             if (holder.getAdapterPosition() == previewRow) {
                 return notificationsEnabled;
-            } else if (holder.getAdapterPosition() == customResetRow) {
+            } else if (holder.getAdapterPosition() == customResetRow || holder.getAdapterPosition() == scheduleRow) {
                 return true;
             }
             switch (holder.getItemViewType()) {
@@ -792,7 +796,11 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
                         ThemeBind.textColor(textCell.getTextView(), Theme.key_text_RedBold, ProfileNotificationsActivity.this.getResourceProvider());
                     } else {
                         ThemeBind.textColor(textCell.getTextView(), Theme.key_windowBackgroundWhiteBlackText, ProfileNotificationsActivity.this.getResourceProvider());
-                        if (position == soundRow) {
+                        if (position == scheduleRow) {
+                            String summary = org.telegram.messenger.NotificationMuteScheduleController.getInstance(currentAccount).getScheduleSummary(dialogId, topicId);
+                            textCell.setTextAndValue(LocaleController.getString(R.string.NotificationMuteScheduleTitle),
+                                    summary != null ? summary : LocaleController.getString(R.string.NotificationMuteScheduleOff), true);
+                        } else if (position == soundRow) {
                             String value = preferences.getString("sound_" + key, LocaleController.getString(R.string.SoundDefault));
                             long documentId = preferences.getLong("sound_document_id_" + key, 0);
                             if (documentId != 0) {
@@ -969,7 +977,7 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
                 }
                 case VIEW_TYPE_TEXT_SETTINGS: {
                     TextSettingsCell textCell = (TextSettingsCell) holder.itemView;
-                    if (holder.getAdapterPosition() == customResetRow) {
+                    if (holder.getAdapterPosition() == customResetRow || holder.getAdapterPosition() == scheduleRow) {
                         textCell.setEnabled(true, null);
                     } else {
                         textCell.setEnabled(notificationsEnabled, null);
@@ -1008,7 +1016,7 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
         public int getItemViewType(int position) {
             if (position == generalRow || position == popupRow || position == ledRow || position == callsRow) {
                 return VIEW_TYPE_HEADER;
-            } else if (position == soundRow || position == vibrateRow || position == priorityRow || position == smartRow || position == ringtoneRow || position == callsVibrateRow || position == customResetRow) {
+            } else if (position == scheduleRow || position == soundRow || position == vibrateRow || position == priorityRow || position == smartRow || position == ringtoneRow || position == callsVibrateRow || position == customResetRow) {
                 return VIEW_TYPE_TEXT_SETTINGS;
             } else if (position == popupInfoRow || position == ledInfoRow || position == priorityInfoRow || position == ringtoneInfoRow) {
                 return VIEW_TYPE_INFO;

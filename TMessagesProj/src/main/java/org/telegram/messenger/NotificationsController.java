@@ -375,6 +375,7 @@ public class NotificationsController extends BaseController implements Notificat
                 }
             }
             NotificationsController.getInstance(currentAccount).updateServerNotificationsSettings(did, topicId);
+            NotificationMuteScheduleController.getInstance(currentAccount).onManualMuteChange(did, topicId, true);
         }
     }
 
@@ -3322,6 +3323,9 @@ public class NotificationsController extends BaseController implements Notificat
     }
 
     private int getNotifyOverride(SharedPreferences preferences, long dialog_id, long topicId) {
+        if (NotificationMuteScheduleController.getInstance(currentAccount).isDialogScheduledMutedNow(dialog_id, topicId)) {
+            return 2;
+        }
         int notifyOverride = dialogsNotificationsFacade.getProperty(NotificationsSettingsFacade.PROPERTY_NOTIFY, dialog_id, topicId, -1);
         if (notifyOverride == 3) {
             int muteUntil = dialogsNotificationsFacade.getProperty(NotificationsSettingsFacade.PROPERTY_NOTIFY_UNTIL, dialog_id, topicId, 0);
@@ -6103,6 +6107,7 @@ public class NotificationsController extends BaseController implements Notificat
         }
         editor.commit();
         updateServerNotificationsSettings(dialog_id, topicId);
+        NotificationMuteScheduleController.getInstance(currentAccount).onManualMuteChange(dialog_id, topicId, setting != SETTING_MUTE_UNMUTE);
     }
 
     public void updateServerNotificationsSettings(long dialog_id, long topicId) {
@@ -6361,6 +6366,7 @@ public class NotificationsController extends BaseController implements Notificat
             }
             editor.apply();
             updateServerNotificationsSettings(dialog_id, topicId);
+            NotificationMuteScheduleController.getInstance(currentAccount).onManualMuteChange(dialog_id, topicId, false);
         }
     }
 
