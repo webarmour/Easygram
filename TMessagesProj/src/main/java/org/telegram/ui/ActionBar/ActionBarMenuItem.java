@@ -69,10 +69,13 @@ import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
+import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
 import org.telegram.messenger.utils.GradientProtectionDrawable;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.Adapters.FiltersView;
+import org.telegram.ui.ChatActivity;
+import org.telegram.ui.ChatExportActivity;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.CloseProgressDrawable2;
@@ -522,6 +525,7 @@ public class ActionBarMenuItem extends FrameLayout {
     }
 
     public void removeAllSubItems() {
+        chatExportSubItemInjected = false;
         if (popupLayout == null) {
             return;
         }
@@ -2871,12 +2875,76 @@ public class ActionBarMenuItem extends FrameLayout {
         return lazyMap.get(id);
     }
 
+    private static final int EXPORT_CHAT_SUBITEM_ID = 0x7E00E001;
+    private boolean chatExportSubItemInjected;
+
+    private void maybeInjectChatExportItem() {
+        if (chatExportSubItemInjected || lazyList == null) {
+            return;
+        }
+        if (parentMenu == null || parentMenu.isActionMode || parentMenu.parentActionBar == null) {
+            return;
+        }
+        if (!(parentMenu.parentActionBar.parentFragment instanceof ChatActivity)) {
+            return;
+        }
+        Object tag = getTag();
+        if (!(tag instanceof Integer) || (Integer) tag != -2) {
+            return;
+        }
+        ChatActivity chatActivity = (ChatActivity) parentMenu.parentActionBar.parentFragment;
+        if (chatActivity.getParentActivity() == null
+                || chatActivity.getChatMode() != ChatActivity.MODE_DEFAULT
+                || chatActivity.getDialogId() == UserObject.VERIFY
+                || (chatActivity.getTopicId() != 0 && !chatActivity.isTopic)) {
+            return;
+        }
+        chatExportSubItemInjected = true;
+
+        int insertIndex = lazyList.size();
+        for (int i = 0; i < lazyList.size(); i++) {
+            int itemId = lazyList.get(i).id;
+            if (itemId == 15 || itemId == 16) { // before clear_history (15) or delete_chat (16)
+                insertIndex = i;
+                break;
+            }
+        }
+        Item exportItem = Item.asSubItem(
+                EXPORT_CHAT_SUBITEM_ID,
+                R.drawable.msg_download,
+                null,
+                LocaleController.getString(R.string.ExportChat),
+                true,
+                false
+        );
+        exportItem.setOnClickListener(v -> {
+            if (isSubMenuShowing()) {
+                if (processedPopupClick) {
+                    return;
+                }
+                processedPopupClick = true;
+                dismissSubMenuOnClick();
+            }
+            ChatExportActivity.openForChat(chatActivity);
+        });
+        lazyList.add(insertIndex, exportItem);
+        if (lazyMap == null) {
+            lazyMap = new HashMap<>();
+        }
+        lazyMap.put(exportItem.id, exportItem);
+    }
+
     void layoutLazyItems() {
         if (lazyList == null) {
             return;
         }
+        maybeInjectChatExportItem();
         for (int i = 0; i < lazyList.size(); ++i) {
-            lazyList.get(i).add(this);
+            Item item = lazyList.get(i);
+            View addedView = item.add(this);
+            if (item.id == EXPORT_CHAT_SUBITEM_ID && addedView != null) {
+                addedView.setTag("export_chat");
+            }
         }
         lazyList.clear();
     }

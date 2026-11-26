@@ -520,6 +520,7 @@
 
         <receiver
             android:name=".NotificationMuteScheduleReceiver"
+            android:enabled="false"
             android:exported="false">
             <intent-filter>
                 <action android:name="org.telegram.messenger.ACTION_CHECK_NOTIFICATION_MUTE_SCHEDULE"/>

@@ -1,6 +1,7 @@
 import org.gradle.nativeplatform.platform.internal.DefaultNativePlatform
 
 apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
 apply plugin: 'org.telegram.build-plugin'
 apply plugin: 'idea'
 
@@ -45,7 +46,7 @@ dependencies {
     compileOnly files('libs/video-message-recorder.aar')
     // easygram: on-device voice transcription (sherpa-onnx, Apache-2.0; arm ABIs only, see NOTICE)
     compileOnly files('libs/sherpa-onnx-static-2.0.1-arm.aar')
-    compileOnly 'org.jetbrains.kotlin:kotlin-stdlib:2.1.20'
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.1.20'
     implementation 'androidx.core:core:1.16.0'
     implementation 'androidx.palette:palette:1.0.0'
     implementation 'androidx.exifinterface:exifinterface:1.3.6'
@@ -147,6 +148,10 @@ android {
         targetCompatibility JavaVersion.VERSION_1_8
 
         coreLibraryDesugaringEnabled true
+    }
+
+    kotlinOptions {
+        jvmTarget = "1.8"
     }
 
     defaultConfig {
