@@ -33,7 +33,28 @@ This file defines mandatory rules and engineering practices for AI agents workin
 
 ---
 
-## 2. Think Through Corner Cases (Mandatory Audit Checklist)
+## 2. UI Components & Material 3 Expressive (M3E)
+
+* **Always use Telegram's native UI components** instead of stock Android (`ProgressBar`, `Button`, `Switch`, `AlertDialog` from `androidx`/`android.app`) or custom one-off widgets:
+  * **Screens & navigation:** `BaseFragment`, `BaseFragmentSimpleGlass`, `ActionBar`, `ActionBarMenuItem`, `ActionBarPopupWindow`, `ItemOptions`.
+  * **Lists & settings:** `UniversalRecyclerView` + `UniversalAdapter` + `UItem` (`HeaderCell`, `TextCell`, `TextCheckCell`, `TextSettingsCell`, `TextInfoPrivacyCell`, `ShadowSectionCell`, `UserCell`, etc.).
+  * **Dialogs, sheets, feedback & buttons:** `org.telegram.ui.ActionBar.AlertDialog`, `BottomSheet`, `BulletinFactory`, `ButtonWithCounterView`.
+  * **Progress & loading indicators:** `RadialProgressView`, `RadialProgress`, `RadialProgress2`, `CircularProgressDrawable`, `ContextProgressView`, `InfiniteProgress`, `MediaActionDrawable`, `LoadingDrawable`.
+  * **Theming:** Always resolve colors via `Theme.getColor(..., resourcesProvider)` and pass `Theme.ResourcesProvider` through child views/dialogs so light, dark, and custom chat themes stay consistent.
+* **Material 3 Expressive (M3E) mode:**
+  * Check whether M3E mode is active via `OtherSettingsActivity.isMaterialExpressiveEnabled()` / `M3ExpressiveLoader.enabled()` (and `OtherSettingsActivity.isM3eVoiceEnabled()` for voice waveforms).
+  * Prefer Telegram's built-in progress components (`RadialProgressView`, `RadialProgress`, `RadialProgress2`, `CircularProgressDrawable`, `ContextProgressView`, `InfiniteProgress`, `MediaActionDrawable`), which already switch to M3E visuals automatically when M3E is enabled (call `RadialProgress2.setExpressive(true, ...)` where applicable).
+  * When implementing custom loading buttons, progress indicators, or media controls, always support M3E mode using easygram's dedicated M3E components:
+    * **`M3ExpressiveLoader.Morph`** — shape-morphing indeterminate loader for spinners and loading buttons (see `TranscribeButton`, `RadialProgressView`, `CircularProgressDrawable`, `ContextProgressView`).
+    * **`M3ExpressiveLoader.drawWavyArc` / `drawWavyProgress` / `drawWavyLinear`** — wavy determinate circular and linear progress indicators (see `RadialProgress`, `MediaActionDrawable`, `EasygramAsrModelCell`).
+    * **`M3ExpressiveLoader.buildGrowingShape` / `drawGrowingShape` / `drawStop`** — M3E growing download/loading button with stop square (see `RadialProgress2`, `EasygramAsrModelCell`).
+    * **`M3ExpressiveLoader.bounce` / `springIn`** — expressive spring/bounce motion when loading finishes.
+    * **`M3ExpressiveTrack`** — wavy audio/video progress tracks and bar thumbs (see `SeekBar`, `SeekBarView`, `SeekBarWaveform`, `AudioPlayerAlert`, `FragmentContextView`).
+    * **`M3PlayPauseDrawable`** — morphing M3E play/pause icon.
+
+---
+
+## 3. Think Through Corner Cases (Mandatory Audit Checklist)
 
 Before considering any feature or fix done, explicitly review your code for edge cases across these categories:
 
@@ -58,7 +79,7 @@ Before considering any feature or fix done, explicitly review your code for edge
 
 ---
 
-## 3. Verification & Fixing Workflow
+## 4. Verification & Fixing Workflow
 
 1. **Self-Audit After Writing Code:**
    * Re-read your changes and all call sites to verify method signatures, nullability, threading, lifecycle cleanup, and edge cases.

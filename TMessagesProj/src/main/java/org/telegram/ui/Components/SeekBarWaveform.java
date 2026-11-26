@@ -70,6 +70,17 @@ public class SeekBarWaveform {
     private static Paint expressiveStrokePaint;
     private final Path expressiveLinePath = new Path();
     private final Path expressiveGapPath = new Path();
+    private Path expressiveCachedPath;
+    private byte[] expressiveCacheWaveform;
+    private int expressiveCacheCount;
+    private int expressiveCacheHeight;
+    private float expressiveCacheWaveScaling;
+    private float expressiveCacheDensity;
+    private boolean expressiveCacheReverse;
+    private boolean expressiveCacheHasThumb;
+    private float expressiveCacheProgress;
+    private float expressiveCacheThumbX = -1;
+    private boolean expressiveUseCachedPath;
     private boolean loading;
     private long loadingStart;
     private AnimatedFloat loadingFloat = new AnimatedFloat(150, CubicBezierInterpolator.DEFAULT);
@@ -103,6 +114,7 @@ public class SeekBarWaveform {
 
     public void setWaveform(byte[] waveform) {
         waveformBytes = waveform;
+        expressiveCacheWaveform = null;
         heights = calculateHeights((int) (width / AndroidUtilities.dpf2(3)));
         if (!delegate.isSeekBarDragAllowed()) {
             this.progress = 1f;
@@ -335,12 +347,6 @@ public class SeekBarWaveform {
 
         float appearProgress = appearFloat.set(1f);
 
-        if (path == null) {
-            path = new Path();
-        } else {
-            path.reset();
-        }
-
         float alpha = 0;
         if (alphaPath == null) {
             alphaPath = new Path();
@@ -353,42 +359,52 @@ public class SeekBarWaveform {
         // from/to interpolation; the width animation after sending (transcribe button) stays M3E.
         final boolean expressiveWave = org.telegram.ui.OtherSettingsActivity.isM3eVoiceEnabled()
                 && heights != null && heights.length > 1;
+        Path clipPath;
         float expressiveThumbX = -1;
         if (expressiveWave) {
             expressiveThumbX = buildExpressivePath(totalBarsCount, appearProgress, reverse);
-        } else if (fromHeights != null && toHeights != null) {
-            float t = (width - fromWidth) / (float) (toWidth - fromWidth);
-            int maxlen = Math.max(fromHeights.length, toHeights.length);
-            int minlen = Math.min(fromHeights.length, toHeights.length);
-            float[] minarr = fromHeights.length < toHeights.length ? fromHeights : toHeights;
-            float[] maxarr = fromHeights.length < toHeights.length ? toHeights : fromHeights;
-//            t = CubicBezierInterpolator.EASE_OUT.getInterpolation(t);
-            float T = fromHeights.length < toHeights.length ? t : 1f - t;
-            int k = -1;
-            for (int barNum = 0; barNum < maxlen; ++barNum) {
-                int l = MathUtils.clamp((int) Math.floor(barNum / (float) maxlen * minlen), 0, minlen - 1);
-                if (k < l) {
-                    float x = AndroidUtilities.lerp((float) l, (float) barNum, T) * AndroidUtilities.dpf2(3);
-                    float h = AndroidUtilities.dpf2(AndroidUtilities.lerp(minarr[reverse ? minarr.length - 1 - l : l], maxarr[reverse ? maxarr.length - 1 - barNum : barNum], T));
-                    addBar(path, x, h);
-                    k = l;
-                } else {
-                    float x = AndroidUtilities.lerp((float) l, (float) barNum, T) * AndroidUtilities.dpf2(3);
-                    float h = AndroidUtilities.dpf2(AndroidUtilities.lerp(minarr[reverse ? minarr.length - 1 - l : l], maxarr[reverse ? maxarr.length - 1 - barNum : barNum], T));
-                    addBar(alphaPath, x, h);
-                    alpha = T;
-                }
+            clipPath = expressiveUseCachedPath && expressiveCachedPath != null ? expressiveCachedPath : path;
+        } else {
+            if (path == null) {
+                path = new Path();
+            } else {
+                path.reset();
             }
-        } else if (heights != null) {
-            for (int barNum = 0; barNum < totalBarsCount; barNum++) {
-                if (barNum >= heights.length) {
-                    break;
+            clipPath = path;
+            if (fromHeights != null && toHeights != null) {
+                float t = (width - fromWidth) / (float) (toWidth - fromWidth);
+                int maxlen = Math.max(fromHeights.length, toHeights.length);
+                int minlen = Math.min(fromHeights.length, toHeights.length);
+                float[] minarr = fromHeights.length < toHeights.length ? fromHeights : toHeights;
+                float[] maxarr = fromHeights.length < toHeights.length ? toHeights : fromHeights;
+//            t = CubicBezierInterpolator.EASE_OUT.getInterpolation(t);
+                float T = fromHeights.length < toHeights.length ? t : 1f - t;
+                int k = -1;
+                for (int barNum = 0; barNum < maxlen; ++barNum) {
+                    int l = MathUtils.clamp((int) Math.floor(barNum / (float) maxlen * minlen), 0, minlen - 1);
+                    if (k < l) {
+                        float x = AndroidUtilities.lerp((float) l, (float) barNum, T) * AndroidUtilities.dpf2(3);
+                        float h = AndroidUtilities.dpf2(AndroidUtilities.lerp(minarr[reverse ? minarr.length - 1 - l : l], maxarr[reverse ? maxarr.length - 1 - barNum : barNum], T));
+                        addBar(path, x, h);
+                        k = l;
+                    } else {
+                        float x = AndroidUtilities.lerp((float) l, (float) barNum, T) * AndroidUtilities.dpf2(3);
+                        float h = AndroidUtilities.dpf2(AndroidUtilities.lerp(minarr[reverse ? minarr.length - 1 - l : l], maxarr[reverse ? maxarr.length - 1 - barNum : barNum], T));
+                        addBar(alphaPath, x, h);
+                        alpha = T;
+                    }
                 }
-                float x = barNum * AndroidUtilities.dpf2(3);
-                float bart = MathUtils.clamp(appearProgress * totalBarsCount - barNum, 0, 1);
-                float h = AndroidUtilities.dpf2(heights[reverse ? heights.length - 1 - barNum : barNum]) * bart;
-                h -= AndroidUtilities.dpf2(1) * (1f - bart);
-                addBar(path, x, h);
+            } else if (heights != null) {
+                for (int barNum = 0; barNum < totalBarsCount; barNum++) {
+                    if (barNum >= heights.length) {
+                        break;
+                    }
+                    float x = barNum * AndroidUtilities.dpf2(3);
+                    float bart = MathUtils.clamp(appearProgress * totalBarsCount - barNum, 0, 1);
+                    float h = AndroidUtilities.dpf2(heights[reverse ? heights.length - 1 - barNum : barNum]) * bart;
+                    h -= AndroidUtilities.dpf2(1) * (1f - bart);
+                    addBar(path, x, h);
+                }
             }
         }
 
@@ -405,10 +421,12 @@ public class SeekBarWaveform {
             canvas.restore();
         }
 
-        canvas.save();
-        canvas.clipPath(path);
-        drawFill(canvas, this.alpha);
-        canvas.restore();
+        if (clipPath != null) {
+            canvas.save();
+            canvas.clipPath(clipPath);
+            drawFill(canvas, this.alpha);
+            canvas.restore();
+        }
 
         if (expressiveThumbX >= 0) {
             drawExpressiveThumb(canvas, expressiveThumbX);
@@ -497,8 +515,14 @@ public class SeekBarWaveform {
      * loud parts are clearly different. Returns the x of the M3E thumb, or -1 when no thumb should be drawn.
      */
     private float buildExpressivePath(float totalBarsCount, float appearProgress, boolean reverse) {
+        expressiveUseCachedPath = false;
         float[] levels = getVoiceLevels(reverse);
         if (levels == null) {
+            if (path == null) {
+                path = new Path();
+            } else {
+                path.reset();
+            }
             return -1;
         }
         // appear animation (after sending): the wave grows in from the left, like the bars did
@@ -520,8 +544,26 @@ public class SeekBarWaveform {
         }
         boolean playing = messageObject != null && MediaController.getInstance().isPlayingMessage(messageObject)
                 && !MediaController.getInstance().isMessagePaused();
-        if (voiceTrack.update(playing && !pressed, levels)) {
+        boolean animating = voiceTrack.update(playing && !pressed, levels);
+        if (animating) {
             M3ExpressiveTrack.invalidateNextFrame(parentView);
+        }
+
+        final int count = Math.max(2, Math.min(heights != null ? heights.length : 0, (int) Math.ceil(totalBarsCount)));
+        final boolean showThumb = delegate != null && delegate.isSeekBarDragAllowed() && progress > 0f && progress < 1f && messageObject != null
+                && MediaController.getInstance().isPlayingMessage(messageObject);
+        final boolean canCache = !playing && !animating && appearProgress >= 1f;
+        if (canCache && expressiveCachedPath != null
+                && expressiveCacheWaveform == waveformBytes
+                && expressiveCacheCount == count
+                && expressiveCacheHeight == height
+                && expressiveCacheWaveScaling == waveScaling
+                && expressiveCacheDensity == AndroidUtilities.density
+                && expressiveCacheReverse == reverse
+                && expressiveCacheHasThumb == showThumb
+                && (!showThumb || expressiveCacheProgress == progress)) {
+            expressiveUseCachedPath = true;
+            return expressiveCacheThumbX;
         }
 
         if (expressiveStrokePaint == null) {
@@ -533,8 +575,24 @@ public class SeekBarWaveform {
         final float stroke = AndroidUtilities.dpf2(2f);
         expressiveStrokePaint.setStrokeWidth(stroke);
 
+        Path target;
+        if (canCache) {
+            if (expressiveCachedPath == null) {
+                expressiveCachedPath = new Path();
+            } else {
+                expressiveCachedPath.reset();
+            }
+            target = expressiveCachedPath;
+        } else {
+            if (path == null) {
+                path = new Path();
+            } else {
+                path.reset();
+            }
+            target = path;
+        }
+
         final float barStep = AndroidUtilities.dpf2(3);
-        final int count = Math.max(2, Math.min(heights != null ? heights.length : 0, (int) Math.ceil(totalBarsCount)));
         final float centerY = (height - dp(14)) / 2f + dp(7);
         final float startX = AndroidUtilities.dpf2(1);
         final float endX = Math.max(startX + 1, (count - 1) * barStep + AndroidUtilities.dpf2(1));
@@ -546,25 +604,41 @@ public class SeekBarWaveform {
         // mirrored "beads": the upper half of the wave reflected downwards (symmetric peaks, like the classic
         // bars), plus a thin rounded baseline so silent parts stay a visible line
         // plain mirrored loudness envelope: peaks where it's loud, low where it's quiet, no flowing carrier
-        if (!voiceTrack.buildMirroredLoudness(path, startX, endX, startX, endX, centerY, maxAmp, wavelength, levels, false)) {
+        if (!voiceTrack.buildMirroredLoudness(target, startX, endX, startX, endX, centerY, maxAmp, wavelength, levels, false)) {
+            expressiveCacheWaveform = null;
+            if (path == null) {
+                path = new Path();
+            } else {
+                path.reset();
+            }
             return -1;
         }
         float half = stroke / 2f;
         expressiveLinePath.rewind();
         expressiveLinePath.addRoundRect(startX - half, centerY - half, endX + half, centerY + half, half, half, Path.Direction.CW);
-        path.op(expressiveLinePath, Path.Op.UNION);
+        target.op(expressiveLinePath, Path.Op.UNION);
 
-        boolean showThumb = delegate != null && delegate.isSeekBarDragAllowed() && progress > 0f && progress < 1f && messageObject != null
-                && MediaController.getInstance().isPlayingMessage(messageObject);
-        if (!showThumb) {
-            return -1;
+        float thumbX = -1;
+        if (showThumb) {
+            thumbX = startX + (endX - startX) * progress;
+            // cut a gap around the thumb, like M3E sliders/progress indicators
+            float gap = AndroidUtilities.dpf2(4);
+            expressiveGapPath.rewind();
+            expressiveGapPath.addRect(thumbX - gap, 0, thumbX + gap, height, Path.Direction.CW);
+            target.op(expressiveGapPath, Path.Op.DIFFERENCE);
         }
-        float thumbX = startX + (endX - startX) * progress;
-        // cut a gap around the thumb, like M3E sliders/progress indicators
-        float gap = AndroidUtilities.dpf2(4);
-        expressiveGapPath.rewind();
-        expressiveGapPath.addRect(thumbX - gap, 0, thumbX + gap, height, Path.Direction.CW);
-        path.op(expressiveGapPath, Path.Op.DIFFERENCE);
+        if (canCache) {
+            expressiveCacheWaveform = waveformBytes;
+            expressiveCacheCount = count;
+            expressiveCacheHeight = height;
+            expressiveCacheWaveScaling = waveScaling;
+            expressiveCacheDensity = AndroidUtilities.density;
+            expressiveCacheReverse = reverse;
+            expressiveCacheHasThumb = showThumb;
+            expressiveCacheProgress = progress;
+            expressiveCacheThumbX = thumbX;
+            expressiveUseCachedPath = true;
+        }
         return thumbX;
     }
 

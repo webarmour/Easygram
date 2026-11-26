@@ -1102,6 +1102,11 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
     private int lastVisibleBlockNum;
     private int firstVisibleBlockNum;
     private int totalVisibleBlocksCount;
+    private int lastVisibleCaptionBlockNum;
+    private int firstVisibleCaptionBlockNum;
+    private int totalVisibleCaptionBlocksCount;
+    private boolean hasCaptionVisiblePart;
+    private int lastVisibleCaptionY;
     private int firstVisibleRichBlock = -1;
     private int lastVisibleRichBlock = -1;
     private boolean needNewVisiblePart;
@@ -5359,6 +5364,48 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                         }
                     }
                 }
+            }
+        }
+
+        if (captionLayout != null && captionLayout.textLayoutBlocks != null && captionLayout.textLayoutBlocks.size() > 1 && currentMessagesGroup == null && height > 0) {
+            int p = position - (int) captionY;
+            int pad = dp(24);
+            int pStart = p - pad;
+            int pEnd = p + height + pad;
+            int newFirst = -1, newLast = -1, newCount = 0;
+            ArrayList<MessageObject.TextLayoutBlock> captionBlocks = captionLayout.textLayoutBlocks;
+            int startBlock = 0;
+            for (int a = 0; a < captionBlocks.size(); a++) {
+                if (captionBlocks.get(a).textYOffset(captionBlocks, transitionParams) > pStart) {
+                    break;
+                }
+                startBlock = a;
+            }
+            for (int a = startBlock; a < captionBlocks.size(); a++) {
+                MessageObject.TextLayoutBlock block = captionBlocks.get(a);
+                float y = block.textYOffset(captionBlocks, transitionParams);
+                if (intersect(y, y + block.padTop + block.height(transitionParams) + block.padBottom, pStart, pEnd)) {
+                    if (newFirst == -1) {
+                        newFirst = a;
+                    }
+                    newLast = a;
+                    newCount++;
+                } else if (y > pEnd) {
+                    break;
+                }
+            }
+            boolean changed = !hasCaptionVisiblePart
+                    || lastVisibleCaptionY != (int) captionY
+                    || lastVisibleCaptionBlockNum != newLast
+                    || firstVisibleCaptionBlockNum != newFirst
+                    || totalVisibleCaptionBlocksCount != newCount;
+            hasCaptionVisiblePart = true;
+            lastVisibleCaptionY = (int) captionY;
+            if (changed) {
+                lastVisibleCaptionBlockNum = newLast;
+                firstVisibleCaptionBlockNum = newFirst;
+                totalVisibleCaptionBlocksCount = newCount;
+                invalidate();
             }
         }
 
@@ -10264,6 +10311,15 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                 stickerSetIcons.detach(this);
                 stickerSetIcons = null;
             }
+            if (messageChanged || captionLayout != prevCaptionLayout) {
+                hasCaptionVisiblePart = false;
+                firstVisibleCaptionBlockNum = 0;
+                lastVisibleCaptionBlockNum = 0;
+                totalVisibleCaptionBlocksCount = 0;
+                if (captionLayout != null && captionLayout.textLayoutBlocks != null && captionLayout.textLayoutBlocks.size() > 1) {
+                    needNewVisiblePart = true;
+                }
+            }
             prevCaptionLayout = null;
 
             final int starsPriceMessagesCount;
@@ -12710,7 +12766,9 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         if (preview != (currentMessageObject != null && currentMessageObject.preview)) {
             return;
         }
-        boolean newPart = needNewVisiblePart && currentMessageObject.type == MessageObject.TYPE_TEXT, hasSpoilers = hasSpoilers();
+        boolean newPart = needNewVisiblePart && (currentMessageObject.type == MessageObject.TYPE_TEXT
+                || (captionLayout != null && captionLayout.textLayoutBlocks != null && captionLayout.textLayoutBlocks.size() > 1)),
+                hasSpoilers = hasSpoilers();
         if (newPart || hasSpoilers) {
             getLocalVisibleRect(scrollRect);
             if (hasSpoilers) {
@@ -13924,12 +13982,22 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         int firstVisibleBlockNum;
         int lastVisibleBlockNum;
         if (origin && !drawAllBlocks) {
-            if (fullyDraw) {
-                this.firstVisibleBlockNum = 0;
-                this.lastVisibleBlockNum = textLayoutBlocks.size();
+            if (caption) {
+                if (fullyDraw || !hasCaptionVisiblePart) {
+                    firstVisibleBlockNum = 0;
+                    lastVisibleBlockNum = textLayoutBlocks.size();
+                } else {
+                    firstVisibleBlockNum = this.firstVisibleCaptionBlockNum;
+                    lastVisibleBlockNum = this.lastVisibleCaptionBlockNum;
+                }
+            } else {
+                if (fullyDraw) {
+                    this.firstVisibleBlockNum = 0;
+                    this.lastVisibleBlockNum = textLayoutBlocks.size();
+                }
+                firstVisibleBlockNum = this.firstVisibleBlockNum;
+                lastVisibleBlockNum = this.lastVisibleBlockNum;
             }
-            firstVisibleBlockNum = this.firstVisibleBlockNum;
-            lastVisibleBlockNum = this.lastVisibleBlockNum;
         } else {
             firstVisibleBlockNum = 0;
             lastVisibleBlockNum = textLayoutBlocks.size();
@@ -21206,7 +21274,14 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                 drawMessageText(captionX, captionAbove ? captionYBottom : captionYTop, canvas, captionLayout.textLayoutBlocks, captionLayout.textXOffset, origin, alpha * (1f - transitionParams.animateChangeProgress), true, false, true);
                 drawMessageText(captionX, captionAbove ? captionYTop : captionYBottom, canvas, captionLayout.textLayoutBlocks, captionLayout.textXOffset, origin, alpha * transitionParams.animateChangeProgress, true, false, true);
             } else {
-                drawMessageText(captionX, captionY, canvas, captionLayout.textLayoutBlocks, captionLayout.textXOffset, origin, alpha, true, false, true);
+                boolean drawAllCaptionBlocks = fullyDraw || drawingToBitmap
+                        || currentMessagesGroup != null
+                        || !hasCaptionVisiblePart
+                        || captionY != this.captionY
+                        || lastVisibleCaptionY != (int) this.captionY
+                        || captionLayout.textLayoutBlocks == null
+                        || captionLayout.textLayoutBlocks.size() <= 1;
+                drawMessageText(captionX, captionY, canvas, captionLayout.textLayoutBlocks, captionLayout.textXOffset, origin, alpha, drawAllCaptionBlocks, false, true);
             }
         }
         if (restore != Integer.MIN_VALUE) {

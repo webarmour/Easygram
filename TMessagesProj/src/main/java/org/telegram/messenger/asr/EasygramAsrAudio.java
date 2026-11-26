@@ -225,7 +225,8 @@ public final class EasygramAsrAudio {
         }
 
         float[] finish() {
-            if (size == data.length) {
+            // Avoid duplicating a huge 20–38 MB float[] just to trim <= 16 ms of zero-padded slack at the tail.
+            if (size == data.length || (size > 0 && data.length - size <= 256)) {
                 return data;
             }
             float[] exact = new float[size];

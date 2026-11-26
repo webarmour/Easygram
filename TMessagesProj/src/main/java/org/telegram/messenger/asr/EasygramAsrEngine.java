@@ -47,7 +47,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public final class EasygramAsrEngine {
 
-    private static final long IDLE_UNLOAD_MS = 90_000;
+    private static final long IDLE_UNLOAD_MS = 20_000;
+    /** After long audio the user is usually reading/scrolling rather than transcribing again right away. */
+    private static final long LONG_AUDIO_UNLOAD_MS = 5_000;
+    private static final int LONG_AUDIO_SAMPLES = 45 * EasygramAsrAudio.SAMPLE_RATE;
     /** Offline models are fed segments of at most this length, cut at the quietest moment. */
     private static final int MAX_SEGMENT_SEC = 25, MIN_SEGMENT_SEC = 15;
     /** Gentle mode: shorter segments, each followed by a rest of this part of its decode time. */
@@ -81,6 +84,7 @@ public final class EasygramAsrEngine {
             return null;
         }
         queue.cancelRunnable(unloadRunnable);
+        registerMemoryCallbacks();
         try {
             long start = SystemClock.elapsedRealtime();
             if (lid == null) {
@@ -112,7 +116,11 @@ public final class EasygramAsrEngine {
             FileLog.e(e);
             return null;
         } finally {
-            queue.postRunnable(unloadRunnable, IDLE_UNLOAD_MS);
+            // Release Whisper LID (~103 MB) immediately so it never coexists in RAM with the ASR recognizer.
+            releaseLid();
+            if (offline != null || online != null) {
+                queue.postRunnable(unloadRunnable, IDLE_UNLOAD_MS);
+            }
         }
     }
 
@@ -143,13 +151,14 @@ public final class EasygramAsrEngine {
             }
             return text == null ? null : postProcess(model, text);
         } finally {
-            queue.postRunnable(unloadRunnable, IDLE_UNLOAD_MS);
+            long unloadDelay = samples.length >= LONG_AUDIO_SAMPLES ? LONG_AUDIO_UNLOAD_MS : IDLE_UNLOAD_MS;
+            queue.postRunnable(unloadRunnable, unloadDelay);
         }
     }
 
     private static boolean memoryCallbacksRegistered;
 
-    private static void ensureLoaded(EasygramAsrModels.Model model) {
+    private static void registerMemoryCallbacks() {
         if (!memoryCallbacksRegistered) {
             memoryCallbacksRegistered = true;
             ApplicationLoader.applicationContext.registerComponentCallbacks(new ComponentCallbacks2() {
@@ -170,11 +179,16 @@ public final class EasygramAsrEngine {
                 }
             });
         }
+    }
+
+    private static void ensureLoaded(EasygramAsrModels.Model model) {
+        registerMemoryCallbacks();
         int threads = EasygramAsrSettings.getThreads();
         if (loadedModel == model && loadedThreads == threads && (offline != null || online != null)) {
             return;
         }
-        releaseRecognizer(); // the language identification model stays
+        releaseLid();
+        releaseRecognizer();
         File dir = EasygramAsrModelManager.modelDir(model);
         String tokens = new File(dir, "tokens.txt").getAbsolutePath();
         if (model.engine == EasygramAsrModels.ENGINE_TONE_CTC) {
@@ -242,8 +256,13 @@ public final class EasygramAsrEngine {
             long segmentStart = SystemClock.elapsedRealtime();
             int end = gentle ? segmentEnd(samples, start, GENTLE_MIN_SEGMENT_SEC, GENTLE_MAX_SEGMENT_SEC)
                     : segmentEnd(samples, start, MIN_SEGMENT_SEC, MAX_SEGMENT_SEC);
-            float[] segment = new float[end - start];
-            System.arraycopy(samples, start, segment, 0, segment.length);
+            float[] segment;
+            if (start == 0 && end == samples.length) {
+                segment = samples;
+            } else {
+                segment = new float[end - start];
+                System.arraycopy(samples, start, segment, 0, segment.length);
+            }
             OfflineStream stream = recognizer.createStream();
             try {
                 stream.acceptWaveform(segment, rate);
@@ -357,11 +376,15 @@ public final class EasygramAsrEngine {
 
     /** Releases the loaded recognizer; runs on the queue. */
     private static void release() {
+        releaseLid();
+        releaseRecognizer();
+    }
+
+    private static void releaseLid() {
         if (lid != null) {
             lid.release();
             lid = null;
         }
-        releaseRecognizer();
     }
 
     private static void releaseRecognizer() {
@@ -379,10 +402,7 @@ public final class EasygramAsrEngine {
     public static void releaseIfLoaded(EasygramAsrModels.Model model) {
         queue.postRunnable(() -> {
             if (model.engine == EasygramAsrModels.ENGINE_WHISPER_LID) {
-                if (lid != null) {
-                    lid.release();
-                    lid = null;
-                }
+                releaseLid();
             } else if (loadedModel == model) {
                 releaseRecognizer();
             }

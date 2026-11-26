@@ -99,9 +99,11 @@ public final class EasygramAsrTranscriber {
                     AndroidUtilities.runOnUIThread(() -> callback.onResult(null, ERROR_DECODE, null));
                     return;
                 }
-                float peak = 0;
-                for (float v : samples) peak = Math.max(peak, Math.abs(v));
-                log("decoded " + samples.length + " samples (" + samples.length / (float) EasygramAsrAudio.SAMPLE_RATE + " s), peak " + peak);
+                if (org.telegram.messenger.BuildVars.LOGS_ENABLED) {
+                    float peak = 0;
+                    for (float v : samples) peak = Math.max(peak, Math.abs(v));
+                    log("decoded " + samples.length + " samples (" + samples.length / (float) EasygramAsrAudio.SAMPLE_RATE + " s), peak " + peak);
+                }
                 String voiceLang = byVoice ? EasygramAsrEngine.identifyLanguage(samples) : null;
                 final float[] audio = samples;
                 AndroidUtilities.runOnUIThread(() -> pickLanguage(m, forcedLang, voiceLang, (lang, confident) -> {

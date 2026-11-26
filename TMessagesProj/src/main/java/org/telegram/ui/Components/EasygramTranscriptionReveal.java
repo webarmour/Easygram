@@ -136,6 +136,9 @@ public final class EasygramTranscriptionReveal {
             run.geometry.put(layout, g);
         }
         if (g.rtl) {
+            if (run.start < 0) {
+                runs.remove(key);
+            }
             return false; // RTL text simply appears
         }
         if (run.start < 0) {
@@ -159,14 +162,14 @@ public final class EasygramTranscriptionReveal {
         int accent = paint.linkColor != 0 ? paint.linkColor : textColor;
         int noiseColor = ColorUtils.blendARGB(textColor, accent, 0.55f);
         int baseAlpha = paint.getAlpha();
+        float span = run.duration - 260;
         long step = (long) (elapsed / FLICKER_MS);
         if (step != g.noiseStep) {
-            regenerateNoise(g, text, paint, step);
+            regenerateNoise(g, text, paint, step, elapsed, span);
         }
         float wavePhase = elapsed / 1000f * 7f;
         float waveAmp = dp(1.6f);
         float appear = Math.min(1f, elapsed / 180f);
-        float span = run.duration - 260;
 
         int w = 0;
         for (int line = 0, lines = layout.getLineCount(); line < lines; line++) {
@@ -285,11 +288,14 @@ public final class EasygramTranscriptionReveal {
     }
 
     /** New random characters for the words still decoding (and their widths, to fit them into the real ones). */
-    private static void regenerateNoise(Geometry g, CharSequence text, TextPaint paint, long step) {
+    private static void regenerateNoise(Geometry g, CharSequence text, TextPaint paint, long step, float elapsed, float span) {
         g.noiseStep = step;
         if (g.words == 0) return;
         int base = g.start[0];
         for (int w = 0; w < g.words; w++) {
+            if (t(g, w, elapsed, span) >= 0f) {
+                continue; // already settling or settled: noise is no longer drawn
+            }
             for (int i = g.start[w]; i < g.end[w]; i++) {
                 char c = text.charAt(i);
                 g.noise[i - base] = Character.isLetterOrDigit(c) && !Character.isSurrogate(c) ? scramble(c, i, step) : c;
