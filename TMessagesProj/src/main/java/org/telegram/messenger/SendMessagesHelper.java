@@ -2005,6 +2005,12 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                     sentMessage.date, false, 0, 0);
             getMessagesStorage().putMessages(messages, true, false, false, 0, 0, 0);
             AndroidUtilities.runOnUIThread(() -> {
+                if (sentMessage.unread && sentMessage.id > 0) {
+                    Integer latestReadMax = getMessagesController().dialogs_read_outbox_max.get(dialogId);
+                    if (latestReadMax != null && latestReadMax >= sentMessage.id) {
+                        sentMessage.unread = false;
+                    }
+                }
                 final int visibleId = object.getId();
                 object.messageOwner = sentMessage;
                 object.forceUpdate = true;
@@ -2012,6 +2018,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                         visibleId, sentMessage.id, sentMessage, dialogId, 0L, 0, false);
                 getNotificationCenter().postNotificationName(NotificationCenter.messageReceivedByServer2,
                         visibleId, sentMessage.id, sentMessage, dialogId, 0L, 0, false);
+                getMessagesController().notifyOutboxReadIfNeeded(dialogId, sentMessage.id);
                 processSentMessage(oldId);
                 removeFromSendingMessages(oldId, false);
             });
@@ -2902,10 +2909,19 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                                                     }
 
                                                     AndroidUtilities.runOnUIThread(() -> {
+                                                        if (scheduleDate == 0 && message.unread && message.id > 0) {
+                                                            Integer latestReadMax = getMessagesController().dialogs_read_outbox_max.get(peer);
+                                                            if (latestReadMax != null && latestReadMax >= message.id) {
+                                                                message.unread = false;
+                                                            }
+                                                        }
                                                         newMsgObj1.send_state = MessageObject.MESSAGE_SEND_STATE_SENT;
                                                         getMediaDataController().increasePeerRaiting(peer);
                                                         getNotificationCenter().postNotificationName(NotificationCenter.messageReceivedByServer, oldId, message.id, message, peer, 0L, existFlags, scheduleDate != 0);
                                                         getNotificationCenter().postNotificationName(NotificationCenter.messageReceivedByServer2, oldId, message.id, message, peer, 0L, existFlags, scheduleDate != 0);
+                                                        if (scheduleDate == 0) {
+                                                            getMessagesController().notifyOutboxReadIfNeeded(peer, message.id);
+                                                        }
                                                         processSentMessage(oldId);
                                                         removeFromSendingMessages(oldId, scheduleDate != 0);
                                                     });
@@ -7960,6 +7976,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                                         getMessagesController().dialogs_read_outbox_max.put(message.dialog_id, value);
                                     }
                                     message.unread = value < message.id;
+                                    newMsgObj.unread = message.unread;
                                 }
                             } else {
                                 isSentError = true;
@@ -7980,6 +7997,9 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                             newMsgObj.errorNewPriceStars = 0;
                             getNotificationCenter().postNotificationName(NotificationCenter.messageReceivedByServer, oldId, newMsgObj.id, newMsgObj, newMsgObj.dialog_id, grouped_id, existFlags, currentSchedule);
                             getNotificationCenter().postNotificationName(NotificationCenter.messageReceivedByServer2, oldId, newMsgObj.id, newMsgObj, newMsgObj.dialog_id, grouped_id, existFlags, currentSchedule);
+                            if (!currentSchedule) {
+                                getMessagesController().notifyOutboxReadIfNeeded(newMsgObj.dialog_id, newMsgObj.id);
+                            }
                             getMessagesStorage().getStorageQueue().postRunnable(() -> {
                                 int mode = finalCurrentSchedule ? ChatActivity.MODE_SCHEDULED : 0;
                                 if (MessageObject.isWelcomeMessage(newMsgObj)) {
@@ -8008,6 +8028,9 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                                     getMediaDataController().increasePeerRaiting(newMsgObj.dialog_id);
                                     getNotificationCenter().postNotificationName(NotificationCenter.messageReceivedByServer, oldId, newMsgObj.id, newMsgObj, newMsgObj.dialog_id, grouped_id, existFlags, finalCurrentSchedule);
                                     getNotificationCenter().postNotificationName(NotificationCenter.messageReceivedByServer2, oldId, newMsgObj.id, newMsgObj, newMsgObj.dialog_id, grouped_id, existFlags, finalCurrentSchedule);
+                                    if (!finalCurrentSchedule) {
+                                        getMessagesController().notifyOutboxReadIfNeeded(newMsgObj.dialog_id, newMsgObj.id);
+                                    }
                                     processSentMessage(oldId);
                                     removeFromSendingMessages(oldId, scheduled);
                                 });
@@ -8470,6 +8493,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                                         getMessagesController().dialogs_read_outbox_max.put(message.dialog_id, value);
                                     }
                                     message.unread = value < message.id;
+                                    newMsgObj.unread = message.unread;
                                 }
                                 msgObj.messageOwner.post_author = message.post_author;
                                 if ((message.flags & 33554432) != 0) {
@@ -8529,6 +8553,9 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                             } else {
                                 getNotificationCenter().postNotificationName(NotificationCenter.messageReceivedByServer, oldId, newMsgObj.id, newMsgObj, newMsgObj.dialog_id, 0L, existFlags, scheduled);
                                 getNotificationCenter().postNotificationName(NotificationCenter.messageReceivedByServer2, oldId, newMsgObj.id, newMsgObj, newMsgObj.dialog_id, 0L, existFlags, scheduled);
+                                if (!scheduled) {
+                                    getMessagesController().notifyOutboxReadIfNeeded(newMsgObj.dialog_id, newMsgObj.id);
+                                }
                                 getMessagesStorage().getStorageQueue().postRunnable(() -> {
                                     int mode = scheduled ? ChatActivity.MODE_SCHEDULED : 0;
                                     if (MessageObject.isWelcomeMessage(newMsgObj)) {
@@ -8551,6 +8578,9 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                                         getMediaDataController().increasePeerRaiting(newMsgObj.dialog_id);
                                         getNotificationCenter().postNotificationName(NotificationCenter.messageReceivedByServer, oldId, newMsgObj.id, newMsgObj, newMsgObj.dialog_id, 0L, existFlags, scheduled);
                                         getNotificationCenter().postNotificationName(NotificationCenter.messageReceivedByServer2, oldId, newMsgObj.id, newMsgObj, newMsgObj.dialog_id, 0L, existFlags, scheduled);
+                                        if (!scheduled) {
+                                            getMessagesController().notifyOutboxReadIfNeeded(newMsgObj.dialog_id, newMsgObj.id);
+                                        }
                                         processSentMessage(oldId);
                                         removeFromSendingMessages(oldId, scheduled);
                                     });

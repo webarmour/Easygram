@@ -10995,7 +10995,8 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         return (
             !links.isEmpty() ||
             !reactionsLayoutInBubble.isEmpty ||
-            currentMessageObject != null && currentMessageObject.preview
+            currentMessageObject != null && currentMessageObject.preview ||
+            currentPosition != null && currentPosition.last
         );
     }
 

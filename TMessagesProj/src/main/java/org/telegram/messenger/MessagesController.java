@@ -8201,6 +8201,12 @@ public class MessagesController extends BaseController implements NotificationCe
             }
             channelsPts.put(channelId, pts);
             getMessagesStorage().saveChannelPts(channelId, pts);
+            Utilities.stageQueue.postRunnable(() -> {
+                ArrayList<TLRPC.Updates> queued = updatesQueueChannels.get(channelId);
+                if (queued != null && !queued.isEmpty()) {
+                    processChannelsUpdatesQueue(channelId, 0);
+                }
+            });
         } else if (channelPts != pts) {
             long updatesStartWaitTime = updatesStartWaitTimeChannels.get(channelId);
             boolean gettingDifferenceChannel = gettingDifferenceChannels.get(channelId, false);
@@ -8238,6 +8244,11 @@ public class MessagesController extends BaseController implements NotificationCe
                 }
                 getMessagesStorage().setLastPtsValue(pts);
                 getMessagesStorage().saveDiffParams(getMessagesStorage().getLastSeqValue(), getMessagesStorage().getLastPtsValue(), getMessagesStorage().getLastDateValue(), getMessagesStorage().getLastQtsValue());
+                Utilities.stageQueue.postRunnable(() -> {
+                    if (!updatesQueuePts.isEmpty()) {
+                        processUpdatesQueue(1, 0);
+                    }
+                });
             } else if (getMessagesStorage().getLastPtsValue() != pts) {
                 if (gettingDifference || updatesStartWaitTimePts == 0 || Math.abs(System.currentTimeMillis() - updatesStartWaitTimePts) <= 1500) {
                     if (BuildVars.LOGS_ENABLED) {
@@ -8265,6 +8276,11 @@ public class MessagesController extends BaseController implements NotificationCe
                     getMessagesStorage().setLastDateValue(date);
                 }
                 getMessagesStorage().saveDiffParams(getMessagesStorage().getLastSeqValue(), getMessagesStorage().getLastPtsValue(), getMessagesStorage().getLastDateValue(), getMessagesStorage().getLastQtsValue());
+                Utilities.stageQueue.postRunnable(() -> {
+                    if (!updatesQueueSeq.isEmpty()) {
+                        processUpdatesQueue(0, 0);
+                    }
+                });
             } else if (getMessagesStorage().getLastSeqValue() != seq) {
                 if (gettingDifference || updatesStartWaitTimeSeq == 0 || Math.abs(System.currentTimeMillis() - updatesStartWaitTimeSeq) <= 1500) {
                     if (BuildVars.LOGS_ENABLED) {
@@ -16778,6 +16794,7 @@ public class MessagesController extends BaseController implements NotificationCe
                                     getSendMessagesHelper().processSentMessage((int) ids[1]);
                                     getNotificationCenter().postNotificationName(NotificationCenter.messageReceivedByServer, (int) ids[1], newId, null, ids[0], 0L, -1, false);
                                     getNotificationCenter().postNotificationName(NotificationCenter.messageReceivedByServer2, (int) ids[1], newId, null, ids[0], 0L, -1, false);
+                                    notifyOutboxReadIfNeeded(ids[0], newId);
                                 }
                             });
                         }
@@ -17036,6 +17053,7 @@ public class MessagesController extends BaseController implements NotificationCe
                                         getSendMessagesHelper().processSentMessage((int) ids[1]);
                                         getNotificationCenter().postNotificationName(NotificationCenter.messageReceivedByServer, (int) ids[1], newId, null, ids[0], 0L, -1, false);
                                         getNotificationCenter().postNotificationName(NotificationCenter.messageReceivedByServer2, (int) ids[1], newId, null, ids[0], 0L, -1, false);
+                                        notifyOutboxReadIfNeeded(ids[0], newId);
                                     }
                                 });
                             }
@@ -17914,6 +17932,18 @@ public class MessagesController extends BaseController implements NotificationCe
         }
     }
 
+    public void notifyOutboxReadIfNeeded(long dialogId, int messageId) {
+        if (messageId <= 0 || DialogObject.isEncryptedDialog(dialogId)) {
+            return;
+        }
+        Integer readMax = dialogs_read_outbox_max.get(dialogId);
+        if (readMax != null && readMax >= messageId) {
+            LongSparseIntArray outbox = new LongSparseIntArray(1);
+            outbox.put(dialogId, readMax);
+            getNotificationCenter().postNotificationName(NotificationCenter.messagesRead, null, outbox);
+        }
+    }
+
     private void processMessageIDUpdate(TL_update.TL_updateMessageID update) {
         // Use the same persisted random_id lookup as getDifference, including after a restart.
         getMessagesStorage().getStorageQueue().postRunnable(() -> {
@@ -17928,6 +17958,7 @@ public class MessagesController extends BaseController implements NotificationCe
                         oldId, update.id, null, ids[0], 0L, -1, false);
                 getNotificationCenter().postNotificationName(NotificationCenter.messageReceivedByServer2,
                         oldId, update.id, null, ids[0], 0L, -1, false);
+                notifyOutboxReadIfNeeded(ids[0], update.id);
             });
         });
     }
@@ -18895,11 +18926,15 @@ public class MessagesController extends BaseController implements NotificationCe
                     markAsReadMessagesOutbox = new LongSparseIntArray();
                 }
                 if (update.peer.chat_id != 0) {
-                    markAsReadMessagesOutbox.put(-update.peer.chat_id, update.max_id);
                     dialogId = -update.peer.chat_id;
+                    int idx = markAsReadMessagesOutbox.indexOfKey(dialogId);
+                    int prev = idx >= 0 ? markAsReadMessagesOutbox.valueAt(idx) : 0;
+                    markAsReadMessagesOutbox.put(dialogId, Math.max(prev, update.max_id));
                 } else {
-                    markAsReadMessagesOutbox.put(update.peer.user_id, update.max_id);
                     dialogId = update.peer.user_id;
+                    int idx = markAsReadMessagesOutbox.indexOfKey(dialogId);
+                    int prev = idx >= 0 ? markAsReadMessagesOutbox.valueAt(idx) : 0;
+                    markAsReadMessagesOutbox.put(dialogId, Math.max(prev, update.max_id));
                     TLRPC.User user = getUser(update.peer.user_id);
                     if (user != null && user.status != null && user.status.expires <= 0 && Math.abs(getConnectionsManager().getCurrentTime() - date) < 30) {
                         onlinePrivacy.put(update.peer.user_id, date);
@@ -19431,7 +19466,9 @@ public class MessagesController extends BaseController implements NotificationCe
                     markAsReadMessagesOutbox = new LongSparseIntArray();
                 }
                 long dialogId = -update.channel_id;
-                markAsReadMessagesOutbox.put(dialogId, update.max_id);
+                int idx = markAsReadMessagesOutbox.indexOfKey(dialogId);
+                int prev = idx >= 0 ? markAsReadMessagesOutbox.valueAt(idx) : 0;
+                markAsReadMessagesOutbox.put(dialogId, Math.max(prev, update.max_id));
                 Integer value = dialogs_read_outbox_max.get(dialogId);
                 if (value == null) {
                     value = getMessagesStorage().getDialogReadMax(true, dialogId);
