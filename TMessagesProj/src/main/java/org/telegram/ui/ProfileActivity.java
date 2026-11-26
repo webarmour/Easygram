@@ -6631,16 +6631,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             did = -chatId;
         }
 
-        final boolean isCurrentMuted = getMessagesController().isDialogMuted(did, topicId);
-        if (fromActions && (isTopic || isCurrentMuted)) {
-            boolean newMuted = !isCurrentMuted;
-            getNotificationsController().muteDialog(did, topicId, newMuted);
-            BulletinFactory.createMuteBulletin(ProfileActivity.this, newMuted, null).show();
-            updateExceptions();
-            actionsView.setNotifications(!newMuted);
-            return;
-        }
-
         if (!fromActions && LocaleController.isRTL && x <= AndroidUtilities.dp(76) || !LocaleController.isRTL && x >= view.getMeasuredWidth() - AndroidUtilities.dp(76)) {
             NotificationsCheckCell checkCell = (NotificationsCheckCell) view;
             boolean checked = !checkCell.isChecked();
@@ -6691,6 +6681,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             }
             updateExceptions();
             getNotificationsController().updateServerNotificationsSettings(did, topicId);
+            org.telegram.messenger.NotificationMuteScheduleController.getInstance(currentAccount).onManualMuteChange(did, topicId, !checked);
             checkCell.setChecked(checked);
             RecyclerListView.Holder holder = (RecyclerListView.Holder) listView.findViewHolderForPosition(notificationsRow);
             updateNotifications(true);

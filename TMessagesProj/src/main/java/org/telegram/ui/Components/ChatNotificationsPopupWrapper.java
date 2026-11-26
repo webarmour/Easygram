@@ -54,6 +54,36 @@ public class ChatNotificationsPopupWrapper {
     private final TextView topicsExceptionsTextView;
     private long lastDialogId;
     private long lastTopicId;
+    private HashSet<Integer> lastTopicExceptions;
+
+    public interface WrapperHolder {
+        ChatNotificationsPopupWrapper getPopupWrapper();
+    }
+
+    private class PopupWindowLayout extends ActionBarPopupWindow.ActionBarPopupWindowLayout implements WrapperHolder {
+        Path path = new Path();
+
+        PopupWindowLayout(Context context, int resId, Theme.ResourcesProvider resourcesProvider) {
+            super(context, resId, resourcesProvider);
+        }
+
+        @Override
+        public ChatNotificationsPopupWrapper getPopupWrapper() {
+            return ChatNotificationsPopupWrapper.this;
+        }
+
+        @Override
+        protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
+            canvas.save();
+            path.rewind();
+            AndroidUtilities.rectTmp.set(child.getLeft(), child.getTop(), child.getRight(), child.getBottom());
+            path.addRoundRect(AndroidUtilities.rectTmp, AndroidUtilities.dp(6), AndroidUtilities.dp(6), Path.Direction.CW);
+            canvas.clipPath(path);
+            boolean draw = super.drawChild(canvas, child, drawingTime);
+            canvas.restore();
+            return draw;
+        }
+    }
 
     public final static int TYPE_PREVIEW_MENU = 1;
 
@@ -63,21 +93,7 @@ public class ChatNotificationsPopupWrapper {
         this.currentAccount = currentAccount;
         this.callback = callback;
         this.isProfile = isProfile;
-        windowLayout = new ActionBarPopupWindow.ActionBarPopupWindowLayout(context, createBackground ? R.drawable.popup_fixed_alert : 0, resourcesProvider) {
-            Path path = new Path();
-
-            @Override
-            protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
-                canvas.save();
-                path.rewind();
-                AndroidUtilities.rectTmp.set(child.getLeft(), child.getTop(), child.getRight(), child.getBottom());
-                path.addRoundRect(AndroidUtilities.rectTmp, AndroidUtilities.dp(6), AndroidUtilities.dp(6), Path.Direction.CW);
-                canvas.clipPath(path);
-                boolean draw = super.drawChild(canvas, child, drawingTime);
-                canvas.restore();
-                return draw;
-            }
-        };
+        windowLayout = new PopupWindowLayout(context, createBackground ? R.drawable.popup_fixed_alert : 0, resourcesProvider);
         windowLayout.setFitItems(true);
 
         if (swipeBackLayout != null) {
@@ -182,9 +198,17 @@ public class ChatNotificationsPopupWrapper {
         lastDismissTime = System.currentTimeMillis();
     }
 
+    public void refresh() {
+        if (lastDialogId != 0) {
+            lastDismissTime = 0;
+            update(lastDialogId, lastTopicId, lastTopicExceptions);
+        }
+    }
+
     public void update(long dialogId, long topicId, HashSet<Integer> topicExceptions) {
         lastDialogId = dialogId;
         lastTopicId = topicId;
+        lastTopicExceptions = topicExceptions;
         if (System.currentTimeMillis() - lastDismissTime < 200) {
             //do on popup close
             AndroidUtilities.runOnUIThread(() -> {

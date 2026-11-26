@@ -2060,15 +2060,8 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         }
         muteItem.setMinimumWidth(160);
         muteItem.setOnClickListener(e -> {
-            if (getMessagesController().isDialogMuted(-chatId, topic.id)) {
-                getNotificationsController().muteDialog(-chatId, topic.id, false);
-                finishPreviewFragment();
-                if (BulletinFactory.canShowBulletin(TopicsFragment.this)) {
-                    BulletinFactory.createMuteBulletin(TopicsFragment.this, NotificationsController.SETTING_MUTE_UNMUTE, 0, getResourceProvider()).show();
-                }
-            } else {
-                previewMenu[0].getSwipeBack().openForeground(muteForegroundIndex);
-            }
+            chatNotificationsPopupWrapper.update(-chatId, topic.id, null);
+            previewMenu[0].getSwipeBack().openForeground(muteForegroundIndex);
         });
         previewMenu[0].addView(muteItem);
 

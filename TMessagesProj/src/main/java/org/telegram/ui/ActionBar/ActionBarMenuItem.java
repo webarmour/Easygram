@@ -78,6 +78,7 @@ import org.telegram.ui.ChatActivity;
 import org.telegram.ui.ChatExportActivity;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
 import org.telegram.ui.Components.BackupImageView;
+import org.telegram.ui.Components.ChatNotificationsPopupWrapper;
 import org.telegram.ui.Components.CloseProgressDrawable2;
 import org.telegram.ui.Components.CombinedDrawable;
 import org.telegram.ui.Components.CubicBezierInterpolator;
@@ -2630,6 +2631,7 @@ public class ActionBarMenuItem extends FrameLayout {
         public boolean dismiss, needCheck;
         public View viewToSwipeBack;
         private Utilities.Callback0Return<View> swipeBackViewFactory;
+        private boolean forceSwipeBackMenu;
         public int textSizeDp;
 
         private View view;
@@ -2730,6 +2732,11 @@ public class ActionBarMenuItem extends FrameLayout {
                     viewToSwipeBack = swipeBackViewFactory.run();
                     swipeBackViewFactory = null;
                 }
+                if (viewToSwipeBack instanceof ChatNotificationsPopupWrapper.WrapperHolder) {
+                    forceSwipeBackMenu = true;
+                    rightIconVisibility = View.VISIBLE;
+                    cell.getRightIcon().setVisibility(View.VISIBLE);
+                }
                 int swipeBackIndex = parent.popupLayout.addViewToSwipeBack(viewToSwipeBack);
                 cell.openSwipeBackLayout = () -> {
                     if (parent.popupLayout.getSwipeBack() != null) {
@@ -2759,7 +2766,14 @@ public class ActionBarMenuItem extends FrameLayout {
             }
             if (view != null) {
                 view.setVisibility(visibility);
-                if (overrideClickListener != null) {
+                if (forceSwipeBackMenu) {
+                    view.setOnClickListener(v -> {
+                        if (viewToSwipeBack instanceof ChatNotificationsPopupWrapper.WrapperHolder) {
+                            ((ChatNotificationsPopupWrapper.WrapperHolder) viewToSwipeBack).getPopupWrapper().refresh();
+                        }
+                        openSwipeBack();
+                    });
+                } else if (overrideClickListener != null) {
                     view.setOnClickListener(overrideClickListener);
                 }
             }
@@ -2775,7 +2789,7 @@ public class ActionBarMenuItem extends FrameLayout {
 
         public void setOnClickListener(View.OnClickListener onClickListener) {
             overrideClickListener = onClickListener;
-            if (view != null) {
+            if (view != null && !forceSwipeBackMenu) {
                 view.setOnClickListener(overrideClickListener);
             }
         }
@@ -2811,6 +2825,9 @@ public class ActionBarMenuItem extends FrameLayout {
         }
 
         public void setRightIconVisibility(int visibility) {
+            if (forceSwipeBackMenu) {
+                visibility = View.VISIBLE;
+            }
             if (rightIconVisibility != visibility) {
                 rightIconVisibility = visibility;
                 if (view instanceof ActionBarMenuSubItem) {

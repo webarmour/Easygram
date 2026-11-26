@@ -49,7 +49,6 @@ import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
-import org.telegram.messenger.NotificationsController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.TopicsController;
 import org.telegram.messenger.UserConfig;
@@ -1025,17 +1024,7 @@ public class TopicsTabsView extends FrameLayout implements NotificationCenter.No
                 options.add(
                         muted ? R.drawable.msg_unmute : R.drawable.msg_mute,
                         muted ? getString(R.string.Unmute) : getString(R.string.Mute),
-                        () -> {
-                            if (messagesController.isDialogMuted(dialogId, topic.id)) {
-                                options.dismiss();
-                                NotificationsController.getInstance(currentAccount).muteDialog(dialogId, topic.id, false);
-                                if (BulletinFactory.canShowBulletin(fragment)) {
-                                    BulletinFactory.createMuteBulletin(fragment, NotificationsController.SETTING_MUTE_UNMUTE, 0, resourcesProvider).show();
-                                }
-                            } else {
-                                options.openSwipeback(muteOptions);
-                            }
-                        }
+                        () -> options.openSwipeback(muteOptions)
                 );
                 if (ChatObject.canManageTopic(currentAccount, currentChat, topic) && !UserObject.isBotForum(currentUser)) {
                     options.add(
