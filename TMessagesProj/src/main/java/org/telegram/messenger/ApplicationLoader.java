@@ -678,6 +678,24 @@ public class ApplicationLoader extends Application {
         return null;
     }
 
+    public static void checkEasygramUpdate(Activity activity, boolean manual) {
+        if (applicationLoaderInstance != null) {
+            applicationLoaderInstance.onCheckEasygramUpdate(activity, manual);
+        }
+    }
+
+    protected void onCheckEasygramUpdate(Activity activity, boolean manual) {
+    }
+
+    public static void openEasygramSupport(org.telegram.ui.ActionBar.BaseFragment fragment, org.telegram.ui.ActionBar.Theme.ResourcesProvider resourceProvider) {
+        if (applicationLoaderInstance != null) {
+            applicationLoaderInstance.onOpenEasygramSupport(fragment, resourceProvider);
+        }
+    }
+
+    protected void onOpenEasygramSupport(org.telegram.ui.ActionBar.BaseFragment fragment, org.telegram.ui.ActionBar.Theme.ResourcesProvider resourceProvider) {
+    }
+
     public TLRPC.Update parseTLUpdate(int constructor) {
         return null;
     }

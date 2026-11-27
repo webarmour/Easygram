@@ -137,14 +137,24 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
                 LocaleController.getString(R.string.Page6Title)
         };
         messages = new String[]{
-                LocaleController.getString(R.string.Page1Message),
-                LocaleController.getString(R.string.Page2Message),
-                LocaleController.getString(R.string.Page3Message),
-                LocaleController.getString(R.string.Page5Message),
-                LocaleController.getString(R.string.Page4Message),
-                LocaleController.getString(R.string.Page6Message)
+                replaceIntroBrand(LocaleController.getString(R.string.Page1Message)),
+                replaceIntroBrand(LocaleController.getString(R.string.Page2Message)),
+                replaceIntroBrand(LocaleController.getString(R.string.Page3Message)),
+                replaceIntroBrand(LocaleController.getString(R.string.Page5Message)),
+                replaceIntroBrand(LocaleController.getString(R.string.Page4Message)),
+                replaceIntroBrand(LocaleController.getString(R.string.Page6Message))
         };
         return true;
+    }
+
+    private static String replaceIntroBrand(String text) {
+        if (text == null) {
+            return null;
+        }
+        return text
+                .replace("Telegram", "easygram")
+                .replace("Телеграм", "easygram")
+                .replace("تيليجرام", "easygram");
     }
 
     @Override

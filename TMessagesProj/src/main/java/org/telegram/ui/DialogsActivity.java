@@ -6949,10 +6949,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     @Override
     public void onResume() {
         super.onResume();
-        // the "easygram / Telegram" title switch may have been changed in settings
-        if (logoDrawable != null && logoIsEasygram != OtherSettingsActivity.isEasygramTitleEnabled() && getContext() != null) {
-            setDialogsLogoTitle(getContext());
-        }
         if (dialogStoriesCell != null) {
             dialogStoriesCell.onResume();
         }
@@ -14169,21 +14165,15 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     private int lastLogoDrawableColor;
-    private boolean logoIsEasygram;
 
-    /** Main chat list title: the "easygram" wordmark (default) or the original Telegram logo, see settings. */
+    /** Main chat list title: permanent "easygram" wordmark. */
     private void setDialogsLogoTitle(Context context) {
-        logoIsEasygram = OtherSettingsActivity.isEasygramTitleEnabled();
-        if (logoIsEasygram) {
-            logoDrawable = new EasygramLogoDrawable(context.getResources().getDrawable(R.drawable.telegram_logo_2).getIntrinsicHeight());
-        } else {
-            logoDrawable = context.getResources().getDrawable(R.drawable.telegram_logo_2).mutate();
-        }
+        logoDrawable = new EasygramLogoDrawable(context.getResources().getDrawable(R.drawable.telegram_logo_2).getIntrinsicHeight());
         logoDrawable.setBounds(0, dp(2), logoDrawable.getIntrinsicWidth(), dp(2) + logoDrawable.getIntrinsicHeight());
         // a new drawable (also when the view is recreated after a theme switch made elsewhere): remember its tint, the
         // theme hook only recolors when the color differs from the last one applied
         logoDrawable.setColorFilter(lastLogoDrawableColor = getThemedColor(Theme.key_telegram_color_dialogsLogo), PorterDuff.Mode.MULTIPLY);
-        SpannableStringBuilder ssb = new SpannableStringBuilder(logoIsEasygram ? "easygram" : "Telegram");
+        SpannableStringBuilder ssb = new SpannableStringBuilder("easygram");
         ssb.setSpan(new ImageSpan(logoDrawable), 0, ssb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         actionBar.setTitle(ssb, statusDrawable);
     }

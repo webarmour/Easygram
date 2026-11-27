@@ -573,17 +573,7 @@ public class UserConfig extends BaseController {
     }
 
     public boolean isPremium() {
-        if (ApplicationLoader.applicationContext != null) {
-            SharedPreferences mainConfig = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Context.MODE_PRIVATE);
-            if (mainConfig.getBoolean("easygram_premium_access", false)) {
-                return true;
-            }
-        }
-        TLRPC.User user = currentUser;
-        if (user == null) {
-            return false;
-        }
-        return user.premium;
+        return currentUser != null;
     }
 
     public Long getEmojiStatus() {

@@ -118,7 +118,6 @@ import org.telegram.ui.Components.LinkSpanDrawable;
 import org.telegram.ui.Components.Paint.PersistColorPalette;
 import org.telegram.ui.Components.Premium.boosts.UserSelectorBottomSheet;
 import org.telegram.ui.Components.ProfileGooeyView;
-import org.telegram.ui.Components.QRCodeBottomSheet;
 import org.telegram.ui.Components.RadialProgressView;
 import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.ScaleStateListAnimator;
@@ -818,9 +817,10 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         items.add(SettingCell.Factory.of(8, IconBackgroundColors.CYAN.top, IconBackgroundColors.CYAN.bottom, R.drawable.settings_devices, getString(R.string.SettingsDevices), getString(R.string.SettingsDevicesInfo)));
         items.add(SettingCell.Factory.of(9, IconBackgroundColors.ORANGE_DEEP.top, IconBackgroundColors.ORANGE_DEEP.bottom, R.drawable.settings_power, getString(R.string.SettingsPowerSaving), getString(R.string.SettingsPowerSavingInfo)));
         items.add(SettingCell.Factory.of(10, IconBackgroundColors.PURPLE.top, IconBackgroundColors.PURPLE.bottom, R.drawable.settings_language, getString(R.string.SettingsLanguage), LocaleController.getCurrentLanguageName()));
-        if (!org.telegram.messenger.EasygramBuild.isPlayStore()) // Play build: updates only through Google Play
-        items.add(SettingCell.Factory.of(101, IconBackgroundColors.BLUE.top, IconBackgroundColors.BLUE.bottom, R.drawable.settings_features, getString(R.string.EasygramCheckUpdates), getString(R.string.EasygramCheckUpdatesInfo)));
-        items.add(SettingCell.Factory.of(102, 0xFFF06292, 0xFFD81B60, R.drawable.settings_support_heart, getString(R.string.EasygramSupportAuthor), getString(R.string.EasygramSupportAuthorInfo)));
+        if (!org.telegram.messenger.EasygramBuild.isPlayStore()) { // Play build: updates only through Google Play; no external donation links
+            items.add(SettingCell.Factory.of(101, IconBackgroundColors.BLUE.top, IconBackgroundColors.BLUE.bottom, R.drawable.settings_features, getString(R.string.EasygramCheckUpdates), getString(R.string.EasygramCheckUpdatesInfo)));
+            items.add(SettingCell.Factory.of(102, 0xFFF06292, 0xFFD81B60, R.drawable.settings_support_heart, getString(R.string.EasygramSupportAuthor), getString(R.string.EasygramSupportAuthorInfo)));
+        }
 
         items.add(UItem.asShadow(null));
         if (!walletAbove && getMessagesController().config.walletAvailable.get()) {
@@ -855,6 +855,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
         items.add(UItem.asHeader(getString(R.string.SettingsHelp)));
         items.add(SettingCell.Factory.of(17, IconBackgroundColors.ORANGE.top, IconBackgroundColors.ORANGE.bottom, R.drawable.settings_ask, getString(R.string.AskAQuestion)));
+        items.add(SettingCell.Factory.of(19, IconBackgroundColors.GREEN.top, IconBackgroundColors.GREEN.bottom, R.drawable.settings_policy, getString(R.string.PrivacyPolicy)));
 
         if (SharedSettings.experimentalSettingsAllowed.get()) {
             items.add(UItem.asShadow(null));
@@ -977,7 +978,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 presentSettingFragment(new OtherSettingsActivity());
                 break;
             case 101:
-                org.telegram.ui.Components.EasygramUpdater.check(getParentActivity(), true);
+                ApplicationLoader.checkEasygramUpdate(getParentActivity(), true);
                 break;
             case 103:
                 presentSettingFragment(new M3ExpressiveSettingsActivity());
@@ -985,24 +986,9 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             case 104:
                 presentSettingFragment(new EasygramLocalAiActivity());
                 break;
-            case 102: {
-                if (getParentActivity() == null) {
-                    break;
-                }
-                final String donateUrl = "https://boosty.to/webarmour/donate";
-                QRCodeBottomSheet sheet = new QRCodeBottomSheet(
-                        getParentActivity(),
-                        getString(R.string.EasygramSupportAuthor),
-                        donateUrl,
-                        getString(R.string.EasygramSupportAuthorDescription) + "\n\n" + donateUrl,
-                        true,
-                        resourceProvider
-                );
-                sheet.setPrimaryAction(getString(R.string.EasygramSupportOnBoosty),
-                        v -> Browser.openUrlInSystemBrowser(getParentActivity(), donateUrl));
-                showDialog(sheet);
+            case 102:
+                ApplicationLoader.openEasygramSupport(this, resourceProvider);
                 break;
-            }
             case 15:
                 presentSettingFragment(new PremiumPreviewFragment(PremiumPreviewFragment.FEATURES_BUSINESS, "settings"));
                 break;

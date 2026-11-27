@@ -59,12 +59,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Easygram settings for optional app integrations, stories, ads, navigation, and photo viewer menu. */
+/** Easygram settings for optional app integrations, stories, navigation, and photo viewer menu. */
 public class OtherSettingsActivity extends BaseFragment {
     public static final String DEFAULT_GALLERY_PACKAGE = "easygram_default_gallery_package";
     public static final String EMBEDDED_PHOTO_PICKER = "__embedded_photo_picker__";
 
-    public static final String KEY_PREMIUM_ACCESS = "easygram_premium_access";
     public static final String KEY_MATERIAL_EXPRESSIVE = "easygram_material3_expressive";
 
     private static volatile Boolean materialExpressiveCached;
@@ -124,17 +123,6 @@ public class OtherSettingsActivity extends BaseFragment {
         hideKeyboardOnScrollCached = enabled;
         ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE)
                 .edit().putBoolean(KEY_HIDE_KEYBOARD_ON_SCROLL, enabled).apply();
-    }
-
-    public static final String KEY_EASYGRAM_TITLE = "easygram_title_in_chats";
-
-    /** Chat list title: "easygram" (default) or the original "Telegram" logo. */
-    public static boolean isEasygramTitleEnabled() {
-        if (org.telegram.messenger.EasygramBuild.isPlayStore()) {
-            return true; // Play build: never the Telegram logo (the switch is hidden there)
-        }
-        return ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE)
-                .getBoolean(KEY_EASYGRAM_TITLE, true);
     }
 
     public static final String KEY_M3E_VOICE = "easygram_m3e_voice";
@@ -282,8 +270,6 @@ public class OtherSettingsActivity extends BaseFragment {
 
     private int secretMediaRow;
     private int headerRow;
-    private int premiumAccessRow;
-    private int premiumAccessInfoRow;
     private int galleryRow;
     private int galleryInfoRow;
     private int sendMediaHdRow;
@@ -294,12 +280,6 @@ public class OtherSettingsActivity extends BaseFragment {
     private int hideKeyboardOnScrollInfoRow;
     private int disableStoriesRow;
     private int storiesInfoRow;
-    private int disableAdsRow;
-    private int adsInfoRow;
-    private int showStarMessagesRow;
-    private int starMessagesInfoRow;
-    private int easygramTitleRow;
-    private int easygramTitleInfoRow;
     private int navHeaderRow;
     private int navLabelsRow;
     private int navStartRow;
@@ -479,8 +459,6 @@ public class OtherSettingsActivity extends BaseFragment {
     private void updateRows() {
         rowCount = 0;
         headerRow = rowCount++;
-        premiumAccessRow = rowCount++;
-        premiumAccessInfoRow = rowCount++;
         galleryRow = rowCount++;
         galleryInfoRow = rowCount++;
         sendMediaHdRow = rowCount++;
@@ -491,17 +469,6 @@ public class OtherSettingsActivity extends BaseFragment {
         hideKeyboardOnScrollInfoRow = rowCount++;
         disableStoriesRow = rowCount++;
         storiesInfoRow = rowCount++;
-        disableAdsRow = rowCount++;
-        adsInfoRow = rowCount++;
-        showStarMessagesRow = rowCount++;
-        starMessagesInfoRow = rowCount++;
-        if (org.telegram.messenger.EasygramBuild.isPlayStore()) {
-            easygramTitleRow = -1;
-            easygramTitleInfoRow = -1;
-        } else {
-            easygramTitleRow = rowCount++;
-            easygramTitleInfoRow = rowCount++;
-        }
         secretMediaRow = SECRET_MEDIA_ACTIONS_ENABLED ? rowCount++ : -1;
         navHeaderRow = rowCount++;
         navLabelsRow = rowCount++;
@@ -551,29 +518,7 @@ public class OtherSettingsActivity extends BaseFragment {
         itemTouchHelper.attachToRecyclerView(listView);
 
         listView.setOnItemClickListener((view, position) -> {
-            if (position == premiumAccessRow) {
-                boolean current = preferences().getBoolean(KEY_PREMIUM_ACCESS, false);
-                boolean next = !current;
-                preferences().edit().putBoolean(KEY_PREMIUM_ACCESS, next).apply();
-                if (view instanceof TextCheckCell) {
-                    ((TextCheckCell) view).setChecked(next);
-                }
-                for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
-                    if (UserConfig.getInstance(a).isClientActivated()) {
-                        boolean isPrem = UserConfig.getInstance(a).isPremium();
-                        org.telegram.messenger.MessagesController.getInstance(a).updatePremium(isPrem);
-                        org.telegram.messenger.MediaDataController.getInstance(a).loadPremiumPromo(false);
-                        org.telegram.messenger.MediaDataController.getInstance(a).loadReactions(false, null);
-                        org.telegram.messenger.MessagesController.getInstance(a).getStoriesController().invalidateStoryLimit();
-                        NotificationCenter.getInstance(a).postNotificationName(NotificationCenter.currentUserPremiumStatusChanged);
-                        NotificationCenter.getInstance(a).postNotificationName(NotificationCenter.updateInterfaces, org.telegram.messenger.MessagesController.UPDATE_MASK_ALL);
-                        NotificationCenter.getInstance(a).postNotificationName(NotificationCenter.storiesUpdated);
-                        NotificationCenter.getInstance(a).postNotificationName(NotificationCenter.storiesEnabledUpdate);
-                        NotificationCenter.getInstance(a).postNotificationName(NotificationCenter.mainTabsLayoutChanged);
-                    }
-                }
-                NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.premiumStatusChangedGlobal);
-            } else if (position == galleryRow) {
+            if (position == galleryRow) {
                 showGalleryChooser(view);
             } else if (position == secretMediaRow && SECRET_MEDIA_ACTIONS_ENABLED) {
                 boolean next = !isSecretMediaActionsEnabled();
@@ -613,30 +558,6 @@ public class OtherSettingsActivity extends BaseFragment {
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.storiesUpdated);
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.storiesEnabledUpdate);
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.mainTabsLayoutChanged);
-            } else if (position == disableAdsRow) {
-                boolean current = preferences().getBoolean("easygram_disable_ads", false);
-                boolean next = !current;
-                preferences().edit().putBoolean("easygram_disable_ads", next).apply();
-                if (view instanceof TextCheckCell) {
-                    ((TextCheckCell) view).setChecked(next);
-                }
-                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.updateInterfaces, org.telegram.messenger.MessagesController.UPDATE_MASK_ALL);
-                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.storiesUpdated);
-                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.mainTabsLayoutChanged);
-            } else if (position == showStarMessagesRow) {
-                boolean showStars = preferences().getBoolean("easygram_show_star_messages", true);
-                boolean next = !showStars;
-                preferences().edit().putBoolean("easygram_show_star_messages", next).apply();
-                if (view instanceof TextCheckCell) {
-                    ((TextCheckCell) view).setChecked(next);
-                }
-                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.updateInterfaces, org.telegram.messenger.MessagesController.UPDATE_MASK_ALL);
-            } else if (position == easygramTitleRow) {
-                boolean next = !isEasygramTitleEnabled();
-                preferences().edit().putBoolean(KEY_EASYGRAM_TITLE, next).apply();
-                if (view instanceof TextCheckCell) {
-                    ((TextCheckCell) view).setChecked(next);
-                }
             } else if (position == navLabelsRow) {
                 boolean next = !preferences().getBoolean(KEY_HIDE_NAV_LABELS, false);
                 preferences().edit().putBoolean(KEY_HIDE_NAV_LABELS, next).apply();
@@ -831,8 +752,8 @@ public class OtherSettingsActivity extends BaseFragment {
             if (position == headerRow || position == navHeaderRow || position == photoMenuHeaderRow) return 0;
             if (position == galleryRow) return 1;
             if (position == secretMediaRow) return 6;
-            if (position == premiumAccessInfoRow || position == galleryInfoRow || position == sendMediaHdInfoRow || position == galleryCameraInfoRow || position == hideKeyboardOnScrollInfoRow || position == storiesInfoRow || position == adsInfoRow || position == starMessagesInfoRow || position == easygramTitleInfoRow || position == navInfoRow || position == photoMenuInfoRow) return 2;
-            if (position == premiumAccessRow || position == sendMediaHdRow || position == galleryCameraRow || position == hideKeyboardOnScrollRow || position == disableStoriesRow || position == disableAdsRow || position == showStarMessagesRow || position == easygramTitleRow || position == navLabelsRow) return 3;
+            if (position == galleryInfoRow || position == sendMediaHdInfoRow || position == galleryCameraInfoRow || position == hideKeyboardOnScrollInfoRow || position == storiesInfoRow || position == navInfoRow || position == photoMenuInfoRow) return 2;
+            if (position == sendMediaHdRow || position == galleryCameraRow || position == hideKeyboardOnScrollRow || position == disableStoriesRow || position == navLabelsRow) return 3;
             if (position >= navStartRow && position < navEndRow) return 4;
             if (position >= photoMenuStartRow && position < photoMenuEndRow) return 5;
             return 0;
@@ -892,9 +813,7 @@ public class OtherSettingsActivity extends BaseFragment {
                     break;
                 case 2:
                     TextInfoPrivacyCell infoCell = (TextInfoPrivacyCell) holder.itemView;
-                    if (position == premiumAccessInfoRow) {
-                        infoCell.setText(AndroidUtilities.replaceTags(LocaleController.getString(R.string.EasygramPremiumAccessInfo)));
-                    } else if (position == galleryInfoRow) {
+                    if (position == galleryInfoRow) {
                         infoCell.setText(LocaleController.getString(R.string.EasygramDefaultGalleryInfo));
                     } else if (position == sendMediaHdInfoRow) {
                         infoCell.setText(LocaleController.getString(R.string.EasygramSendMediaHdInfo));
@@ -904,12 +823,6 @@ public class OtherSettingsActivity extends BaseFragment {
                         infoCell.setText(LocaleController.getString(R.string.EasygramHideKeyboardOnScrollInfo));
                     } else if (position == storiesInfoRow) {
                         infoCell.setText(LocaleController.getString(R.string.EasygramDisableStoriesInfo));
-                    } else if (position == adsInfoRow) {
-                        infoCell.setText(LocaleController.getString(R.string.EasygramDisableAdsInfo));
-                    } else if (position == starMessagesInfoRow) {
-                        infoCell.setText(LocaleController.getString(R.string.EasygramShowStarMessagesInfo));
-                    } else if (position == easygramTitleInfoRow) {
-                        infoCell.setText(LocaleController.getString(R.string.EasygramTitleInChatsInfo));
                     } else if (position == navInfoRow) {
                         infoCell.setText(LocaleController.getString(R.string.EasygramNavigationBarInfo));
                     } else if (position == photoMenuInfoRow) {
@@ -925,14 +838,7 @@ public class OtherSettingsActivity extends BaseFragment {
                     break;
                 case 3:
                     TextCheckCell checkCell = (TextCheckCell) holder.itemView;
-                    if (position == premiumAccessRow) {
-                        boolean premiumAccess = preferences().getBoolean(KEY_PREMIUM_ACCESS, false);
-                        checkCell.setTextAndCheck(
-                                LocaleController.getString(R.string.EasygramPremiumAccess),
-                                premiumAccess,
-                                true
-                        );
-                    } else if (position == sendMediaHdRow) {
+                    if (position == sendMediaHdRow) {
                         boolean sendMediaHd = preferences().getBoolean("easygram_send_media_hd", SharedConfig.photoHighQualityDefault);
                         checkCell.setTextAndCheck(
                                 LocaleController.getString(R.string.EasygramSendMediaHd),
@@ -956,26 +862,6 @@ public class OtherSettingsActivity extends BaseFragment {
                         checkCell.setTextAndCheck(
                                 LocaleController.getString(R.string.EasygramDisableStories),
                                 disabledStories,
-                                true
-                        );
-                    } else if (position == disableAdsRow) {
-                        boolean disabledAds = preferences().getBoolean("easygram_disable_ads", false);
-                        checkCell.setTextAndCheck(
-                                LocaleController.getString(R.string.EasygramDisableAds),
-                                disabledAds,
-                                true
-                        );
-                    } else if (position == showStarMessagesRow) {
-                        boolean showStarMessages = preferences().getBoolean("easygram_show_star_messages", true);
-                        checkCell.setTextAndCheck(
-                                LocaleController.getString(R.string.EasygramShowStarMessages),
-                                showStarMessages,
-                                false
-                        );
-                    } else if (position == easygramTitleRow) {
-                        checkCell.setTextAndCheck(
-                                LocaleController.getString(R.string.EasygramTitleInChats),
-                                isEasygramTitleEnabled(),
                                 false
                         );
                     } else if (position == navLabelsRow) {

@@ -7284,7 +7284,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         }
         checkAppUpdate(false, null);
         // EASYGRAM_UPDATER_START: native UI comes from MainTabsActivity.
-        org.telegram.ui.Components.EasygramUpdater.check(this, false);
+        ApplicationLoader.checkEasygramUpdate(this, false);
         // EASYGRAM_UPDATER_END
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {

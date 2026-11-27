@@ -1258,18 +1258,18 @@
     <string name="PermissionDrawAboveOtherAppsTitle">Modo imagen en imagen</string>
     <string name="PermissionDrawAboveOtherAppsGroupCallTitle">Superposición del videochat</string>
     <!--Intro view-->
-    <string name="Page1Title">Telegram</string>
+    <string name="Page1Title">easygram</string>
     <string name="Page2Title">Rápido</string>
     <string name="Page3Title">Gratuito</string>
     <string name="Page4Title">Seguro</string>
     <string name="Page5Title">Poderoso</string>
     <string name="Page6Title">Basado en la nube</string>
     <string name="Page1Message">La app de mensajería **más rápida**\ndel mundo. Es **gratis** y **segura**.</string>
-    <string name="Page2Message">**Telegram** entrega mensajes más\nrápido que cualquier otra aplicación.</string>
-    <string name="Page3Message">**Telegram** da almacenamiento gratuito e\nilimitado en la nube para chats y multimedia.</string>
-    <string name="Page4Message">**Telegram** mantiene tus mensajes\na salvo del ataque de hackers.</string>
-    <string name="Page5Message">**Telegram** no tiene límite de espacio\npara tus archivos multimedia y chats.</string>
-    <string name="Page6Message">**Telegram** te permite acceder a tus\nmensajes desde múltiples dispositivos.</string>
+    <string name="Page2Message">**easygram** entrega mensajes más\nrápido que cualquier otra aplicación.</string>
+    <string name="Page3Message">**easygram** da almacenamiento gratuito e\nilimitado en la nube para chats y multimedia.</string>
+    <string name="Page4Message">**easygram** mantiene tus mensajes\na salvo del ataque de hackers.</string>
+    <string name="Page5Message">**easygram** no tiene límite de espacio\npara tus archivos multimedia y chats.</string>
+    <string name="Page6Message">**easygram** te permite acceder a tus\nmensajes desde múltiples dispositivos.</string>
     <string name="StartMessaging">Empezar a chatear</string>
     <!--contacts shortcuts-->
     <string name="ContactShortcutMessage">Mensaje al %1$s</string>

@@ -1,4 +1,5 @@
 apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
 apply plugin: 'org.telegram.build-app-plugin'
 
 repositories {
@@ -53,6 +54,10 @@ android {
         targetCompatibility JavaVersion.VERSION_1_8
 
         coreLibraryDesugaringEnabled true
+    }
+
+    kotlinOptions {
+        jvmTarget = "1.8"
     }
 
     androidResources {
@@ -115,7 +120,7 @@ android {
             shrinkResources true
             multiDexEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), '../TMessagesProj/proguard-rules.pro'
-            ndk.debugSymbolLevel = 'FULL'
+            ndk.debugSymbolLevel = 'SYMBOL_TABLE'
         }
     }
 
@@ -124,7 +129,7 @@ android {
     }
 
     sourceSets.standalone {
-        manifest.srcFile '../TMessagesProj/config/release/AndroidManifest.xml'
+        manifest.srcFile '../TMessagesProj/config/release/AndroidManifest_standalone.xml'
     }
 
     sourceSets.release {
@@ -143,15 +148,6 @@ android {
         }
         afat {
             // ABIs: see easygram_abis.gradle (flavor filters would be merged with the build type ones)
-            sourceSets.debug {
-                manifest.srcFile '../TMessagesProj/config/debug/AndroidManifest_SDK23.xml'
-            }
-            sourceSets.release {
-                manifest.srcFile '../TMessagesProj/config/release/AndroidManifest_SDK23.xml'
-            }
-            sourceSets.standalone {
-                manifest.srcFile '../TMessagesProj/config/release/AndroidManifest_standalone.xml'
-            }
             ext {
                 abiVersionCode = 9
             }
@@ -161,11 +157,11 @@ android {
 
     // Variant manifests take precedence over the shared build-type manifests.
     sourceSets {
+        afat.manifest.srcFile 'config/afat/AndroidManifest.xml'
         afatDebug.manifest.srcFile 'config/analytics/AndroidManifest.xml'
         afatRelease.manifest.srcFile 'config/analytics/AndroidManifest.xml'
-        bundleAfatRelease.manifest.srcFile 'config/analytics/AndroidManifest.xml'
-        // App Bundle = Google Play build: removes the APK-install permission used by the GitHub updater
-        bundleAfat.manifest.srcFile 'config/play/AndroidManifest.xml'
+        // App Bundle = Google Play build (highest merge priority over build-type and library manifests).
+        bundleAfatRelease.manifest.srcFile 'config/play/AndroidManifest.xml'
     }
 
     defaultConfig.versionCode = Integer.parseInt(APP_VERSION_CODE)
