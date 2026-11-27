@@ -17,14 +17,18 @@ public class CropTransform {
     private float cropPy;
     private float cropAreaX;
     private float cropAreaY;
-    private float cropScale;
+    private float cropScale = 1.0f;
     private float cropRotation;
     private boolean isMirrored;
     private int cropOrientation;
-    private float cropPw;
-    private float cropPh;
-    private float trueCropScale;
-    private float minScale;
+    private float cropPw = 1.0f;
+    private float cropPh = 1.0f;
+    private float trueCropScale = 1.0f;
+    private float minScale = 1.0f;
+
+    public void reset() {
+        setViewTransform(false, 0.0f, 0.0f, 0.0f, 0, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, false);
+    }
 
     public void setViewTransform(boolean set) {
         hasTransform = set;
@@ -32,10 +36,10 @@ public class CropTransform {
 
     public void setViewTransform(boolean set, float px, float py, float rotate, int orientation, float scale, float cs, float ms, float pw, float ph, float cx, float cy, boolean mirrored) {
         hasTransform = set;
-        cropPx = px;
-        cropPy = py;
-        cropScale = scale;
-        cropRotation = rotate;
+        cropPx = Float.isFinite(px) ? px : 0.0f;
+        cropPy = Float.isFinite(py) ? py : 0.0f;
+        cropScale = Float.isFinite(scale) && scale > 0.0f ? scale : 1.0f;
+        cropRotation = Float.isFinite(rotate) ? rotate : 0.0f;
         cropOrientation = orientation;
         while (cropOrientation < 0) {
             cropOrientation += 360;
@@ -43,12 +47,12 @@ public class CropTransform {
         while (cropOrientation >= 360) {
             cropOrientation -= 360;
         }
-        cropPw = pw;
-        cropPh = ph;
-        cropAreaX = cx;
-        cropAreaY = cy;
-        trueCropScale = cs;
-        minScale = ms;
+        cropPw = Float.isFinite(pw) && pw > 0.0f ? Math.min(1.0f, pw) : 1.0f;
+        cropPh = Float.isFinite(ph) && ph > 0.0f ? Math.min(1.0f, ph) : 1.0f;
+        cropAreaX = Float.isFinite(cx) ? cx : 0.0f;
+        cropAreaY = Float.isFinite(cy) ? cy : 0.0f;
+        trueCropScale = Float.isFinite(cs) && cs > 0.0f ? cs : 1.0f;
+        minScale = Float.isFinite(ms) && ms > 0.0f ? ms : 1.0f;
         isMirrored = mirrored;
     }
 

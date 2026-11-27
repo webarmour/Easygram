@@ -100,6 +100,17 @@ public class CropGestureDetector {
         return mIsDragging;
     }
 
+    public void reset() {
+        if (mVelocityTracker != null) {
+            mVelocityTracker.recycle();
+            mVelocityTracker = null;
+        }
+        mActivePointerId = INVALID_POINTER_ID;
+        mActivePointerIndex = 0;
+        mIsDragging = false;
+        started = false;
+    }
+
 
     public boolean onTouchEvent(MotionEvent ev) {
         mDetector.onTouchEvent(ev);

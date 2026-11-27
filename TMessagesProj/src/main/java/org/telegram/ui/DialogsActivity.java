@@ -296,8 +296,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     public static final int MAIN_TABS_HEIGHT_WITH_MARGINS = MAIN_TABS_HEIGHT + MAIN_TABS_MARGIN + MAIN_TABS_BOTTOM_MARGIN;
 
     public static int getMainTabsHeight() {
-        return MessagesController.getGlobalMainSettings().getBoolean(OtherSettingsActivity.KEY_HIDE_NAV_LABELS, false)
-                ? 48 : MAIN_TABS_HEIGHT;
+        return OtherSettingsActivity.isHideNavLabelsEnabled() ? 48 : MAIN_TABS_HEIGHT;
     }
 
     public static int getMainTabsHeightWithMargins() {

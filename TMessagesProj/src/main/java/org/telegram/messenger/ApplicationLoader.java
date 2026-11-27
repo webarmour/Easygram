@@ -193,6 +193,7 @@ public class ApplicationLoader extends Application {
             return;
         }
         applicationInited = true;
+        org.telegram.ui.OtherSettingsActivity.initDefaultsIfNeeded();
         NativeLoader.initNativeLibs(ApplicationLoader.applicationContext);
 
         try {

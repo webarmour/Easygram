@@ -7829,7 +7829,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         editorDoneLayout.setVisibility(View.GONE);
         containerView.addView(editorDoneLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 48, Gravity.LEFT | Gravity.BOTTOM));
         editorDoneLayout.cancelButton.setOnClickListener(view -> {
-            if (imageMoveAnimation != null) {
+            if (changeModeAnimation != null || imageMoveAnimation != null) {
                 return;
             }
             Runnable onEnd = () -> {
@@ -7861,6 +7861,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             }
         });
         editorDoneLayout.doneButton.setOnClickListener(view -> {
+            if (changeModeAnimation != null || imageMoveAnimation != null) {
+                return;
+            }
             if (currentEditMode == EDIT_MODE_CROP && !photoCropView.isReady()) {
                 return;
             }
@@ -7881,6 +7884,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         resetButton.setTypeface(AndroidUtilities.bold());
         editorDoneLayout.addView(resetButton, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT, Gravity.TOP | Gravity.CENTER));
         resetButton.setOnClickListener(v -> {
+            if (changeModeAnimation != null || imageMoveAnimation != null) {
+                return;
+            }
             float backRotate = -photoCropView.cropView.getStateOrientation();
             if (Math.abs(backRotate) > 180) {
                 backRotate = backRotate < 0 ? 360 + backRotate : -(360 - backRotate);
@@ -9436,22 +9442,24 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         if (sendPhotoType == SELECT_TYPE_AVATAR) {
             scale = animateToScale = 1f;
         } else if (centerImage != null) {
-            int bitmapWidth = centerImage.getBitmapWidth(), bitmapHeight = centerImage.getBitmapHeight();
+            int bitmapWidth = Math.max(1, centerImage.getBitmapWidth()), bitmapHeight = Math.max(1, centerImage.getBitmapHeight());
             if (Math.abs((int) photoCropView.cropView.getStateOrientation() / 90 % 2) == 1) {
                 int temp = bitmapWidth;
                 bitmapWidth = bitmapHeight;
                 bitmapHeight = temp;
             }
             if (editState.cropState != null) {
-                bitmapWidth *= editState.cropState.cropPw;
-                bitmapHeight *= editState.cropState.cropPh;
+                float pw = Float.isFinite(editState.cropState.cropPw) && editState.cropState.cropPw > 0 ? editState.cropState.cropPw : 1.0f;
+                float ph = Float.isFinite(editState.cropState.cropPh) && editState.cropState.cropPh > 0 ? editState.cropState.cropPh : 1.0f;
+                bitmapWidth = Math.max(1, (int) (bitmapWidth * pw));
+                bitmapHeight = Math.max(1, (int) (bitmapHeight * ph));
             }
             float oldScale = Math.min(getContainerViewWidth(EDIT_MODE_CROP) / (float) bitmapWidth, getContainerViewHeight(EDIT_MODE_CROP) / (float) bitmapHeight);
             float newScale = oldScale;
             if (Math.abs(diff / 90 % 2) == 1) {
                 newScale = Math.min(getContainerViewWidth(EDIT_MODE_CROP) / (float) bitmapHeight, getContainerViewHeight(EDIT_MODE_CROP) / (float) bitmapWidth);
             }
-            animateToScale = newScale / oldScale;
+            animateToScale = oldScale > 0 && Float.isFinite(newScale / oldScale) ? newScale / oldScale : 1.0f;
         }
         if (sendPhotoType == SELECT_TYPE_STICKER) {
             scale *= scale1(false);
@@ -9470,8 +9478,18 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         imageMoveAnimation.setDuration(250);
         imageMoveAnimation.setInterpolator(CubicBezierInterpolator.DEFAULT);
         imageMoveAnimation.addListener(new AnimatorListenerAdapter() {
+            private boolean cancelled;
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+                cancelled = true;
+            }
+
             @Override
             public void onAnimationEnd(Animator animation) {
+                if (cancelled) {
+                    return;
+                }
                 imageMoveAnimation = null;
                 rotate = animateToRotate = 0;
                 mirror = animateToMirror = 0;
@@ -11923,11 +11941,24 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             }
         }
         if (currentEditMode == EDIT_MODE_CROP) {
-            float scaleX = photoCropView.getRectSizeX() / (float) getContainerViewWidth();
-            float scaleY = photoCropView.getRectSizeY() / (float) getContainerViewHeight();
-            scale = Math.max(scaleX, scaleY);
-            translationX = photoCropView.getRectX() + photoCropView.getRectSizeX() / 2 - getContainerViewWidth() / 2;
-            translationY = photoCropView.getRectY() + photoCropView.getRectSizeY() / 2 - getContainerViewHeight() / 2;
+            int cw = getContainerViewWidth();
+            int ch = getContainerViewHeight();
+            float rw = photoCropView.getRectSizeX();
+            float rh = photoCropView.getRectSizeY();
+            if (cw > 0 && ch > 0 && rw > 0 && rh > 0 && Float.isFinite(rw) && Float.isFinite(rh)) {
+                float scaleX = rw / (float) cw;
+                float scaleY = rh / (float) ch;
+                float nextScale = Math.max(scaleX, scaleY);
+                float nextTx = photoCropView.getRectX() + rw / 2f - cw / 2f;
+                float nextTy = photoCropView.getRectY() + rh / 2f - ch / 2f;
+                scale = Float.isFinite(nextScale) && nextScale > 0 ? nextScale : 1.0f;
+                translationX = Float.isFinite(nextTx) ? nextTx : 0.0f;
+                translationY = Float.isFinite(nextTy) ? nextTy : 0.0f;
+            } else {
+                scale = 1.0f;
+                translationX = 0.0f;
+                translationY = 0.0f;
+            }
             zoomAnimation = true;
             applying = true;
 
@@ -12138,7 +12169,8 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
 
     public void switchToEditMode(final int mode) {
         // A gallery thumbnail is only a transition placeholder, not an editing source.
-        if (currentEditMode == mode || mode != EDIT_MODE_NONE && !isCurrentVideo && currentEditMode == EDIT_MODE_NONE
+        if (currentEditMode == mode || mode != EDIT_MODE_NONE && animationInProgress != 0
+                || mode != EDIT_MODE_NONE && !isCurrentVideo && currentEditMode == EDIT_MODE_NONE
                 && (!centerImage.hasImageLoaded() || centerImage.getBitmap() == null || centerImage.getBitmap().isRecycled())
                 || changeModeAnimation != null || imageMoveAnimation != null || isCaptionOpen()) {
             return;
@@ -12233,13 +12265,17 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                             bitmapWidth = bitmapHeight;
                             bitmapHeight = temp;
                         }
-                        bitmapWidth *= editState.cropState.cropPw;
-                        bitmapHeight *= editState.cropState.cropPh;
+                        float pw = Float.isFinite(editState.cropState.cropPw) && editState.cropState.cropPw > 0 ? editState.cropState.cropPw : 1.0f;
+                        float ph = Float.isFinite(editState.cropState.cropPh) && editState.cropState.cropPh > 0 ? editState.cropState.cropPh : 1.0f;
+                        bitmapWidth = Math.max(1, (int) (bitmapWidth * pw));
+                        bitmapHeight = Math.max(1, (int) (bitmapHeight * ph));
                     } else if (sendPhotoType == SELECT_TYPE_AVATAR && (cropTransform.getOrientation() == 90 || cropTransform.getOrientation() == 270)) {
                         int temp = bitmapWidth;
                         bitmapWidth = bitmapHeight;
                         bitmapHeight = temp;
                     }
+                    bitmapWidth = Math.max(1, bitmapWidth);
+                    bitmapHeight = Math.max(1, bitmapHeight);
                     oldScale = Math.min(getContainerViewWidth() / (float) bitmapWidth, getContainerViewHeight() / (float) bitmapHeight);
                     if (sendPhotoType == SELECT_TYPE_AVATAR) {
                         newScale = getCropFillScale(cropTransform.getOrientation() == 90 || cropTransform.getOrientation() == 270);
@@ -12268,11 +12304,11 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     if (isStatusBarVisible()) {
                         animateToY -= AndroidUtilities.statusBarHeight / 2;
                     }
-                    animateToScale = newScale / oldScale * savedScale;
+                    animateToScale = oldScale > 0 && Float.isFinite(newScale / oldScale) ? newScale / oldScale * savedScale : savedScale;
                     animateToRotate = savedRotation;
                     animateToMirror = mirror;
                 } else {
-                    animateToScale = newScale / oldScale * scale1();
+                    animateToScale = oldScale > 0 && Float.isFinite(newScale / oldScale) ? newScale / oldScale * scale1() : scale1();
                     animateToX = 0;
                     translationX = getLeftInset() / 2 - getRightInset() / 2;
                     if (sendPhotoType == SELECT_TYPE_AVATAR) {
@@ -12353,9 +12389,18 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             imageMoveAnimation.playTogether(animators);
             imageMoveAnimation.setDuration(200);
             imageMoveAnimation.addListener(new AnimatorListenerAdapter() {
+                private boolean cancelled;
+
+                @Override
+                public void onAnimationCancel(Animator animation) {
+                    cancelled = true;
+                }
 
                 @Override
                 public void onAnimationEnd(Animator animation) {
+                    if (cancelled) {
+                        return;
+                    }
                     if (currentEditMode == EDIT_MODE_CROP) {
                         photoCropView.onDisappear();
                         photoCropView.onHide();
@@ -12561,9 +12606,19 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             changeModeAnimation.playTogether(arrayList);
             changeModeAnimation.setDuration(200);
             changeModeAnimation.addListener(new AnimatorListenerAdapter() {
+                private boolean cancelled;
+
+                @Override
+                public void onAnimationCancel(Animator animation) {
+                    cancelled = true;
+                }
+
                 @Override
                 public void onAnimationEnd(Animator animation) {
                     changeModeAnimation = null;
+                    if (cancelled || !isVisible) {
+                        return;
+                    }
                     pickerView.setVisibility(View.GONE);
                     pickerViewSendButton.setVisibility(View.GONE);
                     doneButtonFullWidth.setVisibility(View.GONE);
@@ -12593,19 +12648,21 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     }
 
                     final Bitmap bitmap = centerImage.getBitmap();
-                    if (bitmap != null || isCurrentVideo) {
+                    if ((bitmap != null && !bitmap.isRecycled()) || isCurrentVideo) {
                         photoCropView.setBitmap(bitmap, centerImage.getOrientation(), sendPhotoType != SELECT_TYPE_AVATAR, false, paintingOverlay, cropTransform, isCurrentVideo ? (VideoEditTextureView) videoTextureView : null, editState.cropState);
                         photoCropView.onDisappear();
-                        int bitmapWidth = centerImage.getBitmapWidth();
-                        int bitmapHeight = centerImage.getBitmapHeight();
+                        int bitmapWidth = Math.max(1, centerImage.getBitmapWidth());
+                        int bitmapHeight = Math.max(1, centerImage.getBitmapHeight());
                         if (editState.cropState != null) {
                             if (editState.cropState.transformRotation == 90 || editState.cropState.transformRotation == 270) {
                                 int temp = bitmapWidth;
                                 bitmapWidth = bitmapHeight;
                                 bitmapHeight = temp;
                             }
-                            bitmapWidth *= editState.cropState.cropPw;
-                            bitmapHeight *= editState.cropState.cropPh;
+                            float pw = Float.isFinite(editState.cropState.cropPw) && editState.cropState.cropPw > 0 ? editState.cropState.cropPw : 1.0f;
+                            float ph = Float.isFinite(editState.cropState.cropPh) && editState.cropState.cropPh > 0 ? editState.cropState.cropPh : 1.0f;
+                            bitmapWidth = Math.max(1, (int) (bitmapWidth * pw));
+                            bitmapHeight = Math.max(1, (int) (bitmapHeight * ph));
                         }
 
                         float scaleX = (float) getContainerViewWidth() / (float) bitmapWidth;
@@ -12621,7 +12678,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                             newScale = Math.max(newScaleX, newScaleY);
                         }
 
-                        animateToScale = newScale / scale;
+                        animateToScale = scale > 0 && Float.isFinite(newScale / scale) ? newScale / scale : 1.0f;
                         animateToX = getLeftInset() / 2 - getRightInset() / 2;
                         animateToY = -dp(24 + 32) + (isStatusBarVisible() ? AndroidUtilities.statusBarHeight / 2 : 0);
                         animationStartTime = System.currentTimeMillis();
@@ -12636,6 +12693,13 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     );
                     imageMoveAnimation.setDuration(200);
                     imageMoveAnimation.addListener(new AnimatorListenerAdapter() {
+                        private boolean moveCancelled;
+
+                        @Override
+                        public void onAnimationCancel(Animator animation) {
+                            moveCancelled = true;
+                        }
+
                         @Override
                         public void onAnimationStart(Animator animation) {
                             editorDoneLayout.setVisibility(View.VISIBLE);
@@ -12644,6 +12708,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
 
                         @Override
                         public void onAnimationEnd(Animator animation) {
+                            if (moveCancelled || !isVisible) {
+                                return;
+                            }
                             photoCropView.onAppeared();
                             photoCropView.onShow();
 
@@ -14284,8 +14351,15 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         editorDoneLayout.setVisibility(View.GONE);
         captionTextViewSwitcher.setTag(null);
         captionTextViewSwitcher.setVisibility(View.INVISIBLE);
+        switchingToMode = -1;
+        applying = false;
+        padImageForHorizontalInsets = false;
         if (photoCropView != null) {
+            photoCropView.onDisappear();
+            photoCropView.onHide();
+            photoCropView.setAlpha(1.0f);
             photoCropView.setVisibility(View.GONE);
+            photoCropView.cropView.areaView.setRotationScaleTranslation(0, 1, 0, 0);
         }
         if (photoFilterView != null) {
             photoFilterView.setVisibility(View.GONE);
@@ -16064,18 +16138,26 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             }
             if (editState.cropState != null) {
                 previousHasTransform = true;
-                previousCropPx = editState.cropState.cropPx;
-                previousCropPy = editState.cropState.cropPy;
-                previousCropScale = editState.cropState.cropScale;
-                previousCropRotation = editState.cropState.cropRotate;
+                previousCropPx = Float.isFinite(editState.cropState.cropPx) ? editState.cropState.cropPx : 0;
+                previousCropPy = Float.isFinite(editState.cropState.cropPy) ? editState.cropState.cropPy : 0;
+                previousCropScale = Float.isFinite(editState.cropState.cropScale) && editState.cropState.cropScale > 0 ? editState.cropState.cropScale : 1.0f;
+                previousCropRotation = Float.isFinite(editState.cropState.cropRotate) ? editState.cropState.cropRotate : 0;
                 previousCropOrientation = editState.cropState.transformRotation;
-                previousCropPw = editState.cropState.cropPw;
-                previousCropPh = editState.cropState.cropPh;
+                previousCropPw = Float.isFinite(editState.cropState.cropPw) && editState.cropState.cropPw > 0 ? editState.cropState.cropPw : 1.0f;
+                previousCropPh = Float.isFinite(editState.cropState.cropPh) && editState.cropState.cropPh > 0 ? editState.cropState.cropPh : 1.0f;
                 previousCropMirrored = editState.cropState.mirrored;
                 cropTransform.setViewTransform(previousHasTransform, previousCropPx, previousCropPy, previousCropRotation, previousCropOrientation, previousCropScale, 1.0f, 1.0f, previousCropPw, previousCropPh, 0, 0, previousCropMirrored);
             } else {
                 previousHasTransform = false;
-                cropTransform.setViewTransform(false, previousCropPx, previousCropPy, previousCropRotation, previousCropOrientation, previousCropScale, 1.0f, 1.0f, previousCropPw, previousCropPh, 0, 0, previousCropMirrored);
+                previousCropPx = 0;
+                previousCropPy = 0;
+                previousCropScale = 1.0f;
+                previousCropRotation = 0;
+                previousCropOrientation = 0;
+                previousCropPw = 1.0f;
+                previousCropPh = 1.0f;
+                previousCropMirrored = false;
+                cropTransform.reset();
             }
             menuItem.setSubItemShown(gallery_menu_create_sticker, false);
         } else if (pageBlocksAdapter != null) {
@@ -18313,6 +18395,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                 return;
             }
             if (currentEditMode == EDIT_MODE_CROP) {
+                if (changeModeAnimation != null || imageMoveAnimation != null) {
+                    return;
+                }
                 cropTransform.setViewTransform(previousHasTransform, previousCropPx, previousCropPy, previousCropRotation, previousCropOrientation, previousCropScale, 1.0f, 1.0f, previousCropPw, previousCropPh, 0, 0, previousCropMirrored);
             }
             if (currentEditMode == EDIT_MODE_STICKER_MASK) {
@@ -18339,6 +18424,17 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             AndroidUtilities.cancelRunOnUIThread(updateContainerFlagsRunnable);
             updateContainerFlags(true);
         }
+        if (changeModeAnimation != null) {
+            changeModeAnimation.cancel();
+            changeModeAnimation = null;
+        }
+        if (imageMoveAnimation != null) {
+            imageMoveAnimation.cancel();
+            imageMoveAnimation = null;
+        }
+        switchingToMode = -1;
+        applying = false;
+        padImageForHorizontalInsets = false;
         if (currentEditMode != EDIT_MODE_NONE) {
             if (currentEditMode == EDIT_MODE_FILTER) {
                 photoFilterView.shutdown();
@@ -18346,7 +18442,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                 photoFilterView = null;
             } else if (currentEditMode == EDIT_MODE_CROP) {
                 editorDoneLayout.setVisibility(View.GONE);
-                photoCropView.setVisibility(View.GONE);
+                resetCropStateOnClose();
             } else if (currentEditMode == EDIT_MODE_PAINT) {
                 photoPaintView.shutdown();
                 containerView.removeView(photoPaintView.getView());
@@ -18883,6 +18979,39 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         onHideView();
     }
 
+    private void resetCropStateOnClose() {
+        if (changeModeAnimation != null) {
+            changeModeAnimation.cancel();
+            changeModeAnimation = null;
+        }
+        if (imageMoveAnimation != null) {
+            imageMoveAnimation.cancel();
+            imageMoveAnimation = null;
+        }
+        switchingToMode = -1;
+        applying = false;
+        padImageForHorizontalInsets = false;
+        rotate = animateToRotate = 0;
+        mirror = animateToMirror = 0;
+        previousHasTransform = false;
+        previousCropPx = 0;
+        previousCropPy = 0;
+        previousCropScale = 1.0f;
+        previousCropRotation = 0;
+        previousCropOrientation = 0;
+        previousCropPw = 1.0f;
+        previousCropPh = 1.0f;
+        previousCropMirrored = false;
+        cropTransform.reset();
+        if (photoCropView != null) {
+            photoCropView.onDisappear();
+            photoCropView.onHide();
+            photoCropView.setAlpha(1.0f);
+            photoCropView.setVisibility(View.GONE);
+            photoCropView.cropView.areaView.setRotationScaleTranslation(0, 1, 0, 0);
+        }
+    }
+
     private void onPhotoClosed(PlaceProviderObject object) {
         if (doneButtonPressed) {
             releasePlayer(true);
@@ -18893,6 +19022,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         isVisible = false;
         isVisibleOrAnimating = false;
         cropInitied = false;
+        resetCropStateOnClose();
         disableShowCheck = true;
         currentMessageObject = null;
         currentBotInlineResult = null;
@@ -20246,8 +20376,10 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                 }
                 float cropPw = cropTransform.getCropPw();
                 float cropPh = cropTransform.getCropPh();
-                bitmapWidth *= cropPw + (1.0f - cropPw) * (1.0f - cropAnimationValue);
-                bitmapHeight *= cropPh + (1.0f - cropPh) * (1.0f - cropAnimationValue);
+                if (!Float.isFinite(cropPw) || cropPw <= 0) cropPw = 1.0f;
+                if (!Float.isFinite(cropPh) || cropPh <= 0) cropPh = 1.0f;
+                bitmapWidth = Math.max(1, (int) (bitmapWidth * (cropPw + (1.0f - cropPw) * (1.0f - cropAnimationValue))));
+                bitmapHeight = Math.max(1, (int) (bitmapHeight * (cropPh + (1.0f - cropPh) * (1.0f - cropAnimationValue))));
                 scaleToFitX = containerWidth / (float) bitmapWidth;
                 if (scaleToFitX * bitmapHeight > containerHeight) {
                     scaleToFitX = containerHeight / (float) bitmapHeight;
@@ -20265,7 +20397,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     float w = startW + (finalW - startW) * (1.0f - cropAnimationValue);
                     float h = startH + (finalH - startH) * (1.0f - cropAnimationValue);
 
-                    canvas.clipRect(-w / 2, -h / 2, w / 2, h / 2);
+                    if (Float.isFinite(w) && Float.isFinite(h) && w > 0 && h > 0) {
+                        canvas.clipRect(-w / 2, -h / 2, w / 2, h / 2);
+                    }
                 }
                 if (sendPhotoType == SELECT_TYPE_AVATAR || cropTransform.hasViewTransform()) {
                     float cropScale;
@@ -20277,7 +20411,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                             }
                         }
                         float trueScale = 1.0f + (cropTransform.getTrueCropScale() - 1.0f) * (1.0f - cropAnimationValue);
-                        cropScale = cropTransform.getScale() / trueScale;
+                        cropScale = (Float.isFinite(trueScale) && trueScale > 0) ? cropTransform.getScale() / trueScale : 1.0f;
                         float scaleToFit = containerWidth / (float) rotatedWidth;
                         if (scaleToFit * rotatedHeight > containerHeight) {
                             scaleToFit = containerHeight / (float) rotatedHeight;
@@ -20297,9 +20431,12 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                                 firstFrameView.setScaleX(videoTextureView.getScaleX());
                             }
                         }
-                        cropScale = editState.cropState != null ? editState.cropState.cropScale : 1.0f;
+                        cropScale = editState.cropState != null && Float.isFinite(editState.cropState.cropScale) && editState.cropState.cropScale > 0 ? editState.cropState.cropScale : 1.0f;
                         float trueScale = 1.0f + (cropScale - 1.0f) * (1.0f - cropAnimationValue);
                         cropScale *= scaleToFitX / scale / trueScale;
+                    }
+                    if (!Float.isFinite(cropScale) || cropScale <= 0.0001f) {
+                        cropScale = 1.0f;
                     }
 
                     canvas.translate(cropTransform.getCropAreaX() * cropAnimationValue, cropTransform.getCropAreaY() * cropAnimationValue);
@@ -20735,8 +20872,10 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         }
         float cropPw = cropTransform.getCropPw();
         float cropPh = cropTransform.getCropPh();
-        bitmapWidth *= cropPw + (1.0f - cropPw) * (1.0f - cropAnimationValue);
-        bitmapHeight *= cropPh + (1.0f - cropPh) * (1.0f - cropAnimationValue);
+        if (!Float.isFinite(cropPw) || cropPw <= 0) cropPw = 1.0f;
+        if (!Float.isFinite(cropPh) || cropPh <= 0) cropPh = 1.0f;
+        bitmapWidth = Math.max(1, (int) (bitmapWidth * (cropPw + (1.0f - cropPw) * (1.0f - cropAnimationValue))));
+        bitmapHeight = Math.max(1, (int) (bitmapHeight * (cropPh + (1.0f - cropPh) * (1.0f - cropAnimationValue))));
         float scaleToFitX = containerWidth / (float) bitmapWidth;
         if (scaleToFitX * bitmapHeight > containerHeight) {
             scaleToFitX = containerHeight / (float) bitmapHeight;
@@ -20754,13 +20893,15 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             float w = startW + (finalW - startW) * (1.0f - cropAnimationValue);
             float h = startH + (finalH - startH) * (1.0f - cropAnimationValue);
 
-            canvas.clipRect(-w / 2, -h / 2, w / 2, h / 2);
+            if (Float.isFinite(w) && Float.isFinite(h) && w > 0 && h > 0) {
+                canvas.clipRect(-w / 2, -h / 2, w / 2, h / 2);
+            }
         }
         if (sendPhotoType == SELECT_TYPE_AVATAR || cropTransform.hasViewTransform()) {
             float cropScale;
             if (currentEditMode == EDIT_MODE_CROP || sendPhotoType == SELECT_TYPE_AVATAR) {
                 float trueScale = 1.0f + (cropTransform.getTrueCropScale() - 1.0f) * (1.0f - cropAnimationValue);
-                cropScale = cropTransform.getScale() / trueScale;
+                cropScale = (Float.isFinite(trueScale) && trueScale > 0) ? cropTransform.getScale() / trueScale : 1.0f;
                 float scaleToFit = containerWidth / (float) rotatedWidth;
                 if (scaleToFit * rotatedHeight > containerHeight) {
                     scaleToFit = containerHeight / (float) rotatedHeight;
@@ -20774,9 +20915,12 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     }
                 }
             } else {
-                cropScale = cropState != null ? cropState.cropScale : 1.0f;
+                cropScale = cropState != null && Float.isFinite(cropState.cropScale) && cropState.cropScale > 0 ? cropState.cropScale : 1.0f;
                 float trueScale = 1.0f + (cropScale - 1.0f) * (1.0f - cropAnimationValue);
                 cropScale *= scaleToFitX / scale / trueScale;
+            }
+            if (!Float.isFinite(cropScale) || cropScale <= 0.0001f) {
+                cropScale = 1.0f;
             }
 
             canvas.translate(cropTransform.getCropAreaX() * cropAnimationValue, cropTransform.getCropAreaY() * cropAnimationValue);

@@ -188,6 +188,18 @@ public class CropAreaView extends ViewGroup {
         return isDragging;
     }
 
+    public boolean isAnimating() {
+        return animator != null;
+    }
+
+    public void resetTouchState() {
+        if (isDragging) {
+            isDragging = false;
+            updateStatusShow(false);
+        }
+        activeControl = Control.NONE;
+    }
+
     public void setDimVisibility(boolean visible) {
         dimVisibile = visible;
     }
@@ -264,19 +276,23 @@ public class CropAreaView extends ViewGroup {
     public float scale = 1;
     public float tx = 0, ty = 0;
     public void setRotationScaleTranslation(float rotate, float scale, float tx, float ty) {
-        this.rotate = rotate;
-        this.scale = scale;
-        this.tx = tx;
-        this.ty = ty;
+        this.rotate = Float.isFinite(rotate) ? rotate : 0f;
+        this.scale = Float.isFinite(scale) && scale > 0.001f ? scale : 1f;
+        this.tx = Float.isFinite(tx) ? tx : 0f;
+        this.ty = Float.isFinite(ty) ? ty : 0f;
         invalidate();
     }
 
     @Override
     protected void onDraw(Canvas canvas) {
         if (freeform) {
-            int lineThickness = AndroidUtilities.dp(2 / scale);
-            int handleSize = AndroidUtilities.dp(16 / scale);
-            int handleThickness = AndroidUtilities.dp(3 / scale);
+            float safeScale = Float.isFinite(scale) && scale > 0.001f ? scale : 1f;
+            float safeTx = Float.isFinite(tx) ? tx : 0f;
+            float safeTy = Float.isFinite(ty) ? ty : 0f;
+            float safeRotate = Float.isFinite(rotate) ? rotate : 0f;
+            int lineThickness = AndroidUtilities.dp(2 / safeScale);
+            int handleSize = AndroidUtilities.dp(16 / safeScale);
+            int handleThickness = AndroidUtilities.dp(3 / safeScale);
 
             int originX = (int) actualRect.left - lineThickness;
             int originY = (int) actualRect.top - lineThickness;
@@ -284,9 +300,9 @@ public class CropAreaView extends ViewGroup {
             int height = (int) (actualRect.bottom - actualRect.top) + lineThickness * 2;
 
             canvas.save();
-            canvas.translate(tx, ty);
-            canvas.scale(scale, scale, originX + width / 2, originY + height / 2);
-            canvas.rotate(rotate, originX + width / 2, originY + height / 2);
+            canvas.translate(safeTx, safeTy);
+            canvas.scale(safeScale, safeScale, originX + width / 2, originY + height / 2);
+            canvas.rotate(safeRotate, originX + width / 2, originY + height / 2);
 
             if (dimVisibile) {
                 int left = -getWidth() * 4, top = -getHeight() * 4,
@@ -310,6 +326,7 @@ public class CropAreaView extends ViewGroup {
             }
 
             if (!frameVisible) {
+                canvas.restore();
                 return;
             }
 
@@ -384,6 +401,9 @@ public class CropAreaView extends ViewGroup {
             float width = getMeasuredWidth() - 2 * sidePadding;
             float height = getMeasuredHeight() - bottomPadding - (Build.VERSION.SDK_INT >= 21 && !inBubbleMode ? AndroidUtilities.statusBarHeight : 0) - topPadding - 2 * sidePadding;
             size = (int) Math.min(width, height);
+            if (size <= 0) {
+                return;
+            }
 
             if (circleBitmap == null || circleBitmap.getWidth() != size) {
                 boolean hasBitmap = circleBitmap != null;
@@ -509,7 +529,12 @@ public class CropAreaView extends ViewGroup {
     }
 
     public float getAspectRatio() {
-        return (actualRect.right - actualRect.left) / (actualRect.bottom - actualRect.top);
+        float h = actualRect.bottom - actualRect.top;
+        if (h <= 0 || !Float.isFinite(h)) {
+            return 1.0f;
+        }
+        float r = (actualRect.right - actualRect.left) / h;
+        return Float.isFinite(r) && r > 0 ? r : 1.0f;
     }
 
     public void fill(final RectF targetRect, Animator scaleAnimator, boolean animated) {
@@ -537,10 +562,21 @@ public class CropAreaView extends ViewGroup {
 
             set.playTogether(animators);
             set.addListener(new AnimatorListenerAdapter() {
+                private boolean cancelled;
+
+                @Override
+                public void onAnimationCancel(Animator animation) {
+                    cancelled = true;
+                }
+
                 @Override
                 public void onAnimationEnd(Animator animation) {
-                    setActualRect(targetRect);
-                    animator = null;
+                    if (!cancelled) {
+                        setActualRect(targetRect);
+                    }
+                    if (animator == set) {
+                        animator = null;
+                    }
                 }
             });
             set.start();
@@ -628,12 +664,16 @@ public class CropAreaView extends ViewGroup {
     public void calculateRect(RectF rect, float cropAspectRatio) {
         float statusBarHeight = (Build.VERSION.SDK_INT >= 21 && !inBubbleMode ? AndroidUtilities.statusBarHeight : 0);
         float left, top, right, bottom;
+        float measuredWidth = getMeasuredWidth();
         float measuredHeight = (float) getMeasuredHeight() - bottomPadding - topPadding - statusBarHeight;
-        float aspectRatio = (float) getMeasuredWidth() / measuredHeight;
-        float minSide = Math.min(getMeasuredWidth(), measuredHeight) - 2 * sidePadding;
-        float width = getMeasuredWidth() - 2 * sidePadding;
+        float width = measuredWidth - 2 * sidePadding;
         float height = measuredHeight - 2 * sidePadding;
-        float centerX = getMeasuredWidth() / 2.0f;
+        if (width <= 0 || height <= 0 || !Float.isFinite(cropAspectRatio) || cropAspectRatio <= 0) {
+            return;
+        }
+        float aspectRatio = measuredWidth / measuredHeight;
+        float minSide = Math.min(measuredWidth, measuredHeight) - 2 * sidePadding;
+        float centerX = measuredWidth / 2.0f;
         float centerY = statusBarHeight + topPadding + measuredHeight / 2.0f;
 
         if (Math.abs(1.0f - cropAspectRatio) < 0.0001) {

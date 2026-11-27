@@ -4100,7 +4100,14 @@ public class Theme {
 
         String themesString = themeConfig.getString("themes2", null);
 
+        SharedPreferences preferences = MessagesController.getGlobalMainSettings();
         int remoteVersion = themeConfig.getInt("remote_version", 0);
+        final boolean isFreshThemeInstall = !preferences.contains("theme")
+                && !preferences.contains("nighttheme")
+                && !preferences.contains("selectedAutoNightType")
+                && !themeConfig.contains("lastDayTheme")
+                && !themeConfig.contains("lastDarkTheme")
+                && remoteVersion == 0;
         int appRemoteThemesVersion = 1;
         if (remoteVersion == appRemoteThemesVersion) {
             for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
@@ -4144,44 +4151,64 @@ public class Theme {
         sortThemes();
 
         ThemeInfo applyingTheme = null;
-        SharedPreferences preferences = MessagesController.getGlobalMainSettings();
         try {
             final ThemeInfo themeDarkBlue = themesDict.get("Dark Blue");
 
-            String theme = preferences.getString("theme", null);
-            if ("Default".equals(theme)) {
-                applyingTheme = themesDict.get("Blue");
-                applyingTheme.currentAccentId = DEFALT_THEME_ACCENT_ID;
-            } else if ("Dark".equals(theme)) {
-                applyingTheme = themeDarkBlue;
-                applyingTheme.currentAccentId = 9;
-            } else if (theme != null) {
-                applyingTheme = themesDict.get(theme);
-                if (applyingTheme != null && !themeConfig.contains("lastDayTheme")) {
+            if (isFreshThemeInstall) {
+                ThemeInfo nightTheme = themesDict.get("Night");
+                if (nightTheme == null) {
+                    nightTheme = currentNightTheme;
+                }
+                if (nightTheme != null) {
+                    applyingTheme = nightTheme;
+                    currentDayTheme = nightTheme;
+                    currentNightTheme = nightTheme;
+                    preferences.edit()
+                            .putString("theme", nightTheme.getKey())
+                            .putString("nighttheme", nightTheme.getKey())
+                            .putInt("selectedAutoNightType", AUTO_NIGHT_TYPE_NONE)
+                            .apply();
+                    themeConfig.edit()
+                            .putString("lastDayTheme", defaultTheme.getKey())
+                            .putString("lastDarkTheme", nightTheme.getKey())
+                            .apply();
+                }
+            } else {
+                String theme = preferences.getString("theme", null);
+                if ("Default".equals(theme)) {
+                    applyingTheme = themesDict.get("Blue");
+                    applyingTheme.currentAccentId = DEFALT_THEME_ACCENT_ID;
+                } else if ("Dark".equals(theme)) {
+                    applyingTheme = themeDarkBlue;
+                    applyingTheme.currentAccentId = 9;
+                } else if (theme != null) {
+                    applyingTheme = themesDict.get(theme);
+                    if (applyingTheme != null && !themeConfig.contains("lastDayTheme")) {
+                        SharedPreferences.Editor editor = themeConfig.edit();
+                        editor.putString("lastDayTheme", applyingTheme.getKey());
+                        editor.commit();
+                    }
+                }
+
+                theme = preferences.getString("nighttheme", null);
+                if ("Default".equals(theme)) {
+                    applyingTheme = themesDict.get("Blue");
+                    applyingTheme.currentAccentId = DEFALT_THEME_ACCENT_ID;
+                } else if ("Dark".equals(theme)) {
+                    currentNightTheme = themeDarkBlue;
+                    themeDarkBlue.currentAccentId = 9;
+                } else if (theme != null) {
+                    ThemeInfo t = themesDict.get(theme);
+                    if (t != null) {
+                        currentNightTheme = t;
+                    }
+                }
+
+                if (currentNightTheme != null && !themeConfig.contains("lastDarkTheme")) {
                     SharedPreferences.Editor editor = themeConfig.edit();
-                    editor.putString("lastDayTheme", applyingTheme.getKey());
+                    editor.putString("lastDarkTheme", currentNightTheme.getKey());
                     editor.commit();
                 }
-            }
-
-            theme = preferences.getString("nighttheme", null);
-            if ("Default".equals(theme)) {
-                applyingTheme = themesDict.get("Blue");
-                applyingTheme.currentAccentId = DEFALT_THEME_ACCENT_ID;
-            } else if ("Dark".equals(theme)) {
-                currentNightTheme = themeDarkBlue;
-                themeDarkBlue.currentAccentId = 9;
-            } else if (theme != null) {
-                ThemeInfo t = themesDict.get(theme);
-                if (t != null) {
-                    currentNightTheme = t;
-                }
-            }
-
-            if (currentNightTheme != null && !themeConfig.contains("lastDarkTheme")) {
-                SharedPreferences.Editor editor = themeConfig.edit();
-                editor.putString("lastDarkTheme", currentNightTheme.getKey());
-                editor.commit();
             }
 
             SharedPreferences.Editor oldEditor = null;

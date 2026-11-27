@@ -126,8 +126,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             tabsView.addView(tabs[index]);
             tabsView.setViewVisible(tabs[index], activeTabs.contains(index), animated);
         }
-        boolean hideLabels = MessagesController.getGlobalMainSettings()
-                .getBoolean(OtherSettingsActivity.KEY_HIDE_NAV_LABELS, false);
+        boolean hideLabels = OtherSettingsActivity.isHideNavLabelsEnabled();
         tabsView.setCompactMode(hideLabels);
         for (GlassTabView tab : tabs) tab.setLabelsVisible(!hideLabels);
         if (tabsViewBackground != null) tabsViewBackground.setRadius(dp(DialogsActivity.getMainTabsHeight() / 2f));

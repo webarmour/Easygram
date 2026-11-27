@@ -1085,9 +1085,7 @@ public class LocaleController {
                     saveOtherLanguages();
                 }
 
-                localizationExternal = new Localization.Builder()
-                    .addLocalization(stringMap)
-                    .build();
+                localizationExternal = buildExternalLocalization(stringMap);
                 localizationExternalSize = calculateTranslatedCount(stringMap);
 
                 applyLanguage(localeInfo, true, false, true, false, currentAccount, null);
@@ -1384,9 +1382,7 @@ public class LocaleController {
                 if (hasBase) {
                     localeValues.putAll(getLocaleFileStrings(localeInfo.getPathToFile()));
                 }
-                localizationExternal = new Localization.Builder()
-                    .addLocalization(localeValues)
-                    .build();
+                localizationExternal = buildExternalLocalization(localeValues);
                 localizationExternalSize = calculateTranslatedCount(localeValues);
             }
             currentLocale = newLocale;
@@ -3186,9 +3182,7 @@ public class LocaleController {
                         editor.putString("language", localeInfo.getKey());
                         editor.commit();
 
-                        localizationExternal = new Localization.Builder()
-                            .addLocalization(valuesToSet)
-                            .build();
+                        localizationExternal = buildExternalLocalization(valuesToSet);
                         localizationExternalSize = calculateTranslatedCount(valuesToSet);
 
                         currentLocale = newLocale;
@@ -4812,6 +4806,46 @@ public class LocaleController {
     private volatile Locale localizationInternalLastLocale;
     private volatile Localization localizationInternal = Localization.EMPTY;
     private volatile boolean localizationInternalPending;
+    private static final String[] EASYGRAM_LOCAL_ONLY_KEYS = {
+        "AppName",
+        "AppNameBeta",
+        "Page1Title",
+        "AppIconDefault",
+    };
+
+    private static final String[] EASYGRAM_REBRAND_KEYS = {
+        "Page2Message",
+        "Page3Message",
+        "Page4Message",
+        "Page5Message",
+        "Page6Message",
+        "VoipInCallBranding",
+        "VoipInVideoCallBranding",
+        "VoipInConferenceCallBranding",
+        "VoipOutgoingCall",
+        "VoipInCallBrandingWithName",
+        "VoipInVideoCallBrandingWithName",
+    };
+
+    private static Localization buildExternalLocalization(HashMap<String, String> values) {
+        if (values == null || values.isEmpty()) {
+            return Localization.EMPTY;
+        }
+        HashMap<String, String> filtered = new HashMap<>(values);
+        for (String key : EASYGRAM_LOCAL_ONLY_KEYS) {
+            filtered.remove(key);
+        }
+        for (String key : EASYGRAM_REBRAND_KEYS) {
+            String existing = filtered.get(key);
+            if (existing != null && existing.contains("Telegram")) {
+                filtered.put(key, existing.replace("Telegram", "easygram"));
+            }
+        }
+        return new Localization.Builder()
+            .addLocalization(filtered)
+            .build();
+    }
+
     private @NonNull Localization localizationExternal = Localization.EMPTY;
     private int localizationExternalSize;
 

@@ -4370,10 +4370,10 @@
     <string name="VoipFailed">Failed to connect</string>
     <string name="VoipRinging">Ringing</string>
     <string name="VoipBusy">Line busy</string>
-    <string name="VoipInCallBranding">Telegram Call</string>
-    <string name="VoipInVideoCallBranding">Telegram Video Call</string>
-    <string name="VoipInConferenceCallBranding">Telegram Group Call</string>
-    <string name="VoipOutgoingCall">Ongoing Telegram call</string>
+    <string name="VoipInCallBranding">easygram Call</string>
+    <string name="VoipInVideoCallBranding">easygram Video Call</string>
+    <string name="VoipInConferenceCallBranding">easygram Group Call</string>
+    <string name="VoipOutgoingCall">Ongoing easygram call</string>
     <string name="VoipVoiceChat">Ongoing Voice Chat</string>
     <string name="VoipLiveStream">Ongoing Live Stream</string>
     <string name="VoipConference">Ongoing Video Chat</string>
@@ -4466,8 +4466,8 @@
     <string name="VoipQuickReplies">Respond with Text</string>
     <string name="VoipQuickRepliesExplain">These quick responses will be available when you respond to an incoming call with a Telegram message. Change them to say anything you like.</string>
     <string name="AllowCustomQuickReply">Allow Custom</string>
-    <string name="VoipInCallBrandingWithName">Telegram Call to %s</string>
-    <string name="VoipInVideoCallBrandingWithName">Telegram Video Call to %s</string>
+    <string name="VoipInCallBrandingWithName">easygram Call to %s</string>
+    <string name="VoipInVideoCallBrandingWithName">easygram Video Call to %s</string>
     <string name="VoipErrorUnknown">Can\'t place a Telegram call at the moment.</string>
     <string name="RateCallEcho">I heard my own voice</string>
     <string name="RateCallNoise">I heard background noise</string>

@@ -85,24 +85,125 @@ public class OtherSettingsActivity extends BaseFragment {
                 .edit().putBoolean(KEY_MATERIAL_EXPRESSIVE, enabled).apply();
     }
 
+    private static final String KEY_DEFAULTS_V2_INITIALIZED = "easygram_defaults_v2_initialized";
+    private static final Object DEFAULTS_LOCK = new Object();
+    private static volatile boolean defaultsV2Initialized;
+
     public static final String KEY_GALLERY_CAMERA = "easygram_gallery_camera";
     private static volatile Boolean galleryCameraCached;
+
+    private static volatile Boolean hideNavLabelsCached;
+
+    /**
+     * One-time initialization of easygram defaults that changed for new installs:
+     * - Gallery camera: off by default for new installs, kept on for existing installs.
+     * - Hide bottom navigation bar labels: on by default for new installs, kept off for existing installs.
+     * Explicitly saved user choices are always preserved.
+     */
+    public static void initDefaultsIfNeeded() {
+        if (defaultsV2Initialized) {
+            return;
+        }
+        Context context = ApplicationLoader.applicationContext;
+        if (context == null) {
+            return;
+        }
+        SharedPreferences prefs = context.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
+        ensureDefaultsInitialized(context, prefs);
+    }
+
+    private static void ensureDefaultsInitialized(Context context, SharedPreferences prefs) {
+        if (defaultsV2Initialized) {
+            return;
+        }
+        synchronized (DEFAULTS_LOCK) {
+            if (defaultsV2Initialized) {
+                return;
+            }
+            if (prefs.getBoolean(KEY_DEFAULTS_V2_INITIALIZED, false)) {
+                defaultsV2Initialized = true;
+                return;
+            }
+            boolean existingInstall = isExistingInstall(context, prefs);
+            SharedPreferences.Editor editor = prefs.edit();
+            if (!prefs.contains(KEY_GALLERY_CAMERA)) {
+                editor.putBoolean(KEY_GALLERY_CAMERA, existingInstall);
+            }
+            if (!prefs.contains(KEY_HIDE_NAV_LABELS)) {
+                editor.putBoolean(KEY_HIDE_NAV_LABELS, !existingInstall);
+            }
+            editor.putBoolean(KEY_DEFAULTS_V2_INITIALIZED, true);
+            editor.apply();
+            galleryCameraCached = null;
+            hideNavLabelsCached = null;
+            defaultsV2Initialized = true;
+        }
+    }
+
+    private static boolean isExistingInstall(Context context, SharedPreferences mainConfig) {
+        for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
+            String name = a == 0 ? "userconfing" : "userconfig" + a;
+            SharedPreferences userPrefs = context.getSharedPreferences(name, Context.MODE_PRIVATE);
+            if (!TextUtils.isEmpty(userPrefs.getString("user", null))) {
+                return true;
+            }
+        }
+        Map<String, ?> all = mainConfig.getAll();
+        return all != null && !all.isEmpty();
+    }
 
     /** Live camera cell at the start of the attach menu photo gallery; off removes the cell (and never opens the camera). */
     public static boolean isGalleryCameraEnabled() {
         Boolean cached = galleryCameraCached;
         if (cached == null) {
-            cached = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE)
-                    .getBoolean(KEY_GALLERY_CAMERA, true);
+            Context context = ApplicationLoader.applicationContext;
+            if (context == null) {
+                return false;
+            }
+            SharedPreferences prefs = context.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
+            ensureDefaultsInitialized(context, prefs);
+            cached = prefs.getBoolean(KEY_GALLERY_CAMERA, false);
             galleryCameraCached = cached;
         }
         return cached;
     }
 
     public static void setGalleryCameraEnabled(boolean enabled) {
+        Context context = ApplicationLoader.applicationContext;
+        if (context == null) {
+            return;
+        }
+        SharedPreferences prefs = context.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
+        ensureDefaultsInitialized(context, prefs);
         galleryCameraCached = enabled;
-        ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE)
-                .edit().putBoolean(KEY_GALLERY_CAMERA, enabled).apply();
+        prefs.edit().putBoolean(KEY_GALLERY_CAMERA, enabled).apply();
+    }
+
+    /** Hide text labels on the bottom navigation bar. On by default for new installs, kept off for existing installs. */
+    public static boolean isHideNavLabelsEnabled() {
+        Boolean cached = hideNavLabelsCached;
+        if (cached == null) {
+            Context context = ApplicationLoader.applicationContext;
+            if (context == null) {
+                return true;
+            }
+            SharedPreferences prefs = context.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
+            ensureDefaultsInitialized(context, prefs);
+            cached = prefs.getBoolean(KEY_HIDE_NAV_LABELS, true);
+            hideNavLabelsCached = cached;
+        }
+        return cached;
+    }
+
+    public static void setHideNavLabelsEnabled(boolean enabled) {
+        Context context = ApplicationLoader.applicationContext;
+        if (context == null) {
+            return;
+        }
+        SharedPreferences prefs = context.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
+        ensureDefaultsInitialized(context, prefs);
+        hideNavLabelsCached = enabled;
+        prefs.edit().putBoolean(KEY_HIDE_NAV_LABELS, enabled).apply();
     }
 
     public static final String KEY_HIDE_KEYBOARD_ON_SCROLL = "easygram_hide_keyboard_on_scroll";
@@ -559,8 +660,8 @@ public class OtherSettingsActivity extends BaseFragment {
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.storiesEnabledUpdate);
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.mainTabsLayoutChanged);
             } else if (position == navLabelsRow) {
-                boolean next = !preferences().getBoolean(KEY_HIDE_NAV_LABELS, false);
-                preferences().edit().putBoolean(KEY_HIDE_NAV_LABELS, next).apply();
+                boolean next = !isHideNavLabelsEnabled();
+                setHideNavLabelsEnabled(next);
                 if (view instanceof TextCheckCell) {
                     ((TextCheckCell) view).setChecked(next);
                 }
@@ -867,7 +968,7 @@ public class OtherSettingsActivity extends BaseFragment {
                     } else if (position == navLabelsRow) {
                         checkCell.setTextAndCheck(
                                 LocaleController.getString(R.string.EasygramHideNavLabels),
-                                preferences().getBoolean(KEY_HIDE_NAV_LABELS, false),
+                                isHideNavLabelsEnabled(),
                                 true
                         );
                     }

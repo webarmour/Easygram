@@ -352,6 +352,12 @@
     <string name="Page5Message">**easygram** не ограничивает размер\n Ваших медиафайлов и чатов.</string>
     <string name="Page6Message">В **easygram** можно переписываться с любого количества устройств.</string>
     <string name="StartMessaging">Начать общение</string>
+    <string name="VoipInCallBranding">Звонок в easygram</string>
+    <string name="VoipInVideoCallBranding">Видеозвонок в easygram</string>
+    <string name="VoipInConferenceCallBranding">Групповой звонок в easygram</string>
+    <string name="VoipOutgoingCall">Текущий звонок в easygram</string>
+    <string name="VoipInCallBrandingWithName">Звонок в easygram: %s</string>
+    <string name="VoipInVideoCallBrandingWithName">Видеозвонок в easygram: %s</string>
     <!--date formatters-->
     <string name="formatterBoostExpired">dd MMM yyyy</string>
     <string name="formatterGiveawayCard">dd MMM yyyy</string>

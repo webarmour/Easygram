@@ -843,7 +843,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         gridView.getFastScroll().setAlpha(0f);
         gridView.getFastScroll().usePadding = false;
         gridView.getFastScroll().topOffset = ActionBar.getCurrentActionBarHeight(); // + AndroidUtilities.statusBarHeight;
-        gridView.setAdapter(adapter = new PhotoAttachAdapter(context, needCamera));
+        gridView.setAdapter(adapter = new PhotoAttachAdapter(context, needCamera && OtherSettingsActivity.isGalleryCameraEnabled()));
         gridView.addItemDecoration(cameraViewItemDecoration = new CameraViewItemDecoration(gridView));
         adapter.createCache();
         gridView.setClipToPadding(false);
@@ -4293,7 +4293,9 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
 //                    afterCameraInitRunnable = null;
 //                    isCameraFrontfaceBeforeEnteringEditMode = null;
 //                };
-                showCamera();
+                if ((SharedConfig.inappCamera && OtherSettingsActivity.isGalleryCameraEnabled()) || forceCameraPreview || isStandaloneCamera) {
+                    showCamera();
+                }
             }
         }
     }
