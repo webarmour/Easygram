@@ -141,6 +141,7 @@ android {
     productFlavors {
         bundleAfat {
             // ABIs: see easygram_abis.gradle (flavor filters would be merged with the build type ones)
+            applicationIdSuffix ".store"
             ext {
                 abiVersionCode = 1
             }

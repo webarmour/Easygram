@@ -7,7 +7,7 @@
 ## English
 
 **Effective date:** November 27, 2026  
-**Application:** Easygram (`io.github.webarmour.easygram`)  
+**Application:** Easygram (`io.github.webarmour.easygram.store`, `io.github.webarmour.easygram`)  
 **Developer:** webarmour
 
 Easygram is an independent, unofficial, open-source Telegram client for Android based on the official Telegram for Android codebase. Easygram is not affiliated with or endorsed by Telegram.
@@ -21,7 +21,7 @@ All data transmitted to and stored by Telegram is governed by Telegram's own Pri
 https://telegram.org/privacy
 
 ### 2. Analytics (Firebase Analytics)
-Release builds of Easygram distributed via Google Play (`io.github.webarmour.easygram`) include **Google Firebase Analytics** solely to understand basic app usage and stability (such as first opens, session counts, engagement, app updates, and top-level activity views).
+Release builds of Easygram distributed via Google Play (`io.github.webarmour.easygram.store`) and GitHub Releases (`io.github.webarmour.easygram`) include **Google Firebase Analytics** solely to understand basic app usage and stability (such as first opens, session counts, engagement, app updates, and top-level activity views).
 
 - Collection of the Android Advertising ID (`AD_ID`) is **disabled**.
 - Easygram does **not** send custom events, Telegram user IDs, phone numbers, usernames, chat names, or message contents to Firebase Analytics.
@@ -60,7 +60,7 @@ If you have any questions or privacy requests regarding Easygram, please contact
 ## Русский
 
 **Дата вступления в силу:** 27 ноября 2026 г.  
-**Приложение:** Easygram (`io.github.webarmour.easygram`)  
+**Приложение:** Easygram (`io.github.webarmour.easygram.store`, `io.github.webarmour.easygram`)  
 **Разработчик:** webarmour
 
 Easygram — независимый неофициальный клиент Telegram для Android с открытым исходным кодом, созданный на базе исходного кода Telegram для Android. Проект не связан с командой Telegram.
@@ -74,7 +74,7 @@ Easygram подключается напрямую к официальным с�
 https://telegram.org/privacy
 
 ### 2. Аналитика (Firebase Analytics)
-Релизные сборки Easygram для Google Play (`io.github.webarmour.easygram`) включают **Google Firebase Analytics** исключительно для базовой оценки стабильности и использования приложения (первый запуск, сессии, обновления приложения и верхнеуровневые экраны).
+Релизные сборки Easygram для Google Play (`io.github.webarmour.easygram.store`) и GitHub Releases (`io.github.webarmour.easygram`) включают **Google Firebase Analytics** исключительно для базовой оценки стабильности и использования приложения (первый запуск, сессии, обновления приложения и верхнеуровневые экраны).
 
 - Сбор рекламного идентификатора Android (`AD_ID`) **отключён**.
 - Easygram **не передаёт** в Firebase Analytics пользовательские события, Telegram ID, номера телефонов, имена пользователей, названия чатов или содержимое сообщений.

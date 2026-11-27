@@ -4,7 +4,7 @@ The `afatDebug`, `afatRelease`, and `bundleAfatRelease` variants use this manife
 
 Automatic collection includes first opens, sessions, engagement, app updates, and Activity screen views. Most Telegram screens share LaunchActivity, so this does not provide separate reports for individual chat/settings fragments or custom user actions. Advertising ID collection remains disabled. No custom events, Telegram user IDs, phone numbers, chat names, or message contents are supplied to Analytics by this integration.
 
-The release configuration targets Firebase project `easygram-328cc`, Android package `io.github.webarmour.easygram`. Debug uses the separate `.beta` application registration. Other application modules and the standalone `.web` variant retain their existing configuration.
+The release configuration targets Firebase project `easygram-328cc`, Android packages `io.github.webarmour.easygram` (`afatRelease`) and `io.github.webarmour.easygram.store` (`bundleAfatRelease`, Google Play). Debug uses the separate `.beta` application registration. Other application modules and the standalone `.web` variant retain their existing configuration.
 
 ## Verify collection
 

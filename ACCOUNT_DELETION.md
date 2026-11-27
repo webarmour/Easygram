@@ -6,7 +6,7 @@
 
 ## English
 
-**Application:** Easygram (`io.github.webarmour.easygram`)  
+**Application:** Easygram (`io.github.webarmour.easygram.store`, `io.github.webarmour.easygram`)  
 **Developer:** webarmour  
 **Contact:** `webarmour.dev@gmail.com`
 
@@ -53,7 +53,7 @@ If you have questions about deleting your data in **Easygram**, contact the deve
 
 ## Русский
 
-**Приложение:** Easygram (`io.github.webarmour.easygram`)  
+**Приложение:** Easygram (`io.github.webarmour.easygram.store`, `io.github.webarmour.easygram`)  
 **Разработчик:** webarmour  
 **Контакты:** `webarmour.dev@gmail.com`
 
