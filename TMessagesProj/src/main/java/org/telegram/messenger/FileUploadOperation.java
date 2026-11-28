@@ -338,7 +338,7 @@ public class FileUploadOperation {
                 }
                 maxRequestsCount = Math.max(1, (slowNetwork ? maxUploadingSlowNetworkKBytes : maxUploadingKBytes) / uploadChunkSize);
                 // TDLib uploads premium files over 8 sessions.
-                uploadConnectionsCount = AccountInstance.getInstance(currentAccount).getUserConfig().isPremium() ? ConnectionsManager.UploadConnectionsCountPremium : 4;
+                uploadConnectionsCount = (EasygramLocalFeatures.UNLIMITED_DOWNLOAD_SPEED || AccountInstance.getInstance(currentAccount).getUserConfig().isPremium()) ? ConnectionsManager.UploadConnectionsCountPremium : 4;
 
                 if (isEncrypted) {
                     freeRequestIvs = new ArrayList<>(maxRequestsCount);

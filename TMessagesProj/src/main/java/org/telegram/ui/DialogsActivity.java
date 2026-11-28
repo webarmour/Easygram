@@ -107,6 +107,7 @@ import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.ContactsController;
 import org.telegram.messenger.DialogObject;
+import org.telegram.messenger.EasygramLocalFeatures;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.FileLog;
@@ -3853,7 +3854,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                                 currentCount = 0;
                             }
                             int totalCount = currentCount + alwaysShow.size();
-                            if ((totalCount > getMessagesController().dialogFiltersChatsLimitDefault && !getUserConfig().isPremium()) || totalCount > getMessagesController().dialogFiltersChatsLimitPremium) {
+                            final boolean extendedFolders = EasygramLocalFeatures.EXTENDED_FOLDERS_AND_PINS || getUserConfig().isPremium();
+                            if ((totalCount > getMessagesController().dialogFiltersChatsLimitDefault && !extendedFolders) || totalCount > getMessagesController().dialogFiltersChatsLimitPremium) {
                                 showDialog(new LimitReachedBottomSheet(DialogsActivity.this, fragmentView.getContext(), LimitReachedBottomSheet.TYPE_CHATS_IN_FOLDER, currentAccount, null));
                                 return;
                             }
@@ -8634,13 +8636,13 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             if (containsFilter && filter != null) {
                 maxPinnedCount = 100 - filter.alwaysShow.size();
             } else if (folderId != 0 || filter != null) {
-                if (getUserConfig().isPremium()) {
+                if (EasygramLocalFeatures.EXTENDED_FOLDERS_AND_PINS || getUserConfig().isPremium()) {
                     maxPinnedCount = getMessagesController().maxFolderPinnedDialogsCountPremium;
                 } else {
                     maxPinnedCount = getMessagesController().maxFolderPinnedDialogsCountDefault;
                 }
             } else {
-                if (getUserConfig().isPremium()) {
+                if (EasygramLocalFeatures.EXTENDED_FOLDERS_AND_PINS || getUserConfig().isPremium()) {
                     maxPinnedCount = getMessagesController().maxPinnedDialogsCountPremium;
                 } else {
                     maxPinnedCount = getMessagesController().maxPinnedDialogsCountDefault;
@@ -9170,13 +9172,13 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             if (containsFilter) {
                 maxPinnedCount = 100 - filter.alwaysShow.size();
             } else if (folderId != 0 || filter != null) {
-                if (UserConfig.getInstance(currentAccount).isPremium()) {
+                if (EasygramLocalFeatures.EXTENDED_FOLDERS_AND_PINS || UserConfig.getInstance(currentAccount).isPremium()) {
                     maxPinnedCount = getMessagesController().maxFolderPinnedDialogsCountPremium;
                 } else {
                     maxPinnedCount = getMessagesController().maxFolderPinnedDialogsCountDefault;
                 }
             } else {
-                maxPinnedCount = getUserConfig().isPremium() ? getMessagesController().dialogFiltersPinnedLimitPremium : getMessagesController().dialogFiltersPinnedLimitDefault;
+                maxPinnedCount = (EasygramLocalFeatures.EXTENDED_FOLDERS_AND_PINS || getUserConfig().isPremium()) ? getMessagesController().dialogFiltersPinnedLimitPremium : getMessagesController().dialogFiltersPinnedLimitDefault;
             }
             if (newPinnedSecretCount + pinnedSecretCount > maxPinnedCount || newPinnedCount + pinnedCount - alreadyAdded > maxPinnedCount) {
                 if (folderId != 0 || filter != null) {

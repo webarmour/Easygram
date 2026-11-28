@@ -52,6 +52,7 @@ import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.BotWebViewVibrationEffect;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.DialogObject;
+import org.telegram.messenger.EasygramLocalFeatures;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
@@ -695,7 +696,7 @@ public class FilterCreateActivity extends BaseFragment {
                 }
             }
 
-            final int maxCount = getUserConfig().isPremium() ? getMessagesController().dialogFiltersChatsLimitPremium : getMessagesController().dialogFiltersChatsLimitDefault;
+            final int maxCount = (EasygramLocalFeatures.EXTENDED_FOLDERS_AND_PINS || getUserConfig().isPremium()) ? getMessagesController().dialogFiltersChatsLimitPremium : getMessagesController().dialogFiltersChatsLimitDefault;
             if (peers.size() > maxCount) {
                 showDialog(new LimitReachedBottomSheet(this, getContext(), LimitReachedBottomSheet.TYPE_CHATS_IN_FOLDER, currentAccount, null));
                 return;

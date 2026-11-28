@@ -854,7 +854,8 @@ public class MessagesController extends BaseController implements NotificationCe
         if (dialogFilters.isEmpty()) {
             return;
         }
-        if (!premium) {
+        final boolean effectiveFoldersPremium = premium || EasygramLocalFeatures.EXTENDED_FOLDERS_AND_PINS;
+        if (!effectiveFoldersPremium) {
             if (!dialogFilters.get(0).isDefault()) {
                 for (int i = 1; i < dialogFilters.size(); i++) {
                     if (dialogFilters.get(i).isDefault()) {
@@ -878,7 +879,7 @@ public class MessagesController extends BaseController implements NotificationCe
 
     public void lockFiltersInternal() {
         boolean changed = false;
-        if (!getUserConfig().isPremium() && dialogFilters.size() - 1 > dialogFiltersLimitDefault) {
+        if (!EasygramLocalFeatures.EXTENDED_FOLDERS_AND_PINS && !getUserConfig().isPremium() && dialogFilters.size() - 1 > dialogFiltersLimitDefault) {
             int n = dialogFilters.size() - 1 - dialogFiltersLimitDefault;
             ArrayList<DialogFilter> filtersSortedById = new ArrayList<>(dialogFilters);
             Collections.reverse(filtersSortedById);
@@ -21783,9 +21784,6 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     public SponsoredMessagesInfo getSponsoredMessages(long dialogId) {
-        if (isSponsoredDisabled()) {
-            return null;
-        }
         SponsoredMessagesInfo info = sponsoredMessages.get(dialogId);
         if (info != null && (info.loading || Math.abs(SystemClock.elapsedRealtime() - info.loadTime) <= 5 * 60 * 1000)) {
             return info;
@@ -24391,7 +24389,7 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     public boolean isStoryQualityFullOnAccount() {
-        return getUserConfig().isPremium() && storyQualityFull;
+        return (EasygramLocalFeatures.STORY_HD_AND_SAVE || getUserConfig().isPremium()) && storyQualityFull;
     }
 
     public static boolean isStoryQualityFull() {
@@ -24519,7 +24517,9 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     public boolean isSponsoredDisabled() {
-        return true;
+        TLRPC.UserFull userFull = getUserFull(getUserConfig().getClientUserId());
+        if (userFull == null) return false;
+        return !userFull.sponsored_enabled;
     }
 
     private boolean loadingAvailableEffects;

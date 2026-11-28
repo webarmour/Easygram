@@ -50,6 +50,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.ContactsController;
 import org.telegram.messenger.DialogObject;
+import org.telegram.messenger.EasygramLocalFeatures;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
@@ -789,7 +790,8 @@ public class UsersSelectActivity extends BaseFragment implements NotificationCen
                     GroupCreateSpan span = selectedContacts.get(id);
                     spansContainer.removeSpan(span);
                 } else {
-                    if (!(object instanceof String) && (!getUserConfig().isPremium() && selectedCount >= MessagesController.getInstance(currentAccount).dialogFiltersChatsLimitDefault) || selectedCount >= MessagesController.getInstance(currentAccount).dialogFiltersChatsLimitPremium) {
+                    final boolean extendedFolders = EasygramLocalFeatures.EXTENDED_FOLDERS_AND_PINS || getUserConfig().isPremium();
+                    if (!(object instanceof String) && (!extendedFolders && selectedCount >= MessagesController.getInstance(currentAccount).dialogFiltersChatsLimitDefault) || selectedCount >= MessagesController.getInstance(currentAccount).dialogFiltersChatsLimitPremium) {
                         LimitReachedBottomSheet limitReachedBottomSheet = new LimitReachedBottomSheet(this, context, LimitReachedBottomSheet.TYPE_CHATS_IN_FOLDER, currentAccount, null);
                         limitReachedBottomSheet.setCurrentValue(selectedCount);
                         showDialog(limitReachedBottomSheet);
@@ -1046,7 +1048,7 @@ public class UsersSelectActivity extends BaseFragment implements NotificationCen
 
     private void updateHint() {
         if (type == TYPE_FILTER) {
-            int limit = getUserConfig().isPremium() ? getMessagesController().dialogFiltersChatsLimitPremium : getMessagesController().dialogFiltersChatsLimitDefault;
+            int limit = (EasygramLocalFeatures.EXTENDED_FOLDERS_AND_PINS || getUserConfig().isPremium()) ? getMessagesController().dialogFiltersChatsLimitPremium : getMessagesController().dialogFiltersChatsLimitDefault;
             if (selectedCount == 0) {
                 actionBar.setSubtitle(formatString("MembersCountZero", R.string.MembersCountZero, LocaleController.formatPluralString("Chats", limit)));
             } else {

@@ -32,6 +32,7 @@ import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.BaseController;
 import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.CaptchaController;
+import org.telegram.messenger.EasygramLocalFeatures;
 import org.telegram.messenger.EmuDetector;
 import org.telegram.messenger.FileLoadOperation;
 import org.telegram.messenger.FileLoader;
@@ -268,10 +269,7 @@ public class ConnectionsManager extends BaseController {
             mainPreferences = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig" + currentAccount, Activity.MODE_PRIVATE);
         }
         forceTryIpV6 = mainPreferences.getBoolean("forceTryIpV6", false);
-        boolean userPremium = false;
-        if (getUserConfig().getCurrentUser() != null) {
-            userPremium = getUserConfig().isPremium();
-        }
+        boolean userPremium = EasygramLocalFeatures.UNLIMITED_DOWNLOAD_SPEED || (getUserConfig().getCurrentUser() != null && getUserConfig().isPremium());
         init(SharedConfig.buildVersion(), TLRPC.LAYER, BuildVars.APP_ID, deviceModel, systemVersion, appVersion, langCode, systemLangCode, configPath, FileLog.getNetworkLogPath(), pushString, fingerprint, timezoneOffset, getUserConfig().getClientUserId(), userPremium, enablePushConnection);
     }
 

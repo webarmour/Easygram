@@ -431,7 +431,7 @@ public class UserInfoActivity extends UniversalFragment implements NotificationC
             for (int i = 0; i < accountNumbers.size(); ++i) {
                 items.add(SettingsActivity.AccountCell.Factory.of(i, accountNumbers.get(i)));
             }
-            if (!UserConfig.hasPremiumOnAccounts()) {
+            if (UserConfig.MAX_ACCOUNT_DEFAULT_COUNT < UserConfig.MAX_ACCOUNT_COUNT && !UserConfig.hasPremiumOnAccounts()) {
                 final int moreAccounts = Math.max(0, UserConfig.getMaxAccountCount() - UserConfig.getActivatedAccountsCount());
                 items.add(UItem.asShadow(
                     TextUtils.concat(

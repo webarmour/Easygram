@@ -32,6 +32,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.EasygramLocalFeatures;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
@@ -847,8 +848,9 @@ public class FiltersSetupActivity extends BaseFragment implements NotificationCe
 
     public void createFolder(INavigationLayout navigationLayout) {
         final int count = getMessagesController().getDialogFilters().size();
+        final boolean extendedFolders = EasygramLocalFeatures.EXTENDED_FOLDERS_AND_PINS || getUserConfig().isPremium();
         if (
-            count - 1 >= getMessagesController().dialogFiltersLimitDefault && !getUserConfig().isPremium() ||
+            count - 1 >= getMessagesController().dialogFiltersLimitDefault && !extendedFolders ||
             count >= getMessagesController().dialogFiltersLimitPremium
         ) {
             showDialog(new LimitReachedBottomSheet(this, getContext(), LimitReachedBottomSheet.TYPE_FOLDERS, currentAccount, null));
@@ -1293,7 +1295,7 @@ public class FiltersSetupActivity extends BaseFragment implements NotificationCe
         };
 
         private void resetDefaultPosition() {
-            if (UserConfig.getInstance(UserConfig.selectedAccount).isPremium()) {
+            if (EasygramLocalFeatures.EXTENDED_FOLDERS_AND_PINS || UserConfig.getInstance(UserConfig.selectedAccount).isPremium()) {
                 return;
             }
             ArrayList<MessagesController.DialogFilter> filters = getMessagesController().getDialogFilters();

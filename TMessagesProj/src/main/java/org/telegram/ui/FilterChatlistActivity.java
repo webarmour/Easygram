@@ -52,6 +52,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.BotWebViewVibrationEffect;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.DialogObject;
+import org.telegram.messenger.EasygramLocalFeatures;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
@@ -759,7 +760,7 @@ frameLayout.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT
     }
 
     private int getMaxChats() {
-        return getUserConfig().isPremium() ? getMessagesController().dialogFiltersChatsLimitPremium : getMessagesController().dialogFiltersChatsLimitDefault;
+        return (EasygramLocalFeatures.EXTENDED_FOLDERS_AND_PINS || getUserConfig().isPremium()) ? getMessagesController().dialogFiltersChatsLimitPremium : getMessagesController().dialogFiltersChatsLimitDefault;
     }
 
     private void deselectAll(FolderBottomSheet.HeaderCell headerCell, boolean deselect) {

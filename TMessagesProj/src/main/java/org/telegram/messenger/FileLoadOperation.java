@@ -859,7 +859,7 @@ public class FileLoadOperation {
         useDownloadByteBudget = !MessagesController.getInstance(currentAccount).downloadImprovementKillswitch &&
                 totalBytesCount > 0 && key == null && !encryptFile && !isPreloadVideoOperation && preloadPrefixSize == 0;
         if (useDownloadByteBudget) {
-            boolean premium = UserConfig.getInstance(currentAccount).isPremium();
+            boolean premium = EasygramLocalFeatures.UNLIMITED_DOWNLOAD_SPEED || UserConfig.getInstance(currentAccount).isPremium();
             downloadConnectionsCount = premium ? ConnectionsManager.DownloadConnectionsCount : 2;
             int byteBudget = (premium ? 16 : 2) * 1024 * 1024;
             currentMaxDownloadRequests = byteBudget / currentDownloadChunkSize;

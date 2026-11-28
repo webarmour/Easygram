@@ -25,8 +25,8 @@ import java.util.Arrays;
 public class UserConfig extends BaseController {
 
     public static int selectedAccount;
-    public final static int MAX_ACCOUNT_DEFAULT_COUNT = 3;
-    public final static int MAX_ACCOUNT_COUNT = 4;
+    public final static int MAX_ACCOUNT_DEFAULT_COUNT = EasygramLocalFeatures.MAX_ACCOUNT_COUNT;
+    public final static int MAX_ACCOUNT_COUNT = EasygramLocalFeatures.MAX_ACCOUNT_COUNT;
 
     private final Object sync = new Object();
     private volatile boolean configLoaded;
@@ -573,7 +573,11 @@ public class UserConfig extends BaseController {
     }
 
     public boolean isPremium() {
-        return currentUser != null;
+        TLRPC.User user = currentUser;
+        if (user == null) {
+            return false;
+        }
+        return user.premium;
     }
 
     public Long getEmojiStatus() {

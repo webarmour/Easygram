@@ -55,6 +55,7 @@ import androidx.recyclerview.widget.LinearSmoothScroller;
 import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.EasygramLocalFeatures;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
@@ -1913,7 +1914,8 @@ public class FilterTabsView extends FrameLayout {
 
         @Override
         public int getMovementFlags(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder) {
-            if (MessagesController.getInstance(UserConfig.selectedAccount).premiumFeaturesBlocked() && (!isEditing || (viewHolder.getAdapterPosition() == 0 && tabs.get(0).isDefault && !UserConfig.getInstance(UserConfig.selectedAccount).isPremium()))) {
+            final boolean canReorderDefault = EasygramLocalFeatures.EXTENDED_FOLDERS_AND_PINS || UserConfig.getInstance(UserConfig.selectedAccount).isPremium();
+            if (MessagesController.getInstance(UserConfig.selectedAccount).premiumFeaturesBlocked() && (!isEditing || (viewHolder.getAdapterPosition() == 0 && tabs.get(0).isDefault && !canReorderDefault))) {
                 return makeMovementFlags(0, 0);
             }
             return makeMovementFlags(ItemTouchHelper.LEFT | ItemTouchHelper.RIGHT, 0);
@@ -1921,7 +1923,8 @@ public class FilterTabsView extends FrameLayout {
 
         @Override
         public boolean onMove(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder source, @NonNull RecyclerView.ViewHolder target) {
-            if (MessagesController.getInstance(UserConfig.selectedAccount).premiumFeaturesBlocked() && ((source.getAdapterPosition() == 0 || target.getAdapterPosition() == 0) && !UserConfig.getInstance(UserConfig.selectedAccount).isPremium())) {
+            final boolean canReorderDefault = EasygramLocalFeatures.EXTENDED_FOLDERS_AND_PINS || UserConfig.getInstance(UserConfig.selectedAccount).isPremium();
+            if (MessagesController.getInstance(UserConfig.selectedAccount).premiumFeaturesBlocked() && ((source.getAdapterPosition() == 0 || target.getAdapterPosition() == 0) && !canReorderDefault)) {
                 return false;
             }
             adapter.swapElements(source.getAdapterPosition(), target.getAdapterPosition());
@@ -1929,7 +1932,7 @@ public class FilterTabsView extends FrameLayout {
         }
 
         private final Runnable resetDefaultPosition = () ->  {
-            if (UserConfig.getInstance(UserConfig.selectedAccount).isPremium()) {
+            if (EasygramLocalFeatures.EXTENDED_FOLDERS_AND_PINS || UserConfig.getInstance(UserConfig.selectedAccount).isPremium()) {
                 return;
             }
             for (int i = 0; i < tabs.size(); ++i) {
