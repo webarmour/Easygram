@@ -34,7 +34,6 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
-import org.telegram.messenger.BuildConfig;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
@@ -359,17 +358,6 @@ public class OtherSettingsActivity extends BaseFragment {
     private ListAdapter adapter;
     private ItemTouchHelper itemTouchHelper;
 
-    // Secret media actions are available only in the debug build type.
-    public static final boolean SECRET_MEDIA_ACTIONS_ENABLED = BuildConfig.DEBUG;
-    private static final String KEY_SECRET_MEDIA_ACTIONS = "easygram_secret_media_actions";
-
-    public static boolean isSecretMediaActionsEnabled() {
-        return SECRET_MEDIA_ACTIONS_ENABLED && ApplicationLoader.applicationContext
-                .getSharedPreferences("mainconfig", Activity.MODE_PRIVATE)
-                .getBoolean(KEY_SECRET_MEDIA_ACTIONS, true);
-    }
-
-    private int secretMediaRow;
     private int headerRow;
     private int galleryRow;
     private int galleryInfoRow;
@@ -570,7 +558,6 @@ public class OtherSettingsActivity extends BaseFragment {
         hideKeyboardOnScrollInfoRow = rowCount++;
         disableStoriesRow = rowCount++;
         storiesInfoRow = rowCount++;
-        secretMediaRow = SECRET_MEDIA_ACTIONS_ENABLED ? rowCount++ : -1;
         navHeaderRow = rowCount++;
         navLabelsRow = rowCount++;
         navStartRow = rowCount;
@@ -621,12 +608,6 @@ public class OtherSettingsActivity extends BaseFragment {
         listView.setOnItemClickListener((view, position) -> {
             if (position == galleryRow) {
                 showGalleryChooser(view);
-            } else if (position == secretMediaRow && SECRET_MEDIA_ACTIONS_ENABLED) {
-                boolean next = !isSecretMediaActionsEnabled();
-                preferences().edit().putBoolean(KEY_SECRET_MEDIA_ACTIONS, next).apply();
-                if (view instanceof TextCheckCell) {
-                    ((TextCheckCell) view).setChecked(next);
-                }
             } else if (position == sendMediaHdRow) {
                 boolean current = preferences().getBoolean("easygram_send_media_hd", SharedConfig.photoHighQualityDefault);
                 boolean next = !current;
@@ -852,7 +833,6 @@ public class OtherSettingsActivity extends BaseFragment {
         public int getItemViewType(int position) {
             if (position == headerRow || position == navHeaderRow || position == photoMenuHeaderRow) return 0;
             if (position == galleryRow) return 1;
-            if (position == secretMediaRow) return 6;
             if (position == galleryInfoRow || position == sendMediaHdInfoRow || position == galleryCameraInfoRow || position == hideKeyboardOnScrollInfoRow || position == storiesInfoRow || position == navInfoRow || position == photoMenuInfoRow) return 2;
             if (position == sendMediaHdRow || position == galleryCameraRow || position == hideKeyboardOnScrollRow || position == disableStoriesRow || position == navLabelsRow) return 3;
             if (position >= navStartRow && position < navEndRow) return 4;
@@ -876,7 +856,6 @@ public class OtherSettingsActivity extends BaseFragment {
                 case 2:
                     view = new TextInfoPrivacyCell(mContext);
                     break;
-                case 6:
                 case 3:
                     view = new TextCheckCell(mContext);
                     view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
@@ -929,13 +908,6 @@ public class OtherSettingsActivity extends BaseFragment {
                     } else if (position == photoMenuInfoRow) {
                         infoCell.setText(LocaleController.getString(R.string.EasygramPhotoMenuInfo));
                     }
-                    break;
-                case 6:
-                    TextCheckCell secretMediaCell = (TextCheckCell) holder.itemView;
-                    secretMediaCell.setTextAndValueAndCheck(
-                            LocaleController.getString(R.string.EasygramSecretMedia),
-                            LocaleController.getString(R.string.EasygramSecretMediaInfo),
-                            isSecretMediaActionsEnabled(), false, false);
                     break;
                 case 3:
                     TextCheckCell checkCell = (TextCheckCell) holder.itemView;

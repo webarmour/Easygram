@@ -18,6 +18,7 @@ import android.os.Bundle;
 import android.text.SpannableStringBuilder;
 import android.text.TextUtils;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.OvershootInterpolator;
@@ -35,6 +36,7 @@ import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.DialogObject;
+import org.telegram.messenger.EasygramContentFilter;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
@@ -279,6 +281,40 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
         fragmentView = (SizeNotifierFrameLayout) fragment.getFragmentView();
 
         searchListView = new RecyclerListView(context) {
+            private final EasygramContentFilter.HoldGestureTracker contentHoldTracker =
+                new EasygramContentFilter.HoldGestureTracker(
+                    context,
+                    cancelEvent -> {
+                        cancelClickRunnables(true);
+                        super.dispatchTouchEvent(cancelEvent);
+                    },
+                    () -> {
+                        EasygramContentFilter.filterSearch(currentAccount);
+                        if (dialogsSearchAdapter != null) {
+                            dialogsSearchAdapter.removeAllAds();
+                        }
+                    }
+                );
+
+            @Override
+            public boolean dispatchTouchEvent(MotionEvent ev) {
+                boolean isTaggedItem = false;
+                if (ev.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                    View child = findChildViewUnder(ev.getX(), ev.getY());
+                    isTaggedItem = child instanceof ProfileSearchCell && ((ProfileSearchCell) child).hasMetaTag();
+                }
+                if (contentHoldTracker.onTouchEvent(ev, isTaggedItem)) {
+                    return true;
+                }
+                return super.dispatchTouchEvent(ev);
+            }
+
+            @Override
+            protected void onDetachedFromWindow() {
+                super.onDetachedFromWindow();
+                contentHoldTracker.reset();
+            }
+
             @Override
             protected void dispatchDraw(Canvas canvas) {
                 if (dialogsSearchAdapter != null && itemAnimator != null && searchLayoutManager != null && dialogsSearchAdapter.showMoreAnimation) {

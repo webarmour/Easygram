@@ -10661,7 +10661,18 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
     }
 
     @Override
+    protected void startCheckLongPress() {
+        if (currentMessageObject != null && currentMessageObject.isSponsored()) {
+            return;
+        }
+        super.startCheckLongPress();
+    }
+
+    @Override
     protected boolean onLongPress() {
+        if (currentMessageObject != null && currentMessageObject.isSponsored()) {
+            return false;
+        }
         if (currentMessageObject != null && currentMessageObject.richLayout != null && currentMessageObject.richLayout.isHorizontallyDragging()) {
             // The widget claimed holds (touch-action: none) or has a drag of this press: no message menu (sdk-v1 §5.5).
             return false;

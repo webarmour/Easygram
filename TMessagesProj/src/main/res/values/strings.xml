@@ -11751,8 +11751,6 @@
     <string name="EasygramSupportOnBoosty">Support on Boosty</string>
     <string name="EasygramOther">Advanced</string>
     <string name="EasygramOtherInfo">easygram features</string>
-    <string name="EasygramSecretMedia">Secret media tools</string>
-    <string name="EasygramSecretMediaInfo">Media actions and viewing after the timer expires</string>
     <string name="EasygramDefaultGallery">Gallery app</string>
     <string name="EasygramBuiltInGallery">Built-in gallery</string>
     <string name="EasygramDefaultGalleryInfo">Open this gallery directly when you tap the attachment button in a chat.</string>

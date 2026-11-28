@@ -209,6 +209,10 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
         ad = sponsoredPeer;
     }
 
+    public boolean hasMetaTag() {
+        return ad != null;
+    }
+
     private boolean allowEmojiStatus = true;
     public void setAllowEmojiStatus(boolean allowEmojiStatus) {
         this.allowEmojiStatus = allowEmojiStatus;

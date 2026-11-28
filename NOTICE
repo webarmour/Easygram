@@ -118,7 +118,6 @@ merges with upstream simple, the changes are not marked inside the files;
   TMessagesProj/src/main/java/org/telegram/ui/PhotoViewer.java
   TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
   TMessagesProj/src/main/java/org/telegram/ui/RoundVideoSettingsActivity.java
-  TMessagesProj/src/main/java/org/telegram/ui/SecretMediaViewer.java
   TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java
   TMessagesProj/src/main/java/org/telegram/ui/TopicsFragment.java
   TMessagesProj/src/main/java/org/telegram/ui/Wallet/WalletCardProjection.java

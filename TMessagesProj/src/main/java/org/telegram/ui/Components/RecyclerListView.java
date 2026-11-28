@@ -64,9 +64,11 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.BuildConfig;
+import org.telegram.messenger.EasygramContentFilter;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.GenericProvider;
 import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
@@ -1216,6 +1218,9 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
                     if (currentChildView == null || currentChildPosition == -1 || onItemLongClickListener == null && onItemLongClickListenerExtended == null) {
                         return;
                     }
+                    if (EasygramContentFilter.isFilterableCell(currentChildView)) {
+                        return;
+                    }
                     View child = currentChildView;
                     if (onItemLongClickListener != null) {
                         if (onItemLongClickListener.onItemClick(currentChildView, currentChildPosition)) {
@@ -2207,6 +2212,10 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
         setOverScrollMode(OVER_SCROLL_NEVER);
     }
 
+    private EasygramContentFilter.HoldGestureTracker contentHoldTracker;
+    private int heldContentAccount;
+    private long heldContentDialogId;
+
     @Override
     public boolean dispatchTouchEvent(MotionEvent ev) {
         final int action = ev.getAction();
@@ -2220,6 +2229,32 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
             if (activeTouches == 0 && adaptiveOverScroll) {
                 setOverScrollMode(OVER_SCROLL_NEVER);
             }
+        }
+
+        boolean isFilterableItem = false;
+        if (ev.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            View child = findChildViewUnder(ev.getX(), ev.getY());
+            if (child instanceof ChatMessageCell) {
+                MessageObject msg = ((ChatMessageCell) child).getMessageObject();
+                if (msg != null && msg.isSponsored()) {
+                    isFilterableItem = true;
+                    heldContentAccount = msg.currentAccount;
+                    heldContentDialogId = msg.getDialogId();
+                }
+            }
+        }
+        if (isFilterableItem && contentHoldTracker == null) {
+            contentHoldTracker = new EasygramContentFilter.HoldGestureTracker(
+                getContext(),
+                cancelEvent -> {
+                    cancelClickRunnables(true);
+                    super.dispatchTouchEvent(cancelEvent);
+                },
+                () -> EasygramContentFilter.clearFilteredInAdapter(heldContentAccount, heldContentDialogId, getAdapter())
+            );
+        }
+        if (contentHoldTracker != null && contentHoldTracker.onTouchEvent(ev, isFilterableItem)) {
+            return true;
         }
 
         FastScroll fastScroll = getFastScroll();
@@ -2807,6 +2842,9 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture {
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        if (contentHoldTracker != null) {
+            contentHoldTracker.reset();
+        }
         selectorPosition = NO_POSITION;
         selectorView = null;
         selectorRect.setEmpty();

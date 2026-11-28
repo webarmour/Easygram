@@ -14,6 +14,7 @@ import android.text.style.ForegroundColorSpan;
 import android.text.style.URLSpan;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -21,6 +22,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.EasygramContentFilter;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.ImageLocation;
@@ -53,10 +55,27 @@ public class BotAdView extends FrameLayout {
     public final TextView channelTitleView;
     public final TextView removeView;
     public final LinkSpanDrawable.LinksTextView textView;
+    private ChatActivity currentChatActivity;
+    private MessageObject currentMessageObject;
+    private final EasygramContentFilter.HoldGestureTracker holdTracker;
 
     public BotAdView(Context context, Theme.ResourcesProvider resourcesProvider) {
         super(context);
         this.resourcesProvider = resourcesProvider;
+        this.holdTracker = new EasygramContentFilter.HoldGestureTracker(
+            context,
+            super::dispatchTouchEvent,
+            () -> {
+                if (currentChatActivity != null && currentMessageObject != null) {
+                    final int account = currentMessageObject.currentAccount;
+                    final long dialogId = currentChatActivity.getDialogId();
+                    EasygramContentFilter.filterDialog(account, dialogId);
+                    MessagesController.getInstance(account).clearDialogExtras(dialogId);
+                    currentChatActivity.removeFromSponsored(currentMessageObject);
+                    currentMessageObject = null;
+                }
+            }
+        );
 
         layout = new LinearLayout(context);
         layout.setOrientation(LinearLayout.HORIZONTAL);
@@ -123,7 +142,24 @@ public class BotAdView extends FrameLayout {
         layout.addView(closeView, LayoutHelper.createLinear(32, 32, Gravity.RIGHT | Gravity.TOP, 10, 3, 0, 2));
     }
 
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent ev) {
+        if (holdTracker.onTouchEvent(ev, currentChatActivity != null && currentMessageObject != null && getVisibility() == View.VISIBLE && getAlpha() > 0f)) {
+            return true;
+        }
+        return super.dispatchTouchEvent(ev);
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        super.onDetachedFromWindow();
+        holdTracker.reset();
+    }
+
     public void set(ChatActivity chatActivity, MessageObject messageObject, Runnable onRemoveListener, Runnable onCloseListener) {
+        holdTracker.cancel();
+        currentChatActivity = chatActivity;
+        currentMessageObject = messageObject;
         if (messageObject == null) return;
 
         CharSequence channel = messageObject.sponsoredTitle;

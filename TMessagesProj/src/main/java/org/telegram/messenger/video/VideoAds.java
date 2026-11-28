@@ -22,8 +22,10 @@ import android.text.TextUtils;
 import android.util.LruCache;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewParent;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -36,6 +38,7 @@ import org.aspectj.lang.annotation.AdviceName;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.BuildVars;
+import org.telegram.messenger.EasygramContentFilter;
 import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.LocaleController;
@@ -180,6 +183,9 @@ public static VideoAds make(
         this.bulletinFactory = bulletinFactory;
         this.lastTime = System.currentTimeMillis();
         this.first = true;
+        if (EasygramContentFilter.isDialogFiltered(currentAccount, dialogId)) {
+            return;
+        }
         if (cache.loaded) {
             start_delay = cache.startDelay;
             between_delay = cache.betweenDelay;
@@ -196,7 +202,7 @@ public static VideoAds make(
     private void load() {
         if (loading || loaded) return;
 
-        if (UserConfig.getInstance(currentAccount).isPremium() && MessagesController.getInstance(currentAccount).isSponsoredDisabled()) {
+        if (EasygramContentFilter.isDialogFiltered(currentAccount, dialogId) || UserConfig.getInstance(currentAccount).isPremium() && MessagesController.getInstance(currentAccount).isSponsoredDisabled()) {
             return;
         }
 
@@ -208,6 +214,10 @@ public static VideoAds make(
         req.msg_id = msg_id;
         requestId = ConnectionsManager.getInstance(currentAccount).sendRequest(req, (res, err) -> AndroidUtilities.runOnUIThread(() -> {
             if (!loading) return;
+            if (EasygramContentFilter.isDialogFiltered(currentAccount, dialogId)) {
+                loading = false;
+                return;
+            }
 
             if (res instanceof TLRPC.TL_messages_sponsoredMessages) {
                 final TLRPC.TL_messages_sponsoredMessages r = (TLRPC.TL_messages_sponsoredMessages) res;
@@ -234,7 +244,7 @@ public static VideoAds make(
 
     private void schedule() {
         AndroidUtilities.cancelRunOnUIThread(showRunnable);
-        if (!loaded || ads.isEmpty()) return;
+        if (!loaded || ads.isEmpty() || EasygramContentFilter.isDialogFiltered(currentAccount, dialogId)) return;
         final int delay = first ? start_delay : between_delay;
         final long timePassed = System.currentTimeMillis() - lastTime;
         AndroidUtilities.runOnUIThread(showRunnable, Math.max(0, delay * 1000L - timePassed));
@@ -265,7 +275,7 @@ public static VideoAds make(
     private float currentMenuTranslationY;
 
     private void show() {
-        if (ads.isEmpty()) return;
+        if (ads.isEmpty() || EasygramContentFilter.isDialogFiltered(currentAccount, dialogId)) return;
         final TLRPC.TL_sponsoredMessage ad = ads.get(0);
         final long showTime = System.currentTimeMillis() - currentBulletinPassedTime;
         bulletinShowTime = showTime;
@@ -562,6 +572,24 @@ public static VideoAds make(
             o.show();
             checkPopupShownCallback();
         });
+        layout.setOnContentDismissListener(() -> {
+            EasygramContentFilter.filterDialog(currentAccount, dialogId);
+            MessagesController.getInstance(currentAccount).clearDialogExtras(dialogId);
+            EasygramContentFilter.syncVisibleDialog(currentAccount, dialogId);
+            AndroidUtilities.cancelRunOnUIThread(canHideCallback);
+            AndroidUtilities.cancelRunOnUIThread(showRunnable);
+            ads.clear();
+            cache.ads.clear();
+            cache.loaded = false;
+            if (currentMenu != null) {
+                currentMenu.dismiss();
+                currentMenu = null;
+            }
+            if (bulletin != null && bulletin == thisBulletin) {
+                bulletin.setCanHide(true);
+                bulletin.hide();
+            }
+        });
         bulletin.setOnClickListener(v -> {
             logSponsoredClicked(ad);
             Browser.openUrl(v.getContext(), Uri.parse(ad.url), true, false, false, null, null, false, MessagesController.getInstance(UserConfig.selectedAccount).sponsoredLinksInappAllow, false);
@@ -816,10 +844,26 @@ public static VideoAds make(
         public final LinkSpanDrawable.LinksTextView subtitleTextView;
         public final ImageView buttonView;
         private final LinearLayout linearLayout;
+        private Runnable onContentDismissListener;
+        private final EasygramContentFilter.HoldGestureTracker holdTracker;
 
         public AdLayout(@NonNull Context context, Theme.ResourcesProvider resourcesProvider) {
             super(context, resourcesProvider);
             setBackground(getThemedColor(Theme.key_undo_background));
+            holdTracker = new EasygramContentFilter.HoldGestureTracker(
+                context,
+                cancelEvent -> {
+                    ViewParent parent = getParent();
+                    if (parent instanceof View) {
+                        ((View) parent).dispatchTouchEvent(cancelEvent);
+                    }
+                },
+                () -> {
+                    if (onContentDismissListener != null) {
+                        onContentDismissListener.run();
+                    }
+                }
+            );
 
             imageView = new BackupImageView(context);
             imageView.setRoundRadius(dp(48));
@@ -851,6 +895,21 @@ public static VideoAds make(
             buttonView.setScaleType(ImageView.ScaleType.CENTER);
             ThemeBind.selectorBackground(buttonView, Theme.createSelectorDrawable(Theme.multAlpha(getThemedColor(Theme.key_featuredStickers_addButton), .15f), Theme.RIPPLE_MASK_ROUNDRECT_6DP), null, ThemeBind.multAlpha(Theme.key_featuredStickers_addButton, .15f), resourcesProvider);
             addView(buttonView, LayoutHelper.createFrameRelatively(32, 32, Gravity.END | Gravity.CENTER_VERTICAL, 0, 0, 11, 0));
+        }
+
+        public void setOnContentDismissListener(Runnable listener) {
+            this.onContentDismissListener = listener;
+        }
+
+        @Override
+        public boolean onParentDispatchTouchEvent(MotionEvent event, boolean insideLayout) {
+            return holdTracker.onTouchEvent(event, insideLayout && onContentDismissListener != null);
+        }
+
+        @Override
+        protected void onDetachedFromWindow() {
+            super.onDetachedFromWindow();
+            holdTracker.reset();
         }
 
         @Override

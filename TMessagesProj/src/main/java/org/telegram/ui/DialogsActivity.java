@@ -12928,6 +12928,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         searchViewPager.searchListView.setOnItemLongClickListener(new RecyclerListView.OnItemLongClickListenerExtended() {
             @Override
             public boolean onItemClick(View view, int position, float x, float y) {
+                if (view instanceof ProfileSearchCell && ((ProfileSearchCell) view).hasMetaTag()) {
+                    return false;
+                }
                 if (view instanceof ProfileSearchCell && ((ProfileSearchCell) view).isBlocked()) {
                     showPremiumBlockedToast(view, ((ProfileSearchCell) view).getDialogId());
                     return true;

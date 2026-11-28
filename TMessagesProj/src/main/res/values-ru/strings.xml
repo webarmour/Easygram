@@ -409,8 +409,6 @@
     <string name="EasygramSupportOnBoosty">Поддержать на Boosty</string>
     <string name="EasygramOther">Дополнительно</string>
     <string name="EasygramOtherInfo">Функционал easygram</string>
-    <string name="EasygramSecretMedia">Работа с секретными медиа</string>
-    <string name="EasygramSecretMediaInfo">Действия с медиа и просмотр после истечения таймера</string>
     <string name="EasygramDefaultGallery">Приложение галереи</string>
     <string name="EasygramBuiltInGallery">Встроенная галерея</string>
     <string name="EasygramDefaultGalleryInfo">Открывать выбранную галерею сразу при нажатии на скрепку в чате.</string>

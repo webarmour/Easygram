@@ -625,6 +625,14 @@ public class Bulletin {
         }
 
         @Override
+        public boolean dispatchTouchEvent(MotionEvent ev) {
+            if (layout != null && layout.onParentDispatchTouchEvent(ev, inLayoutHitRect(ev.getX(), ev.getY()))) {
+                return true;
+            }
+            return super.dispatchTouchEvent(ev);
+        }
+
+        @Override
         public boolean onTouchEvent(MotionEvent event) {
             if (pressed || inLayoutHitRect(event.getX(), event.getY())) {
                 gestureDetector.onTouchEvent(event);
@@ -787,6 +795,10 @@ public class Bulletin {
         @Override
         public void setOnClickListener(@Nullable OnClickListener l) {
             this.onClickListener = l;
+        }
+
+        public boolean onParentDispatchTouchEvent(MotionEvent event, boolean insideLayout) {
+            return false;
         }
 
         @WidthDef

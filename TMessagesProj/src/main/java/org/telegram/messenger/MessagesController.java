@@ -8342,7 +8342,7 @@ public class MessagesController extends BaseController implements NotificationCe
                     for (int a = 0, N = taskMedia.size(); a < N; a++) {
                         long dialogId = taskMedia.keyAt(a);
                         ArrayList<Integer> mids = taskMedia.valueAt(a);
-                        if (OtherSettingsActivity.isSecretMediaActionsEnabled() && checkViewer && viewerObject != null && viewerObject.currentAccount == currentAccount && viewerObject.getDialogId() == dialogId && mids.contains(viewerObject.getId())) {
+                        if (checkViewer && viewerObject != null && viewerObject.currentAccount == currentAccount && viewerObject.getDialogId() == dialogId && mids.contains(viewerObject.getId())) {
                             final int id = viewerObject.getId();
                             mids.remove((Integer) id);
                             viewerObject.forceExpired = true;
@@ -21783,7 +21783,15 @@ public class MessagesController extends BaseController implements NotificationCe
         NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.updateInterfaces, UPDATE_MASK_REACTIONS_READ);
     }
 
+    public void clearDialogExtras(long dialogId) {
+        sponsoredMessages.remove(dialogId);
+    }
+
     public SponsoredMessagesInfo getSponsoredMessages(long dialogId) {
+        if (EasygramContentFilter.isDialogFiltered(currentAccount, dialogId)) {
+            sponsoredMessages.remove(dialogId);
+            return null;
+        }
         SponsoredMessagesInfo info = sponsoredMessages.get(dialogId);
         if (info != null && (info.loading || Math.abs(SystemClock.elapsedRealtime() - info.loadTime) <= 5 * 60 * 1000)) {
             return info;
@@ -21868,7 +21876,7 @@ public class MessagesController extends BaseController implements NotificationCe
                 posts_between = null;
             }
             AndroidUtilities.runOnUIThread(() -> {
-                if (result == null) {
+                if (result == null || EasygramContentFilter.isDialogFiltered(currentAccount, dialogId)) {
                     sponsoredMessages.remove(dialogId);
                 } else {
                     infoFinal.loadTime = SystemClock.elapsedRealtime();
