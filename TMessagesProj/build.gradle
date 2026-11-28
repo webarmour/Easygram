@@ -1,7 +1,6 @@
 import org.gradle.nativeplatform.platform.internal.DefaultNativePlatform
 
 apply plugin: 'com.android.library'
-apply plugin: 'kotlin-android'
 apply plugin: 'org.telegram.build-plugin'
 apply plugin: 'idea'
 
@@ -43,10 +42,6 @@ configurations.all {
 }
 
 dependencies {
-    compileOnly files('libs/video-message-recorder.aar')
-    // easygram: on-device voice transcription (sherpa-onnx, Apache-2.0; arm ABIs only, see NOTICE)
-    compileOnly files('libs/sherpa-onnx-static-2.0.1-arm.aar')
-    implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.1.20'
     implementation 'androidx.core:core:1.16.0'
     implementation 'androidx.palette:palette:1.0.0'
     implementation 'androidx.exifinterface:exifinterface:1.3.6'
@@ -55,7 +50,6 @@ dependencies {
     implementation 'androidx.interpolator:interpolator:1.0.0'
     implementation 'androidx.biometric:biometric:1.1.0'
     implementation 'androidx.webkit:webkit:1.14.0'
-    implementation 'androidx.photopicker:photopicker:1.0.0-alpha02'
 
     implementation 'com.google.android.gms:play-services-cast-framework:21.4.0'
     implementation "androidx.mediarouter:mediarouter:1.7.0"
@@ -150,19 +144,9 @@ android {
         coreLibraryDesugaringEnabled true
     }
 
-    kotlinOptions {
-        jvmTarget = "1.8"
-    }
-
     defaultConfig {
-        minSdkVersion 24
+        minSdkVersion 23
         targetSdkVersion 36
-
-        def telegramApiId = getProps("TELEGRAM_API_ID") ?: "0"
-        def telegramApiHash = getProps("TELEGRAM_API_HASH") ?: ""
-
-        buildConfigField "int", "TELEGRAM_API_ID", telegramApiId
-        buildConfigField "String", "TELEGRAM_API_HASH", "\"${telegramApiHash}\""
 
         vectorDrawables.generatedDensities = ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi']
 
@@ -179,16 +163,6 @@ android {
 
     buildTypes {
         debug {
-            // Local-only testing: use Telegram's public example credentials if
-            // no personal API credentials are configured, or if explicitly forced.
-            // This applies ONLY to this library's debug build type.
-            def localApiId = (getProps("TELEGRAM_API_ID") ?: "").trim()
-            def localApiHash = (getProps("TELEGRAM_API_HASH") ?: "").trim()
-            def testApiRequested = (getProps("EASYGRAM_USE_TELEGRAM_TEST_API") ?: "false").toBoolean()
-            if (testApiRequested || localApiId.isEmpty() || localApiId == "0" || localApiHash.isEmpty()) {
-                buildConfigField "int", "TELEGRAM_API_ID", "4"
-                buildConfigField "String", "TELEGRAM_API_HASH", '"014b35b6184100b085b0d0572f9b5103"'
-            }
             jniDebuggable true
             shrinkResources false
             multiDexEnabled true
@@ -304,4 +278,4 @@ task checkVisibility {
 
 preBuild.dependsOn checkVisibility
 
-apply from: rootProject.file("easygram_abis.gradle")
+apply plugin: 'org.easygram.library'

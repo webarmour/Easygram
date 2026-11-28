@@ -17,6 +17,22 @@ gradlePlugin {
             id = "test-generator"
             implementationClass = "com.example.TestGeneratorPlugin"
         }
+        register("easygramVersionPlugin") {
+            id = "org.easygram.version"
+            implementationClass = "org.easygram.gradle.EasygramVersionPlugin"
+        }
+        register("easygramAbisPlugin") {
+            id = "org.easygram.abis"
+            implementationClass = "org.easygram.gradle.EasygramAbisPlugin"
+        }
+        register("easygramLibraryPlugin") {
+            id = "org.easygram.library"
+            implementationClass = "org.easygram.gradle.EasygramLibraryPlugin"
+        }
+        register("easygramAppPlugin") {
+            id = "org.easygram.app"
+            implementationClass = "org.easygram.gradle.EasygramAppPlugin"
+        }
     }
 }
 
@@ -41,6 +57,7 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach 
 dependencies {
     implementation(gradleApi())
     implementation("com.android.tools.build:gradle:8.13.2")
+    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.0")
 
     implementation("com.squareup.moshi:moshi:1.15.0")
     implementation("com.squareup.moshi:moshi-kotlin:1.15.0")

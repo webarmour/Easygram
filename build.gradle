@@ -53,4 +53,4 @@ subprojects {
         }
     }
 }
-apply from: rootProject.file("easygram_version.gradle")
+apply plugin: 'org.easygram.version'

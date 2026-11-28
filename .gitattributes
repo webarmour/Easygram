@@ -1,0 +1,4 @@
+# Easygram uses its own round-video recorder library (video-message-recorder.aar);
+# ignore upstream changes to RoundVideoSettingsActivity during merges.
+# Requires `git config merge.ours.driver true` in local git config.
+TMessagesProj/src/main/java/org/telegram/ui/RoundVideoSettingsActivity.java merge=ours
